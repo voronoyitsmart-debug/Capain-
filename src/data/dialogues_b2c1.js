@@ -1,0 +1,167 @@
+DE.dialogues.push(
+  { id: "b2_gehaltsverhandlung", title: "Переговоры о зарплате", emoji: "💶", lvl: "B2",
+    context: "Вы на ежегодной беседе с руководителем и просите повышения зарплаты.",
+    lines: [
+      { s: "Chef", de: "So, Herr Lebedew, kommen wir zum letzten Punkt. Sie wollten über Ihr Gehalt sprechen?", ru: "Итак, господин Лебедев, переходим к последнему пункту. Вы хотели поговорить о зарплате?" },
+      { s: "Mitarbeiter", de: "Ja, genau. Ich bin jetzt seit drei Jahren im Unternehmen, und mein Aufgabenbereich hat sich in der Zeit deutlich erweitert.", ru: "Да, именно. Я работаю в компании уже три года, и за это время круг моих задач значительно расширился." },
+      { s: "Chef", de: "Das stimmt. Sie leiten ja inzwischen auch das Projekt mit dem Kunden in Wien.", ru: "Это так. Вы ведь теперь ещё и руководите проектом с клиентом в Вене." },
+      { s: "Mitarbeiter", de: "Richtig. Und durch die neue Software haben wir die Bearbeitungszeit um etwa 20 Prozent verkürzt. Daher halte ich eine Gehaltserhöhung von zehn Prozent für angemessen.", ru: "Верно. А благодаря новому ПО мы сократили время обработки примерно на 20 процентов. Поэтому я считаю повышение зарплаты на десять процентов обоснованным." },
+      { s: "Chef", de: "Zehn Prozent? Das ist eine ganze Menge. Ehrlich gesagt ist unser Budget dieses Jahr ziemlich knapp.", ru: "Десять процентов? Это немало. Честно говоря, бюджет в этом году довольно ограничен." },
+      { s: "Mitarbeiter", de: "Das verstehe ich. Allerdings liegt mein Gehalt laut aktuellen Marktdaten unter dem Branchendurchschnitt für vergleichbare Positionen.", ru: "Я это понимаю. Однако, по актуальным рыночным данным, моя зарплата ниже среднего по отрасли для сопоставимых должностей." },
+      { s: "Chef", de: "Hm, darüber lässt sich reden. Ich könnte Ihnen sechs Prozent anbieten.", ru: "Хм, об этом можно поговорить. Я мог бы предложить вам шесть процентов." },
+      { s: "Mitarbeiter", de: "Das ist ein Anfang. Wäre es möglich, das mit anderen Leistungen zu kombinieren? Zum Beispiel mit einem zusätzlichen Weiterbildungsbudget?", ru: "Это уже что-то. Можно ли совместить это с другими бонусами? Например, с дополнительным бюджетом на повышение квалификации?" },
+      { s: "Chef", de: "An welche Weiterbildung denken Sie denn?", ru: "А о каком обучении вы думаете?" },
+      { s: "Mitarbeiter", de: "An eine Zertifizierung im Projektmanagement. Davon würde ja auch das Team profitieren.", ru: "О сертификации по управлению проектами. От этого ведь выиграла бы и команда." },
+      { s: "Chef", de: "Das klingt vernünftig. Sagen wir: sechs Prozent ab Januar, die Zertifizierung übernimmt die Firma, und in einem Jahr sprechen wir noch einmal darüber.", ru: "Звучит разумно. Скажем так: шесть процентов с января, сертификацию оплачивает фирма, а через год мы ещё раз вернёмся к этому разговору." },
+      { s: "Mitarbeiter", de: "Damit bin ich einverstanden. Könnten wir das schriftlich festhalten?", ru: "С этим я согласен. Мы могли бы зафиксировать это письменно?" },
+      { s: "Chef", de: "Selbstverständlich. Ich schicke Ihnen bis Freitag eine Zusammenfassung.", ru: "Разумеется. Я пришлю вам резюме до пятницы." }
+    ],
+    quiz: [
+      { q: "Сколько процентов изначально просил сотрудник?", options: ["Шесть", "Двадцать", "Десять", "Пять"], a: 2,
+        explain: "Сотрудник: „Daher halte ich eine Gehaltserhöhung von zehn Prozent für angemessen“ (6 % — встречное предложение шефа, 20 % — экономия времени)." },
+      { q: "Какой аргумент он НЕ использовал?", options: ["Расширение круга задач", "Предложение от другой компании", "Сокращение времени обработки на 20 %", "Зарплата ниже среднего по рынку"], a: 1,
+        explain: "Он говорит о задачах („mein Aufgabenbereich hat sich … erweitert“), о 20 % и о „Branchendurchschnitt“ — о предложении другой фирмы ни слова." },
+      { q: "Что ещё он получил кроме повышения?", options: ["Оплату сертификации", "Дополнительный отпуск", "Служебную машину", "Работу из дома"], a: 0,
+        explain: "Шеф: „die Zertifizierung übernimmt die Firma“ — фирма оплачивает сертификацию." },
+      { q: "Что означает «etwas schriftlich festhalten»?", options: ["Держать в секрете", "Отложить на потом", "Обсудить устно", "Зафиксировать письменно"], a: 3,
+        explain: "„Könnten wir das schriftlich festhalten?“ — и шеф обещает прислать резюме: festhalten = зафиксировать." }
+    ] },
+
+  { id: "b2_umwelt_diskussion", title: "Дискуссия об экологии", emoji: "🌍", lvl: "B2",
+    context: "Друзья спорят о том, насколько полезны личные экологические привычки.",
+    lines: [
+      { s: "Sarah", de: "Habt ihr gehört? Die Stadt will ab nächstem Jahr die Innenstadt für Autos sperren.", ru: "Слышали? Город хочет со следующего года закрыть центр для машин." },
+      { s: "Tim", de: "Ja, und ich finde das ehrlich gesagt übertrieben. Was ist mit Leuten, die auf das Auto angewiesen sind?", ru: "Да, и, честно говоря, я считаю это перебором. А как же люди, которые зависят от машины?" },
+      { s: "Sarah", de: "Für die gibt es doch Ausnahmen. Außerdem wird der Nahverkehr ausgebaut. Ich halte das für einen längst überfälligen Schritt.", ru: "Для них ведь есть исключения. К тому же общественный транспорт расширят. Я считаю это давно назревшим шагом." },
+      { s: "Tim", de: "Mag sein. Aber mal ehrlich: Bringt das überhaupt etwas, solange die Industrie weiter so viel CO₂ ausstößt?", ru: "Может быть. Но если честно: есть ли от этого вообще толк, пока промышленность продолжает выбрасывать столько CO₂?" },
+      { s: "Lukas", de: "Da muss ich Tim teilweise recht geben. Die großen Hebel liegen in der Politik und der Wirtschaft, nicht beim Einzelnen.", ru: "Тут я должен отчасти согласиться с Тимом. Главные рычаги — в политике и экономике, а не у отдельного человека." },
+      { s: "Sarah", de: "Das eine schließt das andere doch nicht aus! Wenn viele Menschen ihr Verhalten ändern, entsteht auch politischer Druck.", ru: "Одно ведь не исключает другого! Когда многие люди меняют своё поведение, возникает и политическое давление." },
+      { s: "Tim", de: "Schon, aber man kann nicht von allen verlangen, auf alles zu verzichten. Nicht jeder kann sich teure Bio-Produkte leisten.", ru: "Так-то да, но нельзя требовать от всех отказываться от всего. Не каждый может позволить себе дорогие органические продукты." },
+      { s: "Sarah", de: "Es geht ja nicht um Verzicht um jeden Preis. Weniger Fleisch zu essen spart zum Beispiel sogar Geld.", ru: "Речь ведь не об отказе любой ценой. Например, если есть меньше мяса, это даже экономит деньги." },
+      { s: "Lukas", de: "Das ist ein guter Punkt. Klimaschutz muss sozial gerecht sein, sonst verliert er die Akzeptanz in der Bevölkerung.", ru: "Это хороший аргумент. Защита климата должна быть социально справедливой, иначе население перестанет её поддерживать." },
+      { s: "Tim", de: "Genau das meine ich. Die Maßnahmen dürfen nicht nur die Ärmeren treffen.", ru: "Именно это я и имею в виду. Меры не должны бить только по бедным." },
+      { s: "Sarah", de: "Na also, in dem Punkt sind wir uns ja einig. Vielleicht sollte die Stadt das Geld aus den Parkgebühren in günstigere Tickets stecken.", ru: "Ну вот, в этом мы ведь сходимся. Может, городу стоит вложить деньги от платы за парковку в более дешёвые билеты." },
+      { s: "Lukas", de: "Das würde ich sofort unterschreiben!", ru: "Под этим я бы сразу подписался!" }
+    ],
+    quiz: [
+      { q: "Что планирует город?", options: ["Повысить цены на билеты", "Закрыть центр для автомобилей", "Построить новый завод", "Запретить мясо"], a: 1,
+        explain: "Сара: „Die Stadt will ab nächstem Jahr die Innenstadt für Autos sperren“." },
+      { q: "Какую позицию занимает Лукас?", options: ["Полностью согласен с Сарой", "Против любых мер", "Главные рычаги у политики и экономики", "Не высказывается"], a: 2,
+        explain: "Лукас: „Die großen Hebel liegen in der Politik und der Wirtschaft, nicht beim Einzelnen“." },
+      { q: "Почему, по мнению Сары, личные привычки важны?", options: ["Они создают политическое давление", "Они экономят много времени", "Это модно", "Так требует закон"], a: 0,
+        explain: "Сара: „Wenn viele Menschen ihr Verhalten ändern, entsteht auch politischer Druck“." },
+      { q: "В чём все в итоге сходятся?", options: ["Машины нужно запретить везде", "Промышленность ни при чём", "Органика должна стоить дороже", "Защита климата должна быть социально справедливой"], a: 3,
+        explain: "Лукас: „Klimaschutz muss sozial gerecht sein“, Тим: „Genau das meine ich“, Сара: „in dem Punkt sind wir uns ja einig“." }
+    ] },
+
+  { id: "b2_meeting", title: "Совещание на работе", emoji: "📊", lvl: "B2",
+    context: "Команда обсуждает задержку запуска продукта и распределяет задачи.",
+    lines: [
+      { s: "Teamleiterin", de: "Guten Morgen zusammen. Lasst uns gleich anfangen, wir haben nur eine halbe Stunde. Erster Punkt: der Launch der neuen App.", ru: "Всем доброе утро. Давайте сразу начнём, у нас всего полчаса. Первый пункт: запуск нового приложения." },
+      { s: "Max", de: "Ich muss leider schlechte Nachrichten überbringen. Beim letzten Test sind mehrere kritische Fehler aufgetreten, vor allem bei der Zahlungsfunktion.", ru: "К сожалению, у меня плохие новости. При последнем тестировании обнаружилось несколько критических ошибок, прежде всего в функции оплаты." },
+      { s: "Teamleiterin", de: "Okay. Wie viel Zeit braucht ihr, um die zu beheben?", ru: "Ясно. Сколько вам нужно времени, чтобы их исправить?" },
+      { s: "Max", de: "Realistisch gesehen mindestens zwei Wochen. Der Termin am 1. März ist so nicht zu halten.", ru: "Если реально, то минимум две недели. Срок 1 марта в таком виде не удержать." },
+      { s: "Nina", de: "Moment mal, die Kampagne ist schon komplett geplant. Die Anzeigen sind gebucht, die Pressemitteilung ist fertig.", ru: "Минуточку, кампания уже полностью спланирована. Реклама забронирована, пресс-релиз готов." },
+      { s: "Teamleiterin", de: "Ich verstehe deinen Frust, Nina. Aber eine App mit fehlerhafter Zahlungsfunktion zu veröffentlichen, wäre ein viel größeres Risiko für unseren Ruf.", ru: "Я понимаю твоё разочарование, Нина. Но выпустить приложение с неисправной оплатой было бы гораздо большим риском для нашей репутации." },
+      { s: "Nina", de: "Das sehe ich ein. Lassen sich die Anzeigen denn kurzfristig verschieben?", ru: "С этим я согласна. А можно ли быстро перенести рекламу?" },
+      { s: "Teamleiterin", de: "Kannst du das bitte bis Mittwoch mit der Agentur klären?", ru: "Можешь, пожалуйста, выяснить это с агентством до среды?" },
+      { s: "Nina", de: "Mache ich. Wäre es eine Option, die App erst mal ohne Zahlungsfunktion als Beta-Version zu starten?", ru: "Сделаю. А может, вариант — сначала запустить приложение как бета-версию без функции оплаты?" },
+      { s: "Max", de: "Technisch wäre das machbar. Dann hätten wir sogar zusätzliches Nutzerfeedback.", ru: "Технически это осуществимо. Тогда у нас даже была бы дополнительная обратная связь от пользователей." },
+      { s: "Teamleiterin", de: "Interessanter Vorschlag. Lasst uns das bis Donnerstag genauer prüfen. Max, kannst du eine kurze Risikoanalyse machen?", ru: "Интересное предложение. Давайте подробнее проверим это до четверга. Макс, можешь сделать короткий анализ рисков?" },
+      { s: "Max", de: "Klar, ich schicke sie euch bis Mittwochabend.", ru: "Конечно, пришлю вам до вечера среды." },
+      { s: "Teamleiterin", de: "Super. Dann halte ich fest: Nina klärt die Anzeigen, Max macht die Analyse, und am Donnerstag entscheiden wir. Nächster Punkt.", ru: "Отлично. Тогда фиксирую: Нина выясняет насчёт рекламы, Макс делает анализ, а в четверг мы принимаем решение. Следующий пункт." }
+    ],
+    quiz: [
+      { q: "Почему запуск откладывается?", options: ["Не готова реклама", "Критические ошибки в функции оплаты", "Заболел разработчик", "Клиент отказался"], a: 1,
+        explain: "Макс: „Beim letzten Test sind mehrere kritische Fehler aufgetreten, vor allem bei der Zahlungsfunktion“." },
+      { q: "Что предлагает Нина?", options: ["Запустить бета-версию без оплаты", "Отменить кампанию", "Уволить агентство", "Запуститься 1 марта несмотря ни на что"], a: 0,
+        explain: "Нина: „Wäre es eine Option, die App erst mal ohne Zahlungsfunktion als Beta-Version zu starten?“" },
+      { q: "Что должен сделать Макс?", options: ["Позвонить в агентство", "Написать пресс-релиз", "Подготовить анализ рисков", "Протестировать рекламу"], a: 2,
+        explain: "Руководительница: „Max, kannst du eine kurze Risikoanalyse machen?“" },
+      { q: "Когда будет принято решение?", options: ["В среду", "1 марта", "Через две недели", "В четверг"], a: 3,
+        explain: "Руководительница: „und am Donnerstag entscheiden wir“ (в среду — только сроки для анализа и рекламы)." }
+    ] },
+
+  { id: "b2_vermieter_konflikt", title: "Конфликт с арендодателем", emoji: "🔧", lvl: "B2",
+    context: "В квартире уже несколько недель плесень, и вы требуете от арендодателя её устранить.",
+    lines: [
+      { s: "Mieterin", de: "Guten Tag, Herr Schulze. Ich rufe wegen des Schimmels im Schlafzimmer an. Ich habe Ihnen vor vier Wochen geschrieben.", ru: "Добрый день, господин Шульце. Я звоню по поводу плесени в спальне. Я писала вам четыре недели назад." },
+      { s: "Vermieter", de: "Ja, ich habe Ihre E-Mail bekommen. Aber ganz ehrlich: Schimmel entsteht meistens, weil die Mieter nicht richtig lüften.", ru: "Да, я получил ваше письмо. Но если честно: плесень обычно появляется потому, что жильцы неправильно проветривают." },
+      { s: "Mieterin", de: "Das weise ich entschieden zurück. Ich lüfte dreimal täglich stoßweise. Der Schimmel kommt von der feuchten Außenwand.", ru: "Я решительно это отвергаю. Я проветриваю интенсивно три раза в день. Плесень идёт от сырой наружной стены." },
+      { s: "Vermieter", de: "Das müsste man erst mal beweisen.", ru: "Это ещё нужно доказать." },
+      { s: "Mieterin", de: "Genau deshalb habe ich ein Feuchtigkeitsprotokoll geführt und Fotos gemacht. Außerdem hatte die Vormieterin laut Nachbarn dasselbe Problem.", ru: "Именно поэтому я вела журнал влажности и сделала фотографии. К тому же, по словам соседей, у предыдущей жилицы была та же проблема." },
+      { s: "Vermieter", de: "Hm. Und was erwarten Sie jetzt von mir?", ru: "Хм. И чего вы теперь от меня ждёте?" },
+      { s: "Mieterin", de: "Ich erwarte, dass ein Fachmann die Ursache prüft und der Mangel fachgerecht beseitigt wird. Bis dahin werde ich die Miete um 15 Prozent mindern.", ru: "Я жду, что специалист проверит причину и недостаток будет устранён должным образом. До тех пор я буду снижать арендную плату на 15 процентов." },
+      { s: "Vermieter", de: "Moment mal, das können Sie nicht einfach so machen!", ru: "Минуточку, так просто вы этого сделать не можете!" },
+      { s: "Mieterin", de: "Doch, das Gesetz erlaubt eine Mietminderung, wenn die Wohnung einen erheblichen Mangel hat. Das hat mir auch der Mieterverein bestätigt.", ru: "Ещё как могу: закон разрешает снижение арендной платы, если в квартире существенный недостаток. Это мне подтвердил и союз защиты прав арендаторов." },
+      { s: "Vermieter", de: "Na gut... Ich will keinen Streit. Ich schicke nächste Woche einen Gutachter vorbei.", ru: "Ну ладно... Я не хочу ссоры. На следующей неделе я пришлю эксперта." },
+      { s: "Mieterin", de: "Das freut mich. Könnten Sie mir den Termin bitte schriftlich bestätigen?", ru: "Я рада. Не могли бы вы подтвердить дату письменно?" },
+      { s: "Vermieter", de: "In Ordnung. Und wenn der Gutachter feststellt, dass es an der Wand liegt, kümmere ich mich um die Sanierung.", ru: "Хорошо. И если эксперт установит, что дело в стене, я займусь ремонтом." },
+      { s: "Mieterin", de: "Danke. Ich hoffe, wir finden schnell eine Lösung.", ru: "Спасибо. Надеюсь, мы быстро найдём решение." }
+    ],
+    quiz: [
+      { q: "В чём арендодатель сначала обвиняет жилицу?", options: ["Она не платит аренду", "Она неправильно проветривает", "Она шумит", "Она повредила стену"], a: 1,
+        explain: "Арендодатель: „Schimmel entsteht meistens, weil die Mieter nicht richtig lüften“." },
+      { q: "Какие доказательства есть у жилицы?", options: ["Только слова соседей", "Заключение эксперта", "Журнал влажности и фотографии", "Видео"], a: 2,
+        explain: "Жилица: „habe ich ein Feuchtigkeitsprotokoll geführt und Fotos gemacht“ (эксперт ещё только придёт)." },
+      { q: "На сколько она собирается снизить арендную плату?", options: ["На 15 %", "На 50 %", "На 5 %", "Полностью перестать платить"], a: 0,
+        explain: "Жилица: „Bis dahin werde ich die Miete um 15 Prozent mindern“." },
+      { q: "Что означает «die Miete mindern»?", options: ["Повысить аренду", "Расторгнуть договор", "Внести залог", "Снизить арендную плату"], a: 3,
+        explain: "mindern = уменьшать; дальше она говорит о „Mietminderung“ — снижении арендной платы из-за недостатка квартиры." }
+    ] },
+
+  { id: "c1_podcast_wissenschaft", title: "Научный подкаст", emoji: "🎙️", lvl: "C1",
+    context: "В научном подкасте ведущий беседует с нейробиологом о том, как сон влияет на память.",
+    lines: [
+      { s: "Moderator", de: "Herzlich willkommen zu einer neuen Folge von „Wissen kompakt“. Mein Gast heute ist Dr. Elena Roth, Neurowissenschaftlerin an der Charité. Schön, dass Sie da sind!", ru: "Добро пожаловать в новый выпуск «Знания вкратце». Моя гостья сегодня — доктор Елена Рот, нейробиолог из клиники Шарите. Рад, что вы пришли!" },
+      { s: "Dr. Roth", de: "Vielen Dank für die Einladung.", ru: "Большое спасибо за приглашение." },
+      { s: "Moderator", de: "Frau Roth, man hört immer wieder, dass Schlaf für das Gedächtnis entscheidend sei. Ist da etwas dran, oder ist das ein Mythos?", ru: "Госпожа Рот, часто говорят, что сон имеет решающее значение для памяти. Это правда или миф?" },
+      { s: "Dr. Roth", de: "Da ist durchaus etwas dran. Die Forschung der letzten zwanzig Jahre hat eindeutig gezeigt, dass das Gehirn im Schlaf Gelerntes nicht nur speichert, sondern regelrecht neu ordnet.", ru: "В этом определённо что-то есть. Исследования последних двадцати лет однозначно показали, что мозг во сне не просто сохраняет выученное, а буквально заново его упорядочивает." },
+      { s: "Moderator", de: "Wie muss man sich das konkret vorstellen?", ru: "Как это себе конкретно представить?" },
+      { s: "Dr. Roth", de: "Vereinfacht gesagt werden im Tiefschlaf Informationen aus dem Hippocampus, einer Art Zwischenspeicher, in die Großhirnrinde übertragen und dort langfristig verankert.", ru: "Упрощённо говоря, в фазе глубокого сна информация из гиппокампа, своего рода временного хранилища, переносится в кору больших полушарий и закрепляется там надолго." },
+      { s: "Moderator", de: "Heißt das im Umkehrschluss, dass Studierende, die vor einer Prüfung die Nacht durchlernen, sich eher schaden?", ru: "Значит ли это, что, наоборот, студенты, которые учат всю ночь перед экзаменом, скорее себе вредят?" },
+      { s: "Dr. Roth", de: "In aller Regel ja. Kurzfristig mag man sich an einiges erinnern, aber die Inhalte werden kaum nachhaltig gefestigt. Hinzu kommt, dass Schlafmangel die Konzentration erheblich beeinträchtigt.", ru: "Как правило, да. В краткосрочной перспективе кое-что, может, и запомнится, но материал вряд ли закрепится надолго. К тому же недосып значительно ухудшает концентрацию." },
+      { s: "Moderator", de: "Nun gibt es ja auch Apps, die versprechen, man könne im Schlaf Vokabeln lernen. Was halten Sie davon?", ru: "Сейчас ведь есть и приложения, которые обещают, что можно учить слова во сне. Что вы об этом думаете?" },
+      { s: "Dr. Roth", de: "Da bin ich skeptisch. Es gibt zwar Studien, die geringe Effekte nachweisen, wenn bereits Gelerntes im Schlaf erneut abgespielt wird. Völlig neue Inhalte lassen sich so aber nach derzeitigem Kenntnisstand nicht erwerben.", ru: "Тут я настроена скептически. Есть, конечно, исследования, показывающие небольшой эффект, если во сне повторно проигрывать уже выученное. Но совершенно новый материал так, по современным данным, не усвоить." },
+      { s: "Moderator", de: "Also kein Ersatz fürs Lernen am Schreibtisch.", ru: "Значит, это не замена учёбе за письменным столом." },
+      { s: "Dr. Roth", de: "Keineswegs. Mein Rat wäre eher: tagsüber konzentriert lernen, kurz vor dem Schlafengehen wiederholen und dann ausreichend schlafen.", ru: "Ни в коем случае. Мой совет скорее такой: днём сосредоточенно учиться, незадолго до сна повторять, а затем как следует высыпаться." },
+      { s: "Moderator", de: "Ein Ratschlag, den sich sicher viele unserer Hörerinnen und Hörer zu Herzen nehmen werden. Frau Roth, herzlichen Dank für das Gespräch!", ru: "Совет, который многие наши слушательницы и слушатели наверняка примут близко к сердцу. Госпожа Рот, сердечное спасибо за беседу!" }
+    ],
+    quiz: [
+      { q: "Что происходит с информацией в фазе глубокого сна?", options: ["Она стирается", "Она переносится из гиппокампа в кору и закрепляется", "Она остаётся только в гиппокампе", "Ничего особенного"], a: 1,
+        explain: "Д-р Рот: „im Tiefschlaf [werden] Informationen aus dem Hippocampus … in die Großhirnrinde übertragen und dort langfristig verankert“." },
+      { q: "Как доктор Рот оценивает учёбу всю ночь перед экзаменом?", options: ["Как эффективный метод", "Как нейтральный", "Как вредную в долгосрочной перспективе", "Она не высказывается"], a: 2,
+        explain: "На вопрос, вредят ли себе студенты: „In aller Regel ja … die Inhalte werden kaum nachhaltig gefestigt“." },
+      { q: "Что она думает о приложениях для учёбы во сне?", options: ["Относится скептически: новое так не выучить", "Полностью их поддерживает", "Считает их опасными", "Сама ими пользуется"], a: 0,
+        explain: "Д-р Рот: „Da bin ich skeptisch … Völlig neue Inhalte lassen sich so aber … nicht erwerben“." },
+      { q: "Что означает «sich etwas zu Herzen nehmen»?", options: ["Обидеться", "Забыть что-то", "Испугаться", "Принять близко к сердцу"], a: 3,
+        explain: "„Ein Ratschlag, den sich … viele … zu Herzen nehmen werden“ — совет, который слушатели примут близко к сердцу (всерьёз)." }
+    ] },
+
+  { id: "c1_politische_debatte", title: "Политические дебаты", emoji: "🗳️", lvl: "C1",
+    context: "В телевизионных дебатах два политика спорят о введении четырёхдневной рабочей недели.",
+    lines: [
+      { s: "Moderatorin", de: "Meine Damen und Herren, unser heutiges Thema: Sollte die Vier-Tage-Woche gesetzlich verankert werden? Frau Berger, Sie befürworten das.", ru: "Дамы и господа, наша сегодняшняя тема: нужно ли закрепить четырёхдневную рабочую неделю законодательно? Госпожа Бергер, вы за." },
+      { s: "Berger", de: "Ganz richtig. Pilotprojekte in mehreren Ländern belegen, dass die Produktivität bei verkürzter Arbeitszeit keineswegs sinkt, während Krankheitstage und Burnout-Fälle deutlich zurückgehen.", ru: "Совершенно верно. Пилотные проекты в нескольких странах доказывают, что при сокращённом рабочем времени производительность отнюдь не падает, тогда как число больничных и случаев выгорания заметно снижается." },
+      { s: "Moderatorin", de: "Herr Kraus, Sie sehen das kritisch.", ru: "Господин Краус, вы относитесь к этому критически." },
+      { s: "Kraus", de: "Allerdings. Bei allem Respekt, Frau Berger, aber diese Pilotprojekte beschränken sich überwiegend auf Bürojobs. Erklären Sie mal einer Pflegekraft oder einem Handwerksbetrieb, wie das funktionieren soll, wenn ohnehin überall Fachkräfte fehlen.", ru: "Именно так. При всём уважении, госпожа Бергер, эти пилотные проекты в основном ограничиваются офисной работой. Объясните-ка медсестре или ремесленному предприятию, как это должно работать, когда и так везде не хватает специалистов." },
+      { s: "Berger", de: "Gerade der Fachkräftemangel spricht doch für attraktivere Arbeitsbedingungen! Viele verlassen die Pflege, weil sie völlig überlastet sind.", ru: "Именно нехватка специалистов говорит в пользу более привлекательных условий труда! Многие уходят из сферы ухода, потому что совершенно перегружены." },
+      { s: "Kraus", de: "Das bestreite ich gar nicht. Nur löst eine starre gesetzliche Vorgabe dieses Problem nicht. Wir brauchen flexible Lösungen, die Betriebe und Beschäftigte gemeinsam aushandeln.", ru: "Я этого вовсе не оспариваю. Только жёсткое законодательное предписание эту проблему не решит. Нам нужны гибкие решения, о которых предприятия и работники договорятся вместе." },
+      { s: "Moderatorin", de: "Frau Berger, wie wollen Sie die Kosten für kleine und mittlere Unternehmen abfedern?", ru: "Госпожа Бергер, как вы собираетесь смягчить расходы для малых и средних предприятий?" },
+      { s: "Berger", de: "Wir schlagen eine schrittweise Einführung über fünf Jahre vor, flankiert von steuerlichen Anreizen für Betriebe, die frühzeitig umstellen.", ru: "Мы предлагаем поэтапное введение в течение пяти лет, подкреплённое налоговыми стимулами для предприятий, которые перейдут заранее." },
+      { s: "Kraus", de: "Und wer soll das finanzieren? Am Ende zahlt doch wieder der Steuerzahler die Zeche.", ru: "А кто это будет финансировать? В итоге за всё опять заплатит налогоплательщик." },
+      { s: "Berger", de: "Das ist zu kurz gedacht. Allein die Kosten durch psychische Erkrankungen belaufen sich jährlich auf Milliarden. Prävention rechnet sich langfristig.", ru: "Это недальновидно. Одни только расходы из-за психических заболеваний ежегодно составляют миллиарды. Профилактика окупается в долгосрочной перспективе." },
+      { s: "Kraus", de: "Langfristig, ja – aber die Betriebe müssen heute überleben. Mit Verlaub, das ist Politik am Reißbrett.", ru: "В долгосрочной перспективе — да, но предприятиям нужно выжить сегодня. С вашего позволения, это кабинетная политика." },
+      { s: "Moderatorin", de: "Ich halte fest: Einigkeit besteht darüber, dass sich die Arbeitsbedingungen verbessern müssen, über den Weg dorthin gehen die Meinungen jedoch weit auseinander. Vielen Dank Ihnen beiden.", ru: "Подытожу: согласие есть в том, что условия труда должны улучшиться, но о пути к этому мнения сильно расходятся. Спасибо вам обоим." }
+    ],
+    quiz: [
+      { q: "Какой главный аргумент госпожи Бергер?", options: ["Это сэкономит деньги государства", "Производительность не падает, а больничных и выгорания меньше", "Этого требуют профсоюзы", "Так уже везде в Европе"], a: 1,
+        explain: "Бергер: „dass die Produktivität bei verkürzter Arbeitszeit keineswegs sinkt, während Krankheitstage und Burnout-Fälle deutlich zurückgehen“." },
+      { q: "Что критикует господин Краус в пилотных проектах?", options: ["Они слишком короткие", "Они проводились за границей", "Они в основном касаются офисной работы", "Они слишком дорогие"], a: 2,
+        explain: "Краус: „diese Pilotprojekte beschränken sich überwiegend auf Bürojobs“." },
+      { q: "Что он предлагает вместо закона?", options: ["Гибкие решения, согласованные предприятиями и работниками", "Пятидневку для всех", "Налоговые стимулы", "Ничего не менять"], a: 0,
+        explain: "Краус: „Wir brauchen flexible Lösungen, die Betriebe und Beschäftigte gemeinsam aushandeln“ (налоговые стимулы предлагает Бергер)." },
+      { q: "Что означает «die Zeche zahlen»?", options: ["Заработать деньги", "Посетить шахту", "Взять кредит", "Расплачиваться за всё (нести расходы)"], a: 3,
+        explain: "Краус: „Am Ende zahlt doch wieder der Steuerzahler die Zeche“ — die Zeche (счёт в трактире) zahlen = расплачиваться за всё." }
+    ] }
+);

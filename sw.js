@@ -1,6 +1,6 @@
 // Офлайн-кэш. Версия подставляется при сборке.
-const CACHE = 'deutsch-919e01da68';
-const ASSETS = ["./","index.html","app.css?v=919e01da68","data.js?v=919e01da68","app.js?v=919e01da68","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png"];
+const CACHE = 'deutsch-4f0038e35e';
+const ASSETS = ["./","index.html","app.css?v=4f0038e35e","data.js?v=4f0038e35e","app.js?v=4f0038e35e","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png"];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

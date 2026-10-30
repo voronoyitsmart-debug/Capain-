@@ -20,7 +20,7 @@ function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^=
 // Нормализация ответа: регистр, пробелы, конечная пунктуация, типографские кавычки
 function norm(s) {
   return String(s || '').toLowerCase().replace(/[’`´]/g, "'").replace(/[„“”«»"]/g, '')
-    .replace(/\s+/g, ' ').replace(/[.!?,;:]+$/g, '').trim();
+    .replace(/[.!?,;:…¿¡]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 // Замены для тех, у кого нет немецкой раскладки
 function deUmlaut(s) { return s.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss'); }
@@ -36,14 +36,17 @@ function lev(a, b) {
   }
   return prev[n];
 }
-// Проверка ввода: 'ok' | 'typo' | 'umlaut' | 'bad'
-function checkAnswer(input, answers) {
+// Проверка ввода: 'ok' | 'umlaut' (ae вместо ä) | 'noumlaut' (умлаут пропущен) | 'typo' | 'bad'.
+// strict — без скидки на опечатки (грамматика и спряжение: там одна буква и есть суть задания)
+const plainUml = s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss');
+function checkAnswer(input, answers, strict) {
   const x = norm(input);
   if (!x) return 'bad';
   const list = answers.map(norm);
   if (list.includes(x)) return 'ok';
   if (list.some(a => deUmlaut(a) === deUmlaut(x))) return 'umlaut';
-  if (list.some(a => a.length > 4 && lev(a, x) === 1)) return 'typo';
+  if (list.some(a => /[äöü]/.test(a) && plainUml(a) === plainUml(x))) return 'noumlaut';
+  if (!strict && list.some(a => a.length > 4 && lev(a, x) === 1)) return 'typo';
   return 'bad';
 }
 
@@ -93,7 +96,13 @@ const DEFAULT_STATE = () => ({
   best: {},          // рекорды: speed, match
   stats: { answers: 0, correct: 0, sessions: 0, perfect: 0 },
   lastTopic: null,
-  settings: { goal: 50, rate: 0.9, voice: '', autoplay: true, sound: true, theme: 'system', showRu: true, newPerDay: 10 }
+  adapt: { d: 1, ok: 0, bad: 0 },   // адаптивная сложность 0..4
+  accepted: {},      // key -> ответы, которые пользователь отметил как верные
+  badPairs: {},      // 'key|key' -> 1: эти слова не ставить вариантами друг к другу
+  recent: [],        // последние тренировки: {lvl, pct, d, t}
+  lvlHint: null,     // когда скрыта подсказка о смене уровня
+  reports: [],
+  settings: { goal: 50, rate: 0.9, voice: '', autoplay: true, sound: true, theme: 'system', showRu: true, newPerDay: 10, adaptive: true }
 });
 
 const Store = {
@@ -311,7 +320,7 @@ const ICON = {
 /* js/content.js */
 // Индексы над учебными данными DE.*
 const C = {
-  words: [], byKey: {}, topics: [], topicById: {}, lex: {},
+  words: [], byKey: {}, topics: [], topicById: {}, lex: {}, nounArt: {}, byDe: {},
   tests: [], testByKey: {}, gex: {}, verbs: [], verbByInf: {},
   init() {
     const lvlOrder = l => LEVELS.indexOf(l);
@@ -323,7 +332,12 @@ const C = {
         w.topic = t.id;
         this.words.push(w);
         this.byKey[w.key] = w;
-        const { lemma } = splitArticle(w.de);
+        w.mean = this.meanings(w.ru, true);
+        w.meanStrict = this.meanings(w.ru, false);
+        const nd = norm(w.de);
+        (this.byDe[nd] = this.byDe[nd] || []).push(w);
+        const { art: wart, lemma } = splitArticle(w.de);
+        if (w.t === 'n' && wart && !/\s/.test(lemma)) this.nounArt[lemma.toLowerCase()] = wart;
         const lk = lemma.toLowerCase().replace(/^sich /, '').replace(/ \+.*$/, '');
         if (!this.lex[lk]) this.lex[lk] = w;
       });
@@ -332,6 +346,7 @@ const C = {
     for (const p of DE.phrases) {
       p.words = p.items.map((it, i) => {
         const w = { de: it.de, ru: it.ru, t: 'phr', lvl: p.lvl, ex: it.de, exRu: it.ru, key: `p|${p.id}|${i}`, topic: 'ph:' + p.id };
+        w.mean = this.meanings(w.ru, true); w.meanStrict = this.meanings(w.ru, false);
         this.byKey[w.key] = w;
         return w;
       });
@@ -349,11 +364,54 @@ const C = {
     });
     for (const r of DE.reading) (r.glossary || []).forEach(g => { const k = g.de.toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: g.de, ru: g.ru }; });
   },
+  // Значения перевода: «есть, кушать (разг.)» → ['есть', 'кушать'].
+  // loose — без уточнений в скобках (для отсева вариантов-синонимов), strict — с ними (для приёма ответа).
+  meanings(ru, loose) {
+    let s = String(ru || '').toLowerCase().replace(/ё/g, 'е');
+    if (loose) s = s.replace(/\([^)]*\)/g, ' ');
+    s = s.replace(/\b(что|кого|кому|чего|чем|о ком)-л(ибо)?\.?/g, ' ').replace(/[↔→«»"„“]/g, ' ');
+    return s.split(/[,;\/]| или /).map(x => x.replace(/\s+/g, ' ').trim()).filter(x => x.length > 1);
+  },
+  // Совпадают ли значения двух слов (тогда одно нельзя давать неверным вариантом к другому)
+  sameMeaning(a, b) {
+    const A = a.mean || this.meanings(a.ru, true), B = b.mean || this.meanings(b.ru, true);
+    for (const x of A) for (const y of B) {
+      if (x === y) return true;
+      if (x.length >= 6 && y.length >= 6 && x.slice(0, 5) === y.slice(0, 5)) return true;
+    }
+    return false;
+  },
+  // Синонимы для письменного ответа: тот же тип слова и совпадающее значение (с уточнениями)
+  synonyms(w) {
+    if (!w.meanStrict || !w.meanStrict.length) return [];
+    const out = [];
+    for (const x of this.words) {
+      if (x === w || x.t !== w.t || norm(x.de) === norm(w.de)) continue;
+      if (x.meanStrict.some(m => w.meanStrict.includes(m))) out.push(x);
+    }
+    return out;
+  },
+  // Все допустимые написания немецкого ответа
+  variants(de) {
+    const out = new Set([de]);
+    const noPar = de.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    out.add(noPar);
+    const noCase = noPar.replace(/\s*\+\s*(Akk|Dat|Gen)\.?/gi, '').trim();
+    out.add(noCase);
+    out.add(noCase.replace(/\b(etw|jdn|jdm|jds)\.\s*/g, '').replace(/\s+/g, ' ').trim());
+    const m = /^(der|die|das)\/(der|die|das) (.+)$/.exec(noPar);
+    if (m) { out.add(m[1] + ' ' + m[3]); out.add(m[2] + ' ' + m[3]); }
+    const parts = noPar.split(/\s*(?:\/|,|;)\s*/).filter(Boolean);
+    if (parts.length > 1 && parts.every(p => /^(der|die|das) /.test(p))) parts.forEach(p => out.add(p));
+    return Array.from(out).filter(Boolean);
+  },
   topicWords(id) {
     if (id === 'fav') return Object.keys(Store.state.fav).map(k => this.byKey[k]).filter(Boolean);
     if (id && id.startsWith('ph:')) { const p = DE.phrases.find(p => 'ph:' + p.id === id); return p ? p.words : []; }
     const t = this.topicById[id]; return t ? t.words : [];
   },
+  // Слова не выше уровня пользователя
+  atLevel(w, lvl) { return LEVELS.indexOf(w.lvl) <= LEVELS.indexOf(lvl || Store.state.level); },
   topicProgress(id) {
     const ws = this.topicWords(id);
     let known = 0, started = 0;
@@ -383,20 +441,299 @@ const C = {
   }
 };
 
+/* js/adapt.js */
+// Адаптивная сложность: 0 (разминка) … 4 (эксперт).
+// После верных ответов растёт, после ошибок — откатывается назад, после двух ошибок подряд — сильнее.
+const Adapt = {
+  LABELS: ['Разминка', 'Легко', 'Средне', 'Сложно', 'Эксперт'],
+  st() {
+    const s = Store.state;
+    if (!s.adapt || typeof s.adapt.d !== 'number') s.adapt = { d: 1, ok: 0, bad: 0 };
+    return s.adapt;
+  },
+  on() { return Store.state.settings.adaptive !== false; },
+  level() { return this.on() ? clamp(Math.round(this.st().d), 0, 4) : 2; },
+  label() { return this.LABELS[this.level()]; },
+  // насколько хорошо выучено слово: 0 новое … 4 выучено
+  tier(w) { const b = Store.mastery(w.key); return b <= 0 ? 0 : b === 1 ? 1 : b <= 3 ? 2 : b === 4 ? 3 : 4; },
+  // итоговая сложность вопроса по слову: общий уровень ученика + знание этого слова
+  eff(w) {
+    if (!this.on()) return clamp(this.tier(w) + 1, 0, 4);
+    return clamp(Math.round((this.st().d + this.tier(w)) / 2 + 0.25), 0, 4);
+  },
+  options(eff) { return eff <= 0 ? 3 : eff >= 4 ? 5 : 4; },
+  // учесть ответ; вернуть 'up' | 'down' | null, если уровень сменился
+  answer(ok, ms) {
+    if (!this.on()) return null;
+    const a = this.st(), before = this.level();
+    if (ok) { a.ok++; a.bad = 0; a.d += ms && ms < 6000 ? 0.25 : 0.15; }
+    else { a.bad++; a.ok = 0; a.d -= a.bad >= 2 ? 0.75 : 0.4; }
+    a.d = clamp(a.d, 0, 4);
+    const after = this.level();
+    return after > before ? 'up' : after < before ? 'down' : null;
+  },
+  dots(n = this.level()) {
+    return `<span class="dbars" title="Сложность: ${this.LABELS[n]}" aria-label="Сложность: ${this.LABELS[n]}">${[0, 1, 2, 3, 4].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
+  },
+
+  // ---- Подсказка о смене уровня (A1 → A2 и обратно) ----
+  noteSession(res) {
+    const s = Store.state;
+    if (!res.total || res.total < 8) return;
+    s.recent = (s.recent || []).concat([{ lvl: s.level, pct: res.pct, d: this.st().d, t: Date.now() }]).slice(-8);
+  },
+  suggestion() {
+    const s = Store.state, i = LEVELS.indexOf(s.level);
+    if (s.lvlHint && s.lvlHint.lvl === s.level && Date.now() - s.lvlHint.t < 3 * DAY) return null;
+    const mine = (s.recent || []).filter(r => r.lvl === s.level);
+    const last = mine.slice(-4);
+    const avg = last.length ? last.reduce((a, r) => a + r.pct, 0) / last.length : 0;
+    const test = s.tests[s.level];
+    if (i < LEVELS.length - 1 && ((last.length >= 4 && avg >= 90 && this.st().d >= 3.2) || (test && test.passed))) {
+      return { dir: 'up', to: LEVELS[i + 1], why: test && test.passed ? `Тест ${s.level} сдан` : `Последние тренировки — в среднем ${Math.round(avg)}%` };
+    }
+    const low = mine.slice(-3);
+    const lowAvg = low.length ? low.reduce((a, r) => a + r.pct, 0) / low.length : 100;
+    if (i > 0 && low.length >= 3 && lowAvg < 50) {
+      return { dir: 'down', to: LEVELS[i - 1], why: `Последние тренировки — в среднем ${Math.round(lowAvg)}%` };
+    }
+    return null;
+  },
+  dismiss() { Store.state.lvlHint = { lvl: Store.state.level, t: Date.now() }; Store.save(); }
+};
+
+/* js/explain.js */
+// Объяснения ошибок: почему ответ неверный и какое правило здесь работает
+const Explain = {
+  // ---------- посимвольное сравнение ----------
+  diff(given, correct) {
+    const a = String(given), b = String(correct);
+    const A = a.toLowerCase(), B = b.toLowerCase();
+    const n = A.length, m = B.length;
+    if (n * m > 40000) return { g: esc(a), c: esc(b) };
+    const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    let i = 0, j = 0, g = '', c = '';
+    while (i < n || j < m) {
+      if (i < n && j < m && A[i] === B[j]) { g += esc(a[i]); c += esc(b[j]); i++; j++; }
+      else if (j < m && (i >= n || L[i][j + 1] >= L[i + 1][j])) { c += `<ins>${esc(b[j]) === ' ' ? '␣' : esc(b[j])}</ins>`; j++; }
+      else { g += `<del>${esc(a[i]) === ' ' ? '␣' : esc(a[i])}</del>`; i++; }
+    }
+    return { g, c };
+  },
+  diffBlock(given, correct) {
+    const d = this.diff(given, correct);
+    return `<div class="dif"><div><span class="muted">Ваш ответ</span><b class="dif-g">${d.g}</b></div><div><span class="muted">Правильно</span><b class="dif-c">${d.c}</b></div></div>`;
+  },
+
+  // ---------- род существительного ----------
+  gender(w) {
+    const { art, lemma } = splitArticle(w.de);
+    if (!art) return '';
+    const l = lemma.toLowerCase();
+    const R = [
+      [/(ung|heit|keit|schaft|ion|tät|ik|ur|ei|enz|anz|ie)$/, 'die', 'Слова на -ung, -heit, -keit, -schaft, -ion, -tät, -ik, -ei, -ie почти всегда женского рода'],
+      [/(chen|lein)$/, 'das', 'Уменьшительные на -chen и -lein — всегда das'],
+      [/(ment|um|ma|nis|tum)$/, 'das', 'Слова на -ment, -um, -tum и многие на -nis — среднего рода'],
+      [/^ge.*e$/, 'das', 'Собирательные слова на Ge-…-e обычно среднего рода (das Gemüse, das Gebäude)'],
+      [/(ling|ismus|ich|ig|or|ist|ant|ent)$/, 'der', 'Суффиксы -ling, -ismus, -ig, -or, -ist, -ant обычно мужского рода'],
+      [/(er)$/, 'der', 'Слова на -er (профессии, инструменты) часто мужского рода'],
+      [/e$/, 'die', 'Около 90% слов на -e — женского рода']
+    ];
+    const lines = [];
+    // сложное слово: род по последней части
+    for (let k = 1; k < lemma.length - 2; k++) {
+      const tail = lemma.slice(k).toLowerCase();
+      const ta = C.nounArt[tail];
+      if (ta && /^[a-zäöüß]/i.test(tail)) {
+        const tl = tail.charAt(0).toUpperCase() + tail.slice(1);
+        lines.push(ta === art ? `Сложное слово: род берётся от последней части — <b class="a-${ta}">${ta}</b> ${esc(tl)} → <b class="a-${art}">${art}</b> ${esc(lemma)}`
+          : `Обычно род сложного слова берётся от последней части (${ta} ${esc(tl)}), но здесь — <b class="a-${art}">${art}</b>`);
+        break;
+      }
+    }
+    if (!lines.length) {
+      const hit = R.find(([re]) => re.test(l));
+      if (hit) lines.push(hit[1] === art ? hit[2] : `${hit[2]}, но <b>${esc(lemma)}</b> — исключение: <b class="a-${art}">${art}</b>`);
+      else if (w.topic === 'calendar' && art === 'der') lines.push('Дни недели, месяцы и времена года — мужского рода');
+      else lines.push(`Здесь правила нет — запомните слово вместе с артиклем и цветом: <b class="a-${art}">${art}</b> ${esc(lemma)} (${({ der: 'синий — мужской', die: 'красный — женский', das: 'зелёный — средний' })[art]} род)`);
+    }
+    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+  },
+
+  // ---------- множественное число ----------
+  plural(w) {
+    const { art, lemma } = splitArticle(w.de);
+    const pl = (w.pl || '').replace(/^die /, '');
+    const plain = s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/äu/g, 'au');
+    const um = pl !== lemma && plain(pl).startsWith(plain(lemma)) && !pl.startsWith(lemma);
+    let suf = '';
+    if (pl === lemma) suf = '';
+    else for (const s of ['nen', 'se', 'en', 'er', 'n', 'e', 's']) {
+      if (pl.endsWith(s) && plain(pl.slice(0, -s.length)) === plain(lemma)) { suf = s; break; }
+    }
+    if (!suf && pl !== lemma && plain(pl) !== plain(lemma)) {
+      return `<div class="why"><div>💡 ${esc(lemma)} → <b>${esc(pl)}</b>: особая форма множественного числа — её нужно запомнить.</div></div>`;
+    }
+    const RULE = {
+      '': 'Слова мужского и среднего рода на -er, -el, -en, а также -chen и -lein во множественном числе не меняются',
+      n: art === 'der' ? 'Слова мужского рода на -e (n-склонение: der Junge, der Kollege) получают -n' : 'Почти все слова женского рода получают -(e)n, а на -e — просто -n',
+      en: 'Слова женского рода (особенно на -ung, -heit, -keit, -ion, -schaft) получают -en',
+      nen: 'Женские формы на -in получают -nen: die Lehrerin → die Lehrerinnen',
+      e: art === 'der' ? 'Многие слова мужского рода получают -e, часто с умлаутом: der Stuhl → die Stühle' : 'Окончание -e: многие односложные слова (der Tag → die Tage)',
+      er: 'Односложные слова среднего рода часто получают -er с умлаутом: das Buch → die Bücher',
+      s: 'Слова на гласную (кроме -e), сокращения и заимствования получают -s: das Auto → die Autos',
+      se: 'Слова на -nis получают -se: das Ergebnis → die Ergebnisse'
+    };
+    const kind = (suf ? `окончание -${suf}` : 'без окончания') + (um ? ' + умлаут' : '');
+    return `<div class="why"><div>💡 ${esc(lemma)} → <b>${esc(pl)}</b>: ${kind}.</div><div class="muted">${RULE[suf]}.</div></div>`;
+  },
+
+  // ---------- выбор варианта ----------
+  choice(q, i) {
+    const x = q.optWords && q.optWords[i];
+    const chosen = q.options[i].html;
+    if (!x) return `<div class="why"><div>Вы выбрали: <s>${chosen}</s></div></div>`;
+    const w = q.w;
+    switch (q.qtype) {
+      case 'deRu': case 'listen':
+        return `<div class="why"><div>«${esc(x.ru)}» — это ${deHTML(x)}, а ${deHTML(w)} — «${esc(w.ru)}».</div></div>`;
+      case 'ruDe':
+        return `<div class="why"><div>${deHTML(x)} означает «${esc(x.ru)}», а «${esc(w.ru)}» — ${deHTML(w)}.</div></div>`;
+      case 'gap':
+        return `<div class="why"><div>«${chosen}» — «${esc(x.ru)}». По смыслу предложения («${esc(w.exRu)}») нужно ${deHTML(w)} — «${esc(w.ru)}».</div></div>`;
+    }
+    return '';
+  },
+
+  // ---------- письменный ответ ----------
+  input(q, given) {
+    const out = [];
+    if (q.w) {
+      const w = q.w;
+      const gn = norm(given);
+      const other = (C.byDe[gn] || [])[0] || C.words.find(x => norm(splitArticle(x.de).lemma) === gn && x !== w);
+      if (q.nounCheck) {
+        const { art, lemma } = splitArticle(w.de);
+        const u = splitArticle(gn.replace(/^(der|die|das)(?=\S)/, '$1 '));
+        if (norm(u.lemma) === norm(lemma) || gn === norm(lemma)) {
+          out.push(u.art ? `Слово верное, но артикль другой: <b class="a-${art}">${art}</b> ${esc(lemma)}` : `Не хватает артикля: <b class="a-${art}">${art}</b> ${esc(lemma)}. Существительные учим сразу с артиклем.`);
+          out.push(this.gender(w));
+          return out.join('');
+        }
+      }
+      if (other && other !== w) out.push(`<div class="why"><div>${deHTML(other)} — это «${esc(other.ru)}». Здесь нужно «${esc(w.ru)}».</div></div>`);
+      out.push(this.diffBlock(given, q.answers[0]));
+      if (w.t === 'n') out.push(this.gender(w));
+      return out.join('');
+    }
+    if (q.verb) return this.diffBlock(given, q.answers[0]) + this.verb(q.verb, q.tense, q.person, given);
+    return this.diffBlock(given, q.answers[0]);
+  },
+
+  // ---------- спряжение ----------
+  verb(v, tense, p, given) {
+    const PR = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
+    const lines = [];
+    const gn = norm(given || '');
+    const forms = tense === 'praet' ? v.praet : v.praes;
+    if (tense !== 'perf' && gn) {
+      const j = forms.findIndex(f => norm(f) === gn);
+      if (j >= 0 && j !== p) lines.push(`«${esc(given)}» — это форма для <b>${PR[j]}</b>, а нужна для <b>${PR[p]}</b>.`);
+      const other = tense === 'praes' ? v.praet : v.praes;
+      if (other.some(f => norm(f) === gn)) lines.push(`«${esc(given)}» — форма ${tense === 'praes' ? 'прошедшего времени (Präteritum)' : 'настоящего времени (Präsens)'}.`);
+    }
+    const stem = v.inf.replace(/^sich /, '').split(' ')[0].replace(/(e?n)$/, '');
+    if (tense === 'praes') {
+      if (v.type === 'modal' || /^(sein|haben|werden|wissen)$/.test(v.inf)) lines.push(`${esc(v.inf)} — неправильный глагол, его формы нужно запомнить.`);
+      else {
+        lines.push('Окончания Präsens: ich -e, du -st, er/sie/es -t, wir -en, ihr -t, sie/Sie -en.');
+        const duStem = v.praes[1].split(' ')[0].replace(/(e?st|t)$/, '');
+        if ((p === 1 || p === 2) && duStem !== stem && !stem.startsWith(duStem)) lines.push(`У этого глагола в формах du и er/sie/es меняется корень: ${esc(v.inf)} → du ${esc(v.praes[1])}, er ${esc(v.praes[2])}.`);
+        if (/[td]$/.test(stem) && (p === 1 || p === 2 || p === 4)) lines.push('Основа на -t/-d: перед окончанием добавляется -e- (du arbeitest, er findet).');
+      }
+      if (v.sep) lines.push(`Отделяемая приставка уходит в конец: ich ${esc(v.praes[0])}.`);
+    } else if (tense === 'praet') {
+      if (v.type === 'weak') lines.push('Слабый глагол: в Präteritum добавляется -te-: machen → machte. У ich и er/sie/es формы совпадают.');
+      else lines.push(`Сильный/неправильный глагол: в Präteritum меняется корень (${esc(v.inf)} → ${esc(v.praet[0])}). У ich и er/sie/es окончания нет.`);
+      if (v.sep) lines.push('Отделяемая приставка стоит в конце.');
+    } else {
+      const aux = v.perf.split(' ')[0];
+      const part = v.perf.split(' ').slice(1).join(' ');
+      if (/ist/.test(aux)) lines.push('Perfekt с <b>sein</b>: так образуют глаголы движения и изменения состояния (gehen, fahren, aufstehen, werden), а также sein и bleiben.');
+      else lines.push('Perfekt с <b>haben</b>: так образует большинство глаголов, в том числе все возвратные и с прямым дополнением.');
+      if (/ieren$/.test(v.inf)) lines.push(`Глаголы на -ieren образуют Partizip II без ge-: ${esc(part)}.`);
+      else if (/^(be|ver|er|ent|emp|ge|zer|miss)/.test(v.inf.replace(/^sich /, '')) && !/^ge/.test(part)) lines.push(`Неотделяемая приставка — без ge-: ${esc(part)}.`);
+      else if (v.sep) lines.push(`Отделяемая приставка: ge- встаёт внутрь: ${esc(part)}.`);
+      else if (/t$/.test(part)) lines.push(`Слабый глагол: Partizip II по схеме ge-…-t (${esc(part)}).`);
+      else lines.push(`Сильный глагол: Partizip II на -en, часто с другой гласной (${esc(part)}) — запомните.`);
+    }
+    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+  },
+
+  // ---------- порядок слов ----------
+  order(q, given) {
+    const toks = q.tokens.map(t => t.replace(/[.,!?;:„“"]/g, ''));
+    const low = toks.map(t => t.toLowerCase());
+    const g = (given || []).map(t => t.replace(/[.,!?;:„“"]/g, ''));
+    const lines = [];
+    const k = g.findIndex((t, i) => t !== toks[i]);
+    if (k >= 0 && g.length) lines.push(`Расхождение с ${k + 1}-го слова: у вас «${esc(g[k] || '…')}», а нужно «${esc(toks[k])}».`);
+    const SUB = ['weil', 'dass', 'wenn', 'ob', 'obwohl', 'als', 'damit', 'bevor', 'nachdem', 'während', 'bis', 'seit', 'seitdem', 'sobald', 'falls', 'sodass', 'indem', 'solange', 'ehe'];
+    const W = ['wer', 'was', 'wo', 'wann', 'wie', 'warum', 'woher', 'wohin', 'welcher', 'welche', 'welches', 'wen', 'wem', 'wieso', 'weshalb'];
+    const sub = low.find((t, i) => SUB.includes(t) && i < low.length - 1);
+    const rel = q.tokens.some((t, i) => /,$/.test(t) && ['der', 'die', 'das', 'den', 'dem', 'deren', 'dessen', 'denen'].includes(low[i + 1]));
+    if (sub) lines.push(`В придаточном предложении после «${esc(sub)}» спрягаемый глагол стоит в самом конце.`);
+    if (rel) lines.push('В относительном придаточном (после der/die/das через запятую) глагол тоже уходит в конец.');
+    if (q.tail === '?') {
+      if (W.includes(low[0]) || W.includes(low[1])) lines.push('Вопрос с вопросительным словом: сразу за ним идёт глагол, потом подлежащее.');
+      else lines.push('Вопрос без вопросительного слова (ответ «да/нет») начинается с глагола.');
+    } else if (!sub || low.indexOf(sub) > 0) {
+      lines.push('В обычном предложении спрягаемый глагол стоит на 2-м месте. Если первым идёт не подлежащее (например, «Heute» или «Am Montag»), подлежащее встаёт после глагола.');
+    }
+    const AUX = /^(kann|kannst|können|könnt|muss|musst|müssen|müsst|will|willst|wollen|wollt|darf|darfst|dürfen|dürft|soll|sollst|sollen|sollt|möchte|möchtest|möchten|möchtet|habe|hast|hat|haben|habt|bin|bist|ist|sind|seid|werde|wirst|wird|werden|werdet|hatte|hattest|hatten|war|warst|waren|würde|würdest|würden)$/;
+    const last = low[low.length - 1] || '';
+    const lastTok = toks[toks.length - 1] || '';
+    const verbLike = /^[a-zäöü]/.test(lastTok) && (/en$/.test(last) || /^ge.+(t|en)$/.test(last)) &&
+      !/^(offen|trocken|eben|oben|unten|morgen|einen|keinen|meinen|deinen|seinen|ihren|unseren|diesen|den|wen|allen|vielen)$/.test(last);
+    if (low.slice(0, -1).some(t => AUX.test(t)) && verbLike && !sub) lines.push(`Второй глагол (инфинитив или Partizip II) — «${esc(toks[toks.length - 1])}» — стоит в конце: так получается «рамка».`);
+    if (['an', 'auf', 'aus', 'ein', 'mit', 'zu', 'ab', 'vor', 'nach', 'zurück', 'fern', 'los', 'weg', 'her', 'hin', 'fest', 'statt', 'teil', 'kennen'].includes(last) && !sub)
+      lines.push(`Отделяемая приставка «${esc(toks[toks.length - 1])}» стоит в самом конце предложения.`);
+    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+  }
+};
+function plainVowels(s) { return String(s).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u'); }
+
 /* js/modes.js */
 // Построители вопросов для движка упражнений
 const PERSONS = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
 const Q = {
-  // варианты-отвлекатели: тот же тип, другое значение
-  distract(w, pool, field, n = 3) {
+  accepted(key) { return (Store.state.accepted || {})[key] || []; },
+  // Может ли x быть неверным вариантом к w: не тот же немецкий, не синоним, не отмеченный пользователем
+  conflict(w, x) {
+    if (x === w) return true;
+    if (norm(x.de) === norm(w.de) || norm(splitArticle(x.de).lemma) === norm(splitArticle(w.de).lemma)) return true;
+    if (C.sameMeaning(w, x)) return true;
+    const bp = Store.state.badPairs || {};
+    return !!(bp[w.key + '|' + x.key] || bp[x.key + '|' + w.key]);
+  },
+  // Неверные варианты. hard — похожие (та же тема, тот же род, похожая длина), иначе — случайные
+  distract(w, pool, field, n = 3, hard = false) {
     const val = x => field === 'de' ? x.de : x.ru;
-    const mine = norm(val(w));
-    const seen = new Set([mine]);
+    const seen = new Set([norm(val(w))]);
+    const ok = x => x.t === w.t && !this.conflict(w, x);
+    let cand = pool.filter(ok);
+    if (cand.length < n * 2) cand = cand.concat(C.words.filter(x => ok(x) && !cand.includes(x)));
+    if (cand.length < n) cand = cand.concat(C.words.filter(x => !this.conflict(w, x) && !cand.includes(x)));
+    if (hard) {
+      const wl = splitArticle(w.de).lemma, wa = splitArticle(w.de).art;
+      const score = x => (x.topic === w.topic ? 2 : 0) + (wa && splitArticle(x.de).art === wa ? 1 : 0) +
+        (Math.abs(splitArticle(x.de).lemma.length - wl.length) <= 2 ? 1 : 0) + (splitArticle(x.de).lemma[0] === wl[0] ? 1 : 0) + Math.random() * 1.5;
+      cand = cand.map(x => [score(x), x]).sort((a, b) => b[0] - a[0]).slice(0, n * 3).map(p => p[1]);
+    }
     const out = [];
-    const same = shuffle(pool.filter(x => x.t === w.t && x !== w));
-    const rest = shuffle(C.words.filter(x => x.t === w.t && x !== w).slice(0, 4000));
-    const any = shuffle(C.words.slice(0, 4000));
-    for (const x of same.concat(rest, any)) {
+    for (const x of shuffle(cand)) {
       const v = norm(val(x));
       if (seen.has(v)) continue;
       seen.add(v); out.push(x);
@@ -404,97 +741,125 @@ const Q = {
     }
     return out;
   },
-  choiceFrom(correct, wrongs, extra = {}) {
-    const opts = shuffle([correct].concat(wrongs));
-    return Object.assign({ kind: 'choice', options: opts.map(o => o.opt), a: opts.indexOf(correct) }, extra);
+  // варианты-слова → вопрос с выбором; для объяснения ошибки запоминаем, какое слово стоит за вариантом
+  wordChoice(w, wrongs, render, extra) {
+    const opts = shuffle([w].concat(wrongs));
+    return Object.assign({ kind: 'choice', options: opts.map(render), optWords: opts, a: opts.indexOf(w), w, key: w.key, srs: true, adapt: true }, extra);
   },
-  deRu(w, pool) {
-    const ws = this.distract(w, pool, 'ru');
-    return this.choiceFrom({ opt: { html: esc(w.ru) } }, ws.map(x => ({ opt: { html: esc(x.ru) } })), {
-      label: 'Выберите перевод', prompt: `<div class="q-word">${deHTML(w)}</div>`, say: w.de, autoplay: true,
-      explain: this.wordExplain(w), key: w.key, srs: true, w
+  deRu(w, pool, eff = Adapt.eff(w)) {
+    const ws = this.distract(w, pool, 'ru', Adapt.options(eff) - 1, eff >= 3);
+    return this.wordChoice(w, ws, x => ({ html: esc(x.ru) }), {
+      qtype: 'deRu', label: 'Выберите перевод', prompt: `<div class="q-word">${deHTML(w)}</div>`, say: w.de, autoplay: true, explain: this.wordExplain(w)
     });
   },
-  ruDe(w, pool) {
-    const ws = this.distract(w, pool, 'de');
-    return this.choiceFrom({ opt: { html: deHTML(w), say: w.de } }, ws.map(x => ({ opt: { html: deHTML(x), say: x.de } })), {
-      label: 'Как это по-немецки?', prompt: `<div class="q-word ru">${esc(w.ru)}</div>`,
-      explain: this.wordExplain(w), key: w.key, srs: true, w, sayAfter: w.de
+  ruDe(w, pool, eff = Adapt.eff(w)) {
+    const ws = this.distract(w, pool, 'de', Adapt.options(eff) - 1, eff >= 2);
+    return this.wordChoice(w, ws, x => ({ html: deHTML(x) }), {
+      qtype: 'ruDe', label: 'Как это по-немецки?', prompt: `<div class="q-word ru">${esc(w.ru)}</div>`, explain: this.wordExplain(w), sayAfter: w.de
     });
   },
-  listen(w, pool) {
-    const ws = this.distract(w, pool, 'ru');
-    return this.choiceFrom({ opt: { html: esc(w.ru) } }, ws.map(x => ({ opt: { html: esc(x.ru) } })), {
-      label: 'Послушайте и выберите перевод', prompt: `<button class="big-audio" data-say>${ICON.sound}</button>`,
-      say: w.de, autoplay: true, explain: this.wordExplain(w), key: w.key, srs: true, w, listen: true
+  listen(w, pool, eff = Adapt.eff(w)) {
+    const ws = this.distract(w, pool, 'ru', Adapt.options(eff) - 1, eff >= 3);
+    return this.wordChoice(w, ws, x => ({ html: esc(x.ru) }), {
+      qtype: 'listen', label: 'Послушайте и выберите перевод', prompt: `<button class="big-audio" data-say>${ICON.sound}</button>`,
+      say: w.de, autoplay: true, explain: this.wordExplain(w), listen: true
     });
   },
-  type(w) {
-    const answers = [w.de];
-    if (w.t === 'v') answers.push(w.de.replace(/ \+ .*$/, ''));
-    if (w.t === 'phr') answers.push(w.de.replace(/[.!?]$/, ''));
+  // Письменный ответ: принимаем варианты написания, alt из данных, синонимы и ответы, отмеченные пользователем
+  type(w, eff = Adapt.eff(w), listen = false) {
+    const answers = C.variants(w.de);
+    (w.alt || []).forEach(a => C.variants(a).forEach(v => answers.push(v)));
+    const soft = [];
+    answers.slice().forEach(a => { if (/^sich /.test(a)) soft.push({ a: a.replace(/^sich /, ''), note: `Засчитано, но глагол возвратный: <b>${esc(a)}</b>` }); });
+    const syn = C.synonyms(w).filter(x => !answers.some(a => norm(a) === norm(x.de)));
+    let hint = '';
+    if (!listen && eff <= 2 && w.t !== 'phr') {
+      const { art, lemma } = splitArticle(w.de.replace(/\s*\(.*?\)/g, ''));
+      hint = `Подсказка: ${art ? art + ' ' : ''}${esc(lemma.charAt(0))}${'·'.repeat(Math.max(0, lemma.length - 1))} (${lemma.length} букв)`;
+    }
     return {
-      kind: 'input', label: w.t === 'n' ? 'Напишите по-немецки с артиклем' : 'Напишите по-немецки',
-      prompt: `<div class="q-word ru">${esc(w.ru)}</div>`, answers, reveal: deHTML(w), say: w.de,
-      explain: this.wordExplain(w), key: w.key, srs: true, w, nounCheck: w.t === 'n'
+      kind: 'input', qtype: listen ? 'typeListen' : 'type',
+      label: listen ? 'Послушайте и напишите' : (w.t === 'n' ? 'Напишите по-немецки с артиклем' : 'Напишите по-немецки'),
+      prompt: listen ? `<button class="big-audio" data-say>${ICON.sound}</button><div class="q-sub">${w.t === 'n' ? 'С артиклем' : ''}</div>`
+        : `<div class="q-word ru">${esc(w.ru)}</div>${hint ? `<div class="q-hint">${hint}</div>` : ''}`,
+      answers: uniq(answers), soft, synonyms: syn, accepted: this.accepted(w.key), reveal: deHTML(w), say: w.de, autoplay: listen,
+      explain: this.wordExplain(w), key: w.key, srs: true, adapt: true, w, nounCheck: w.t === 'n'
     };
   },
   article(w) {
     const { art, lemma } = splitArticle(w.de);
     const arts = ['der', 'die', 'das'];
     return {
-      kind: 'choice', style: 'articles', label: 'Какой артикль?',
+      kind: 'choice', style: 'articles', qtype: 'article', label: 'Какой артикль?',
       prompt: `<div class="q-word">${esc(lemma)}</div><div class="q-sub">${esc(w.ru)}</div>`,
       options: arts.map(a => ({ html: a, cls: 'a-' + a })), a: arts.indexOf(art), sayAfter: w.de,
-      explain: this.wordExplain(w) + (RULES.gender(lemma, art) || ''), key: w.key, srs: true, w
+      explain: this.wordExplain(w) + Explain.gender(w), key: w.key, srs: true, adapt: true, w
     };
   },
-  pluralForms(w) {
+  pluralForms(w, eff = Adapt.eff(w)) {
     const { lemma } = splitArticle(w.de);
     const correct = w.pl.replace(/^die /, '');
     const uml = s => s.replace(/(au|a|o|u)(?=[^aouäöü]*$)/i, m => ({ a: 'ä', o: 'ö', u: 'ü', au: 'äu', A: 'Ä', O: 'Ö', U: 'Ü', Au: 'Äu' }[m] || m));
     const base = lemma.replace(/e$/, '');
     const cands = [lemma + 'e', lemma + 'en', lemma + 'n', lemma + 'er', lemma + 's', uml(lemma) + 'e', uml(lemma) + 'er', lemma, uml(lemma), base + 'en', lemma + 'nen'];
-    const wrong = shuffle(uniq(cands).filter(c => c !== correct && c !== lemma + 'nn')).slice(0, 3);
-    if (wrong.length < 3) return null;
-    return this.choiceFrom({ opt: { html: 'die ' + esc(correct) } }, wrong.map(x => ({ opt: { html: 'die ' + esc(x) } })), {
-      label: 'Множественное число', prompt: `<div class="q-word">${deHTML(w)}</div><div class="q-sub">${esc(w.ru)}</div>`,
-      explain: `${deHTML(w)} → <b>${esc(w.pl)}</b>`, key: w.key, srs: true, w, sayAfter: w.pl
-    });
+    const wrong = shuffle(uniq(cands).filter(c => c !== correct && c !== lemma + 'nn' && !/(.)\1\1/.test(c))).slice(0, Adapt.options(eff) - 1);
+    if (wrong.length < 2) return null;
+    const opts = shuffle([correct].concat(wrong));
+    return {
+      kind: 'choice', qtype: 'plural', label: 'Множественное число', prompt: `<div class="q-word">${deHTML(w)}</div><div class="q-sub">${esc(w.ru)}</div>`,
+      options: opts.map(x => ({ html: 'die ' + esc(x) })), a: opts.indexOf(correct),
+      explain: Explain.plural(w), key: w.key, srs: true, adapt: true, w, sayAfter: w.pl
+    };
   },
   canPlural(w) { return w.t === 'n' && w.pl && w.pl !== '-' && /^die \S+$/.test(w.pl) && !/\(Pl/.test(w.de); },
   gapToken(w) {
     if (!w.ex || w.t === 'phr') return null;
-    let lemma = splitArticle(w.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
+    const lemma = splitArticle(w.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
     if (/\s/.test(lemma)) return null;
     const toks = w.ex.split(/\s+/);
     const i = toks.findIndex(t => t.replace(/[.,!?;:„“"]/g, '').toLowerCase() === lemma.toLowerCase());
     return i < 0 ? null : { toks, i, lemma: toks[i].replace(/[.,!?;:„“"]/g, '') };
   },
-  gap(w, pool) {
+  gap(w, pool, eff = Adapt.eff(w)) {
     const g = this.gapToken(w);
     if (!g) return null;
-    const others = this.distract(w, pool, 'de').map(x => splitArticle(x.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, ''))
-      .filter(x => !/\s/.test(x) && x.toLowerCase() !== g.lemma.toLowerCase());
+    const lem = x => splitArticle(x.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
+    const others = this.distract(w, pool, 'de', 6, eff >= 3).filter(x => !/\s/.test(lem(x)) && lem(x).toLowerCase() !== g.lemma.toLowerCase()).slice(0, Adapt.options(eff) - 1);
     if (others.length < 2) return null;
     const fix = s => /^[A-ZÄÖÜ]/.test(g.lemma) ? s.charAt(0).toUpperCase() + s.slice(1) : s;
     const sent = g.toks.map((t, j) => j === g.i ? t.replace(/[^.,!?;:„“"]+/, '<span class="gap">＿＿＿</span>') : esc(t)).join(' ');
-    return this.choiceFrom({ opt: { html: esc(g.lemma) } }, others.slice(0, 3).map(x => ({ opt: { html: esc(fix(x)) } })), {
-      label: 'Вставьте пропущенное слово', prompt: `<div class="q-sent">${sent}</div><div class="q-sub">${esc(w.exRu)}</div>`,
-      explain: `<b>${esc(w.ex)}</b><br>${this.wordExplain(w)}`, key: w.key, srs: true, w, sayAfter: w.ex
-    });
+    const opts = shuffle([w].concat(others));
+    return {
+      kind: 'choice', qtype: 'gap', label: 'Вставьте пропущенное слово',
+      prompt: `<div class="q-sent">${sent}</div><div class="q-sub">${esc(w.exRu)}</div>`,
+      options: opts.map(x => ({ html: esc(x === w ? g.lemma : fix(lem(x))) })), optWords: opts, a: opts.indexOf(w),
+      explain: `<b>${esc(w.ex)}</b><br>${this.wordExplain(w)}`, key: w.key, srs: true, adapt: true, w, sayAfter: w.ex
+    };
   },
   order(de, ru, key, opts = {}) {
     const m = /^(.*?)([.!?…]*)$/.exec(de.trim());
     const toks = m[1].split(/\s+/).filter(Boolean);
     if (toks.length < 3 || toks.length > 14) return null;
-    return Object.assign({ kind: 'order', label: opts.listen ? 'Послушайте и соберите фразу' : 'Соберите предложение',
+    return Object.assign({
+      kind: 'order', qtype: opts.listen ? 'dictation' : 'order', label: opts.listen ? 'Послушайте и соберите фразу' : 'Соберите предложение',
       prompt: opts.listen ? `<button class="big-audio" data-say>${ICON.sound}</button>` : `<div class="q-sub big">${esc(ru)}</div>`,
-      tokens: toks, tail: m[2], ru, say: de, autoplay: !!opts.listen, key, srs: !!opts.srs, explain: opts.explain || '' }, opts.extra || {});
+      tokens: toks, tail: m[2], ru, say: de, autoplay: !!opts.listen, key, srs: !!opts.srs, adapt: !!opts.srs,
+      alts: (opts.alts || []).map(a => a.join(' ')), accepted: this.accepted(key), explain: opts.explain || ''
+    }, opts.extra || {});
   },
   flash(w) { return { kind: 'flash', w, key: w.key, say: w.de }; },
   match(words) {
     return { kind: 'match', label: 'Найдите пары', pairs: words.map(w => ({ l: w.de, lh: deHTML(w), r: w.ru, key: w.key })) };
+  },
+  // пары без синонимов внутри одного раунда
+  matchSet(src, n = 6) {
+    const out = [];
+    for (const w of src) {
+      if (out.some(x => this.conflict(w, x) || norm(x.ru) === norm(w.ru))) continue;
+      out.push(w);
+      if (out.length >= n) break;
+    }
+    return out;
   },
   wordExplain(w) {
     let s = `${deHTML(w)} — ${esc(w.ru)}`;
@@ -503,31 +868,37 @@ const Q = {
     return s;
   },
 
-  // Вопрос под уровень знания слова
+  // Вопрос по слову: тип зависит от адаптивной сложности и того, насколько слово знакомо
+  LADDER: [
+    [['deRu', 3], ['article', 2], ['listen', 1]],
+    [['deRu', 2], ['listen', 2], ['article', 2], ['ruDe', 1]],
+    [['ruDe', 2], ['listen', 1], ['gap', 2], ['article', 1], ['plural', 1], ['type', 1]],
+    [['gap', 2], ['type', 2], ['plural', 1], ['orderEx', 1], ['ruDe', 1]],
+    [['type', 3], ['typeListen', 2], ['dictation', 1], ['orderEx', 1], ['gap', 1]]
+  ],
   forWord(w, pool, mode) {
     pool = pool || C.topicWords(w.topic);
-    const m = Store.mastery(w.key);
+    if (!pool.length) pool = C.words;
+    const eff = Adapt.eff(w);
+    if (mode) { const q = this.make(mode, w, pool, eff); if (q) return q; }
     const opts = [];
-    const add = (f, wt = 1) => { for (let i = 0; i < wt; i++) opts.push(f); };
-    if (mode) add(mode);
-    else if (m <= 1) { add('deRu', 3); add('listen'); if (w.t === 'n') add('article', 2); }
-    else if (m <= 3) { add('ruDe', 2); add('listen'); add('gap', 2); if (w.t === 'n') add('article'); if (this.canPlural(w)) add('plural'); add('deRu'); }
-    else { add('type', 2); add('ruDe'); add('gap', 2); add('orderEx'); if (this.canPlural(w)) add('plural'); }
+    for (const [f, n] of this.LADDER[eff]) for (let i = 0; i < n; i++) opts.push(f);
     for (const f of shuffle(opts)) {
-      const q = this.make(f, w, pool);
+      const q = this.make(f, w, pool, eff);
       if (q) return q;
     }
-    return this.deRu(w, pool);
+    return this.deRu(w, pool, eff);
   },
-  make(f, w, pool) {
+  make(f, w, pool, eff = Adapt.eff(w)) {
     switch (f) {
-      case 'deRu': return this.deRu(w, pool);
-      case 'ruDe': return this.ruDe(w, pool);
-      case 'listen': return this.listen(w, pool);
-      case 'type': return this.type(w);
+      case 'deRu': return this.deRu(w, pool, eff);
+      case 'ruDe': return this.ruDe(w, pool, eff);
+      case 'listen': return this.listen(w, pool, eff);
+      case 'type': return this.type(w, eff);
+      case 'typeListen': return w.t === 'phr' || w.de.length > 40 ? null : this.type(w, eff, true);
       case 'article': return w.t === 'n' && splitArticle(w.de).art ? this.article(w) : null;
-      case 'plural': return this.canPlural(w) ? this.pluralForms(w) : null;
-      case 'gap': return this.gap(w, pool);
+      case 'plural': return this.canPlural(w) ? this.pluralForms(w, eff) : null;
+      case 'gap': return this.gap(w, pool, eff);
       case 'orderEx': return w.ex ? this.order(w.ex, w.exRu, w.key, { srs: true, extra: { w } }) : null;
       case 'dictation': return w.ex ? this.order(w.ex, w.exRu, w.key, { srs: true, listen: true, extra: { w } }) : null;
     }
@@ -536,20 +907,23 @@ const Q = {
 
   // ---- Грамматика и тесты ----
   fromExercise(x) {
+    const extra = { key: x.key, lesson: x.lesson, explain: esc(x.explain || '') };
     if (x.type === 'choice') {
       const opts = shuffle(x.options.map((o, i) => ({ o, i })));
-      return { kind: 'choice', label: 'Выберите правильный вариант', prompt: `<div class="q-sent">${this.gapify(x.q)}</div>`,
-        options: opts.map(o => ({ html: esc(o.o) })), a: opts.findIndex(o => o.i === x.a), explain: esc(x.explain || ''), key: x.key,
-        sayAfter: x.q.includes('___') ? x.q.replace(/_{2,}/, x.options[x.a]) : null };
+      return Object.assign({ kind: 'choice', label: 'Выберите правильный вариант', prompt: `<div class="q-sent">${this.gapify(x.q)}</div>`,
+        options: opts.map(o => ({ html: esc(o.o) })), a: opts.findIndex(o => o.i === x.a),
+        sayAfter: x.q.includes('___') ? x.q.replace(/_{2,}/, x.options[x.a]) : null }, extra);
     }
     if (x.type === 'input') {
-      return { kind: 'input', label: 'Впишите ответ', prompt: `<div class="q-sent">${this.gapify(x.q)}</div>`, answers: x.a,
-        reveal: esc(x.a[0]), explain: esc(x.explain || ''), key: x.key, sayAfter: x.q.includes('___') ? x.q.replace(/_{2,}/, x.a[0]).replace(/\s*\(.*?\)\s*$/, '') : null };
+      return Object.assign({ kind: 'input', strict: true, label: 'Впишите ответ', prompt: `<div class="q-sent">${this.gapify(x.q)}</div>`, answers: x.a,
+        accepted: this.accepted(x.key), reveal: esc(x.a[0]), sayAfter: x.q.includes('___') ? x.q.replace(/_{2,}/, x.a[0]).replace(/\s*\(.*?\)\s*$/, '') : null }, extra);
     }
     if (x.type === 'order') {
       const de = x.words.join(' ');
-      return this.order(de + (/[.!?]$/.test(de) ? '' : '.'), x.ru, x.key, { explain: esc(x.explain || '') }) ||
-        { kind: 'order', label: 'Соберите предложение', prompt: `<div class="q-sub big">${esc(x.ru)}</div>`, tokens: x.words, tail: '', ru: x.ru, say: de, key: x.key, explain: esc(x.explain || '') };
+      const full = de + (/[.!?]$/.test(de) ? '' : '.');
+      return this.order(full, x.ru, x.key, { explain: extra.explain, alts: x.alts, extra: { lesson: x.lesson } }) ||
+        Object.assign({ kind: 'order', label: 'Соберите предложение', prompt: `<div class="q-sub big">${esc(x.ru)}</div>`, tokens: x.words, tail: '', ru: x.ru, say: de,
+          alts: (x.alts || []).map(a => a.join(' ')), accepted: this.accepted(x.key) }, extra);
     }
     return null;
   },
@@ -573,15 +947,17 @@ const Q = {
       const parts = v.perf.split(' ');
       const aux = parts[0], rest = parts.slice(1).join(' ');
       const answers = aux.includes('/') ? aux.split('/').map(a => a + ' ' + rest) : [v.perf];
-      return { kind: 'input', label: 'Perfekt · er/sie/es', prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)} — «он ${esc(v.ru.split(',')[0])}» в прошедшем</div>`,
-        answers, reveal: esc(v.perf), explain: `er ${esc(v.perf)}`, key: `v|${v.inf}|perf|2`, say: 'er ' + v.perf, prefix: 'er' };
+      return { kind: 'input', label: 'Perfekt · er/sie/es', prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)} — напишите вспомогательный глагол и Partizip II</div>`,
+        answers, accepted: this.accepted(`v|${v.inf}|perf|2`), reveal: esc(v.perf), explain: `er ${esc(v.perf)}`, key: `v|${v.inf}|perf|2`, say: 'er ' + v.perf, prefix: 'er',
+        verb: v, tense: 'perf', person: 2, strict: true };
     }
     p = p == null ? rnd(6) : p;
     const forms = tense === 'praes' ? v.praes : v.praet;
     const pron = ['ich', 'du', 'er', 'wir', 'ihr', 'sie'][p];
     return { kind: 'input', label: (tense === 'praes' ? 'Präsens' : 'Präteritum') + ' · ' + PERSONS[p],
       prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)}</div>`,
-      answers: [forms[p]], reveal: `${pron} ${esc(forms[p])}`, explain: this.verbTable(v, tense), key: `v|${v.inf}|${tense}|${p}`, say: pron + ' ' + forms[p], prefix: pron };
+      answers: [forms[p]], accepted: this.accepted(`v|${v.inf}|${tense}|${p}`), reveal: `${pron} ${esc(forms[p])}`, explain: this.verbTable(v, tense),
+      key: `v|${v.inf}|${tense}|${p}`, say: pron + ' ' + forms[p], prefix: pron, verb: v, tense, person: p, strict: true };
   },
   verbTable(v, tense) {
     const forms = tense === 'praet' ? v.praet : v.praes;
@@ -599,23 +975,6 @@ const Q = {
       const v = C.verbByInf[inf]; return v ? this.verbQ(v, tense, +p) : null;
     }
     return null;
-  }
-};
-
-// Подсказки по роду существительных
-const RULES = {
-  gender(lemma, art) {
-    const l = lemma.toLowerCase();
-    const r = [
-      [/(ung|heit|keit|schaft|ion|tät|ik|ur|ei|enz|anz)$/, 'die', 'Суффиксы -ung, -heit, -keit, -schaft, -ion, -tät, -ik, -ei почти всегда женского рода.'],
-      [/(chen|lein)$/, 'das', 'Уменьшительные -chen и -lein — всегда das.'],
-      [/(ment|um|ma)$/, 'das', 'Слова на -ment, -um часто среднего рода.'],
-      [/(ling|ismus|ich|ig|or)$/, 'der', 'Суффиксы -ling, -ismus, -ig, -or обычно мужского рода.'],
-      [/(er)$/, 'der', 'Профессии и инструменты на -er часто мужского рода.'],
-      [/e$/, 'die', 'Многие слова на -e женского рода (около 90%).']
-    ];
-    for (const [re, a, tip] of r) if (re.test(l)) return a === art ? `<div class="tip-line">💡 ${tip}</div>` : '';
-    return '';
   }
 };
 
@@ -686,7 +1045,7 @@ const UI = {
 };
 
 /* js/engine.js */
-// Движок учебной сессии: показывает вопросы, проверяет, ведёт счёт
+// Движок учебной сессии: показывает вопросы, проверяет, объясняет ошибки, подстраивает сложность
 const Engine = {
   s: null,
   start(cfg) {
@@ -695,13 +1054,14 @@ const Engine = {
     Speech.stop();
     this.s = Object.assign({ mode: 'learn', requeue: true, xp: 5, title: 'Тренировка' }, cfg, {
       queue: qs.slice(), done: [], total: qs.length, correct: 0, combo: 0, maxCombo: 0, xpGained: 0,
-      t0: Date.now(), cur: null, locked: false
+      t0: Date.now(), cur: null, locked: false, adaptive: false
     });
     let el = $('#session');
     if (!el) { el = document.createElement('div'); el.id = 'session'; document.body.appendChild(el); }
     el.innerHTML = `<div class="ses-top">
         <button class="icon-btn" id="ses-close" aria-label="Закрыть">${ICON.close}</button>
         <div class="ses-bar"><i id="ses-prog"></i></div>
+        <div class="ses-diff" id="ses-diff"></div>
         <div class="ses-meta" id="ses-meta"></div>
       </div>
       <div class="ses-body" id="ses-body"></div>
@@ -742,26 +1102,36 @@ const Engine = {
   },
   progress() {
     const s = this.s;
-    const p = s.gen ? (s.timeLimit ? 1 - (s.tEnd - Date.now()) / (s.timeLimit * 1000) : s.done.length / (s.totalHint || 30)) : s.done.length / (s.done.length + s.queue.length + (s.cur ? 1 : 0) || 1);
+    const p = s.gen ? (s.timeLimit ? 1 - (s.tEnd - Date.now()) / (s.timeLimit * 1000) : s.done.length / (s.totalHint || 30))
+      : s.done.length / (s.done.length + s.queue.length + (s.cur ? 1 : 0) || 1);
     $('#ses-prog').style.width = (clamp(p, 0, 1) * 100) + '%';
     if (!s.timeLimit) {
-      const m = $('#ses-meta');
-      m.innerHTML = s.combo >= 3 ? `<span class="combo">${ICON.bolt}${s.combo}</span>` : `<span class="count">${s.gen ? s.done.length + 1 : Math.min(s.done.length + 1, s.total) + '/' + s.total}</span>`;
+      $('#ses-meta').innerHTML = s.combo >= 3 ? `<span class="combo">${ICON.bolt}${s.combo}</span>`
+        : `<span class="count">${s.gen ? s.done.length + 1 : Math.min(s.done.length + 1, s.total) + '/' + s.total}</span>`;
     }
+    const d = $('#ses-diff');
+    if (d) d.innerHTML = s.adaptive && Adapt.on() && s.mode === 'learn' ? Adapt.dots() : '';
   },
   next() {
     const s = this.s; if (!s) return;
     s.locked = false;
-    let q = s.gen ? s.gen() : s.queue.shift();
+    let q = null;
+    // вопросы по словам строятся в момент показа — с учётом текущей сложности
+    while (!q) {
+      let item = s.gen ? s.gen() : s.queue.shift();
+      if (item === undefined || item === null) { if (s.gen || !s.queue.length) break; continue; }
+      q = typeof item === 'function' ? item() : item;
+      if (s.gen) break;
+    }
     if (!q) return this.finish();
+    if (q.adapt) s.adaptive = true;
     s.cur = q; q._t0 = Date.now();
     this.progress();
     const body = $('#ses-body'), foot = $('#ses-foot');
     foot.innerHTML = ''; foot.className = 'ses-foot';
     body.className = 'ses-body kind-' + q.kind;
     body.innerHTML = '';
-    const r = this['r_' + q.kind];
-    r.call(this, q, body, foot);
+    this['r_' + q.kind].call(this, q, body, foot);
     body.scrollTop = 0;
     if (q.autoplay && Store.state.settings.autoplay && q.say) setTimeout(() => Speech.say(q.say), 200);
     $$('[data-say]', body).forEach(b => b.onclick = () => Speech.say(b.dataset.say || q.say));
@@ -783,12 +1153,18 @@ const Engine = {
     const btns = $$('.opt', $('#ses-body'));
     if (s.mode === 'exam') {
       btns[i].classList.add('picked');
-      return this.record(q, ok, q.options[i].html, () => setTimeout(() => this.next(), 220));
+      return this.record(q, ok, q.options[i].html, () => setTimeout(() => this.next(), 220), false, ok ? '' : this.choiceWhy(q, i));
     }
     btns.forEach((b, j) => { b.disabled = true; if (j === q.a) b.classList.add('right'); else if (j === i) b.classList.add('wrong'); else b.classList.add('dim'); });
-    this.record(q, ok, q.options[i].html);
-    if (s.mode === 'speed') return setTimeout(() => this.next(), ok ? 280 : 900);
-    this.feedback(q, ok, ok ? '' : `Правильно: <b>${q.options[q.a].html}</b>`);
+    const why = ok ? '' : this.choiceWhy(q, i);
+    this.record(q, ok, q.options[i].html, null, false, why);
+    if (s.mode === 'speed') return setTimeout(() => this.next(), ok ? 280 : 1100);
+    this.feedback(q, ok, ok ? '' : `Правильно: <b>${q.options[q.a].html}</b>` + why, false,
+      !ok && q.style !== 'articles' ? { kind: 'choice', i } : null);
+  },
+  choiceWhy(q, i) {
+    const w = Explain.choice(q, i);
+    return w || `<div class="why"><div>Вы выбрали: <s>${q.options[i].html}</s></div></div>`;
   },
 
   // ---------- Ввод текста ----------
@@ -809,33 +1185,44 @@ const Engine = {
       if (this.s.locked) return;
       const v = inp.value;
       if (!v.trim()) { inp.focus(); return; }
-      let res = checkAnswer(v, q.answers);
-      let note = '';
-      if (res === 'bad' && q.nounCheck) {
-        const { art, lemma } = splitArticle(q.answers[0]);
-        const u = splitArticle(norm(v).replace(/^(der|die|das)(?=\S)/, '$1 '));
-        if (norm(u.lemma) === norm(lemma) || norm(v) === norm(lemma)) note = u.art ? `Слово верное, но артикль — <b class="a-${art}">${art}</b>` : `Не забудьте артикль: <b class="a-${art}">${art}</b>`;
-      }
-      const ok = res !== 'bad';
-      if (res === 'typo') note = 'Засчитано, но есть опечатка';
-      if (res === 'umlaut') note = 'Засчитано. Попробуйте писать умлауты: ä ö ü ß';
+      const r = this.checkInput(q, v);
       this.s.locked = true;
       inp.disabled = true;
-      inp.classList.add(ok ? 'right' : 'wrong');
-      this.record(q, ok, esc(v));
+      inp.classList.add(r.ok ? 'right' : 'wrong');
+      const why = r.ok ? '' : (r.note ? `<div class="note">${r.note}</div>` : '') + Explain.input(q, v);
+      this.record(q, r.ok, esc(v), null, false, why);
       if (this.s.mode === 'exam') return this.next();
-      this.feedback(q, ok, (ok && res === 'ok' ? '' : `Ответ: <b>${q.reveal}</b>`) + (note ? `<div class="note">${note}</div>` : ''), res === 'typo' || res === 'umlaut');
+      this.feedback(q, r.ok, (r.ok && !r.note ? '' : `Ответ: <b>${q.reveal}</b>`) + (r.ok && r.note ? `<div class="note">${r.note}</div>` : '') + why,
+        r.warn, r.ok ? null : { kind: 'input', given: v });
     };
     $('#check').onclick = submit;
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
-    $('#dontknow').onclick = () => { if (this.s.locked) return; this.s.locked = true; inp.disabled = true; this.record(q, false, '—'); this.feedback(q, false, `Ответ: <b>${q.reveal}</b>`); };
+    $('#dontknow').onclick = () => {
+      if (this.s.locked) return; this.s.locked = true; inp.disabled = true;
+      const why = q.verb ? Explain.verb(q.verb, q.tense, q.person, '') : (q.w && q.w.t === 'n' ? Explain.gender(q.w) : '');
+      this.record(q, false, '—', null, false, why);
+      this.feedback(q, false, `Ответ: <b>${q.reveal}</b>` + why);
+    };
     setTimeout(() => inp.focus(), 60);
+  },
+  // проверка письменного ответа: точный ответ → принятые ранее → «мягкие» → синонимы
+  checkInput(q, v) {
+    let res = checkAnswer(v, q.answers, q.strict);
+    if (res === 'ok') return { ok: true };
+    if (res === 'noumlaut') return { ok: false, note: `Не хватает умлаута: правильно <b>${esc(q.answers[0])}</b>. Умлаут меняет форму и смысл (schon — «уже», schön — «красивый»).` };
+    if (res === 'typo') return { ok: true, warn: true, note: 'Засчитано, но есть опечатка — сравните с ответом выше' };
+    if (res === 'umlaut') return { ok: true, warn: true, note: 'Засчитано. Попробуйте писать умлауты: ä ö ü ß' };
+    if (q.accepted && q.accepted.length && checkAnswer(v, q.accepted, true) === 'ok') return { ok: true, note: 'Засчитано — этот вариант вы раньше отметили как верный' };
+    for (const s of q.soft || []) if (['ok', 'umlaut'].includes(checkAnswer(v, [s.a], q.strict))) return { ok: true, warn: true, note: s.note };
+    for (const x of q.synonyms || []) {
+      if (['ok', 'umlaut'].includes(checkAnswer(v, C.variants(x.de), true))) return { ok: true, warn: true, note: `Тоже верно: ${deHTML(x)} — «${esc(x.ru)}». Здесь загадано слово ${deHTML(q.w)}.` };
+    }
+    return { ok: false };
   },
 
   // ---------- Сборка предложения ----------
   r_order(q, body, foot) {
     const bank = shuffle(q.tokens.map((t, i) => ({ t, i })));
-    // не показывать уже собранный порядок
     if (bank.length > 2 && bank.every((b, j) => b.i === j)) bank.push(bank.shift());
     body.innerHTML = this.head(q) + `<div class="ord-ans" id="ord-ans"></div><div class="ord-bank" id="ord-bank">${bank.map(b =>
       `<button class="tok" data-i="${b.i}">${esc(b.t)}</button>`).join('')}</div>`;
@@ -854,18 +1241,28 @@ const Engine = {
       const src = bk.querySelector(`.tok.used[data-i="${c.dataset.i}"]`); if (src) src.classList.remove('used');
       c.remove(); upd();
     });
-    const sentence = () => $$('.tok', ans).map(t => t.textContent).join(' ');
+    const right = esc(q.tokens.join(' ') + q.tail);
     $('#check').onclick = () => {
       if (this.s.locked) return;
       this.s.locked = true;
-      const given = sentence();
-      const ok = norm(given) === norm(q.tokens.join(' '));
+      const given = $$('.tok', ans).map(t => t.textContent);
+      const g = norm(given.join(' '));
+      let ok = g === norm(q.tokens.join(' ')), note = '';
+      if (!ok && (q.alts || []).some(a => norm(a) === g)) { ok = true; note = `Тоже верно! Основной вариант: <b>${right}</b>`; }
+      if (!ok && (q.accepted || []).includes(g)) { ok = true; note = 'Засчитано — этот вариант вы раньше отметили как верный'; }
       ans.classList.add(ok ? 'right' : 'wrong');
-      this.record(q, ok, esc(given));
+      const why = ok ? '' : Explain.order(q, given);
+      this.record(q, ok, esc(given.join(' ')), null, false, why);
       if (this.s.mode === 'exam') return this.next();
-      this.feedback(q, ok, ok ? '' : `Правильно: <b>${esc(q.tokens.join(' ') + q.tail)}</b>`, false, !ok);
+      this.feedback(q, ok, (ok ? '' : `Правильно: <b>${right}</b>`) + (note ? `<div class="note">${note}</div>` : '') + why, false,
+        ok ? null : { kind: 'order', given: given.join(' ') });
     };
-    $('#dontknow').onclick = () => { if (this.s.locked) return; this.s.locked = true; this.record(q, false, '—'); this.feedback(q, false, `Правильно: <b>${esc(q.tokens.join(' ') + q.tail)}</b>`); };
+    $('#dontknow').onclick = () => {
+      if (this.s.locked) return; this.s.locked = true;
+      const why = Explain.order(q, []);
+      this.record(q, false, '—', null, false, why);
+      this.feedback(q, false, `Правильно: <b>${right}</b>` + why);
+    };
   },
 
   // ---------- Карточка ----------
@@ -884,6 +1281,7 @@ const Engine = {
           <div class="f-tag">${deHTML(w)}</div>
           <div class="f-ru">${esc(w.ru)}</div>
           ${w.ex && w.ex !== w.de ? `<div class="f-ex"><button class="mini-audio" data-say="${esc(w.ex)}">${ICON.sound}</button><div>${esc(w.ex)}<div class="muted">${esc(w.exRu || '')}</div></div></div>` : ''}
+          ${w.t === 'n' ? Explain.gender(w) : ''}
         </div>
       </div></div>
       <div class="row center gap8"><button class="btn round" data-say="${esc(w.de)}" aria-label="Послушать">${ICON.sound}</button>
@@ -908,7 +1306,7 @@ const Engine = {
     Store.srsGrade(q.key, g);
     const ok = g >= 2;
     Store.answer(ok);
-    if (ok) { s.correct++; Store.fixMistake(q.key); this.gain(3); } else if (s.requeue && !q._re) { q._re = true; s.queue.push(Object.assign({}, q, { _re: true })); }
+    if (ok) { s.correct++; Store.fixMistake(q.key); this.gain(3); } else if (s.requeue && !q._re) { s.queue.push(Object.assign({}, q, { _re: true })); }
     s.done.push({ q, ok, given: ['не знаю', 'трудно', 'знаю', 'легко'][g] });
     Store.save();
     this.next();
@@ -919,7 +1317,8 @@ const Engine = {
     const L = shuffle(q.pairs.map((p, i) => ({ i, h: p.lh || esc(p.l), say: p.l })));
     const R = shuffle(q.pairs.map((p, i) => ({ i, h: esc(p.r) })));
     body.innerHTML = this.head(q) + `<div class="match"><div class="mcol">${L.map(x => `<button class="mt" data-side="l" data-i="${x.i}" data-s="${esc(x.say)}">${x.h}</button>`).join('')}</div>
-      <div class="mcol">${R.map(x => `<button class="mt" data-side="r" data-i="${x.i}">${x.h}</button>`).join('')}</div></div>`;
+      <div class="mcol">${R.map(x => `<button class="mt" data-side="r" data-i="${x.i}">${x.h}</button>`).join('')}</div></div>
+      <div class="match-why" id="match-why" aria-live="polite"></div>`;
     let sel = null; const bad = new Set(); let left = q.pairs.length;
     body.querySelector('.match').addEventListener('click', e => {
       const b = e.target.closest('.mt'); if (!b || b.classList.contains('done')) return;
@@ -937,13 +1336,17 @@ const Engine = {
       } else {
         bad.add(+a.dataset.i); bad.add(+b.dataset.i);
         [a, b].forEach(x => { x.classList.add('shake'); setTimeout(() => x.classList.remove('shake'), 400); });
+        // объясняем, что на самом деле значит выбранная пара
+        const l = a.dataset.side === 'l' ? a : b, r = a.dataset.side === 'r' ? a : b;
+        const pl = q.pairs[+l.dataset.i], pr = q.pairs[+r.dataset.i];
+        $('#match-why').innerHTML = `<b>${pl.lh || esc(pl.l)}</b> — «${esc(pl.r)}», а «${esc(pr.r)}» — <b>${pr.lh || esc(pr.l)}</b>`;
         Sound.bad();
       }
     });
   },
 
   // ---------- Учёт ответа ----------
-  record(q, ok, given, after, silent) {
+  record(q, ok, given, after, silent, why) {
     const s = this.s;
     Store.answer(ok);
     if (q.key) {
@@ -959,36 +1362,72 @@ const Engine = {
       if (s.mode !== 'exam' && !silent) Sound.bad();
       if (s.requeue && s.mode === 'learn' && !q._re && q.kind !== 'pair') { s.queue.push(Object.assign({}, q, { _re: true })); }
     }
-    if (q.kind !== 'pair') s.done.push({ q, ok, given });
+    // адаптивная сложность: верно — сложнее, ошибка — шаг назад
+    if (q.adapt && s.mode === 'learn' && !q._re) {
+      const ch = Adapt.answer(ok, Date.now() - (q._t0 || Date.now()));
+      if (ch) this.diffChanged(ch);
+    }
+    if (q.kind !== 'pair') s.done.push({ q, ok, given, why });
     Store.save();
     this.progress();
     if (after) after();
   },
+  diffChanged(ch) {
+    const d = $('#ses-diff'); if (!d) return;
+    const pill = document.createElement('span');
+    pill.className = 'diff-pill ' + ch;
+    pill.textContent = ch === 'up' ? `Сложнее ↑ ${Adapt.label()}` : `Проще ↓ ${Adapt.label()}`;
+    $('#ses-body').prepend(pill);
+    setTimeout(() => pill.remove(), 2400);
+  },
   gain(n) { this.s.xpGained += n; Store.addXP(n); },
 
-  feedback(q, ok, html, warn, allowOverride) {
+  feedback(q, ok, html, warn, override) {
     const foot = $('#ses-foot');
     foot.className = 'ses-foot fb ' + (ok ? (warn ? 'fb-warn' : 'fb-ok') : 'fb-bad');
-    const title = ok ? pick(['Richtig!', 'Super!', 'Genau!', 'Toll!', 'Prima!', 'Klasse!']) : pick(['Nicht ganz', 'Leider falsch', 'Fast!']);
+    const title = ok ? (warn ? 'Засчитано' : pick(['Richtig!', 'Super!', 'Genau!', 'Toll!', 'Prima!', 'Klasse!'])) : pick(['Nicht ganz', 'Leider falsch']);
     const sayTxt = q.sayAfter || (q.kind === 'input' || q.kind === 'order' ? q.say : null);
+    const lesson = q.lesson && C.grammar.find(g => g.id === q.lesson);
+    const canOverride = override && this.s.mode === 'learn';
     foot.innerHTML = `<div class="fb-box">
         <div class="fb-head"><span class="fb-ic">${ok ? ICON.check : ICON.x}</span><b>${title}</b>
         ${sayTxt ? `<button class="mini-audio" id="fb-say" aria-label="Послушать">${ICON.sound}</button>` : ''}</div>
         ${html ? `<div class="fb-ans">${html}</div>` : ''}
         ${q.explain ? `<div class="fb-ex">${q.explain}</div>` : ''}
       </div>
-      <div class="row gap8">${allowOverride ? `<button class="btn ghost" id="override">Мой вариант тоже верен</button>` : ''}<button class="btn primary grow" id="next">Дальше</button></div>`;
+      <div class="row gap8 wrap">${canOverride ? `<button class="btn ghost sm" id="override">Мой ответ тоже верный</button>` : ''}
+        ${lesson && !ok ? `<button class="btn ghost sm" id="rule">${ICON.grammar} Правило</button>` : ''}
+        <button class="btn primary grow" id="next">Дальше</button></div>`;
     if (sayTxt) { $('#fb-say').onclick = () => Speech.say(sayTxt); if (ok && Store.state.settings.autoplay && !q.autoplay) Speech.say(sayTxt); }
     $('#next').onclick = () => this.next();
-    if (allowOverride) $('#override').onclick = () => {
-      const s = this.s, last = s.done[s.done.length - 1];
-      if (last && !last.ok) {
-        last.ok = true; s.correct++; Store.fixMistake(q.key);
-        const i = s.queue.findIndex(x => x.key === q.key && x._re); if (i >= 0) s.queue.splice(i, 1);
-      }
-      this.next();
+    if (lesson && !ok) $('#rule').onclick = () => {
+      const m = UI.sheet(`<div class="sheet-h"><h3 class="display">${esc(lesson.title)}</h3><button class="icon-btn" data-close aria-label="Закрыть">${ICON.close}</button></div><div class="lesson-body">${lesson.content}</div>`);
+      m.querySelector('.sheet-card').classList.add('tall');
     };
+    if (canOverride) $('#override').onclick = () => this.override(q, override);
     setTimeout(() => $('#next') && $('#next').focus({ preventScroll: true }), 50);
+  },
+  // «Мой ответ тоже верный»: засчитываем и запоминаем, чтобы больше не считать это ошибкой
+  override(q, o) {
+    const s = this.s, st = Store.state, last = s.done[s.done.length - 1];
+    if (o.kind === 'choice' && q.optWords && q.w) {
+      st.badPairs = st.badPairs || {};
+      st.badPairs[q.w.key + '|' + q.optWords[o.i].key] = 1;
+    } else if (q.key && (o.kind === 'input' || o.kind === 'order')) {
+      st.accepted = st.accepted || {};
+      const list = st.accepted[q.key] = st.accepted[q.key] || [];
+      const g = norm(o.given); if (!list.includes(g)) list.push(g);
+    }
+    st.reports = (st.reports || []).concat([{ key: q.key || '', given: o.given || (q.options && q.options[o.i] && q.options[o.i].html) || '', t: Date.now() }]).slice(-200);
+    if (last && !last.ok) {
+      last.ok = true; last.why = ''; s.correct++;
+      if (q.key) { Store.fixMistake(q.key); if (q.srs) Store.srsGrade(q.key, 2); }
+      const k = s.queue.findIndex(x => x.key === q.key && x._re); if (k >= 0) s.queue.splice(k, 1);
+      if (q.adapt) { const a = Adapt.st(); a.d = clamp(a.d + 0.4, 0, 4); a.bad = 0; }
+    }
+    Store.save();
+    UI.toast(o.kind === 'choice' ? 'Засчитано. Эти варианты больше не будут стоять вместе' : 'Засчитано. Этот ответ теперь будет приниматься', 2200);
+    this.next();
   },
 
   // ---------- Итоги ----------
@@ -997,15 +1436,16 @@ const Engine = {
     s.finished = true;
     if (s.timer) clearInterval(s.timer);
     Speech.stop();
-    const total = s.gen ? s.done.length : s.done.filter(d => !d.q._re).length;
     const firstTry = s.done.filter(d => !d.q._re);
+    const total = s.gen ? s.done.length : firstTry.length;
     const correct = firstTry.filter(d => d.ok).length;
     const pct = total ? Math.round(correct / total * 100) : 0;
     const secs = Math.round((Date.now() - s.t0) / 1000);
     Store.state.stats.sessions++;
     if (pct === 100 && total >= 5) Store.state.stats.perfect++;
-    Store.save();
     const res = { correct, total, pct, secs, xp: s.xpGained, maxCombo: s.maxCombo, done: s.done };
+    if (s.adaptive && s.mode === 'learn') Adapt.noteSession(res);
+    Store.save();
     const custom = s.onFinish ? s.onFinish(res) : null;
     Ach.check();
     if (pct >= 90 && total >= 5) { UI.confetti(); Sound.done(); }
@@ -1013,9 +1453,11 @@ const Engine = {
     const uniqWrong = []; const seen = new Set();
     wrong.forEach(d => { const k = d.q.key || d.q.prompt; if (!seen.has(k)) { seen.add(k); uniqWrong.push(d); } });
     const verdict = pct >= 90 ? 'Ausgezeichnet!' : pct >= 70 ? 'Gut gemacht!' : pct >= 50 ? 'Nicht schlecht!' : 'Weiter üben!';
+    const sug = Adapt.suggestion();
     const body = $('#ses-body'), foot = $('#ses-foot');
     $('#ses-prog').style.width = '100%';
     $('#ses-meta').innerHTML = '';
+    $('#ses-diff').innerHTML = '';
     body.className = 'ses-body result';
     body.innerHTML = `
       <div class="res-hero">
@@ -1026,11 +1468,13 @@ const Engine = {
       <div class="res-stats">
         <div><b>+${s.xpGained}</b><span>XP</span></div>
         <div><b>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</b><span>время</span></div>
-        <div><b>${s.maxCombo}</b><span>серия</span></div>
+        <div>${s.adaptive && Adapt.on() ? `<b class="res-diff">${Adapt.dots()}</b><span>${Adapt.label()}</span>` : `<b>${s.maxCombo}</b><span>серия</span>`}</div>
       </div>
+      ${sug ? Screens.levelCard(sug) : ''}
       ${custom && custom.html ? custom.html : ''}
-      ${uniqWrong.length ? `<h3 class="res-h">Ошибки · ${uniqWrong.length}</h3><div class="res-list">${uniqWrong.slice(0, 40).map(d => this.reviewItem(d)).join('')}</div>` : ''}
+      ${uniqWrong.length ? `<h3 class="res-h">Разбор ошибок · ${uniqWrong.length}</h3><div class="res-list">${uniqWrong.slice(0, 40).map(d => this.reviewItem(d)).join('')}</div>` : ''}
       ${s.mode === 'exam' ? `<h3 class="res-h">Все ответы</h3><div class="res-list">${s.done.map(d => this.reviewItem(d)).join('')}</div>` : ''}`;
+    if (sug) Screens.bindLevelCard(body);
     foot.className = 'ses-foot';
     foot.innerHTML = `${s.retry ? `<button class="btn ghost" id="again">${ICON.redo} Ещё раз</button>` : ''}<button class="btn primary grow" id="fin">Готово</button>`;
     $('#fin').onclick = () => this.close();
@@ -1042,10 +1486,11 @@ const Engine = {
     if (q.kind === 'choice') right = q.options[q.a].html;
     else if (q.kind === 'input') right = q.reveal;
     else if (q.kind === 'order') right = esc(q.tokens.join(' ') + q.tail);
-    const prompt = q.kind === 'choice' && q.listen ? deHTML(q.w) : (q.prompt || '').replace(/<button[\s\S]*?<\/button>/g, q.say ? esc(q.say) : '');
+    const prompt = q.kind === 'choice' && q.listen ? deHTML(q.w) : (q.prompt || '').replace(/<button[\s\S]*?<\/button>/g, q.say ? esc(q.say) : '').replace(/<div class="q-hint">[\s\S]*?<\/div>/, '');
     return `<div class="rv ${d.ok ? 'ok' : 'bad'}"><div class="rv-q">${prompt}</div>
-      ${!d.ok && d.given ? `<div class="rv-a"><s>${d.given}</s></div>` : ''}<div class="rv-r">${ICON.check}<span>${right}</span></div>
-      ${!d.ok && q.explain ? `<div class="rv-e">${q.explain}</div>` : ''}</div>`;
+      ${!d.ok && d.given ? `<div class="rv-a">Ваш ответ: <s>${d.given}</s></div>` : ''}<div class="rv-r">${ICON.check}<span>${right}</span></div>
+      ${!d.ok && d.why ? `<div class="rv-e">${d.why}</div>` : ''}
+      ${!d.ok && q.explain && !q.w ? `<div class="rv-e">${q.explain}</div>` : ''}</div>`;
   }
 };
 
@@ -1118,39 +1563,50 @@ const MODES = {
 
 const Train = {
   // слова, подходящие для общего режима
+  // уже начатые слова + слова не выше уровня пользователя
   globalPool(filter) {
-    const lv = LEVELS.indexOf(Store.state.level);
-    let started = C.words.filter(w => Store.mastery(w.key) > 0);
+    let started = C.words.filter(w => Store.mastery(w.key) > 0 && C.atLevel(w));
     if (filter) started = started.filter(filter);
     if (started.length >= 12) return started;
-    let lvl = C.words.filter(w => LEVELS.indexOf(w.lvl) <= lv);
+    const lv = Store.state.level;
+    let lvl = C.words.filter(w => C.atLevel(w));
     if (filter) lvl = lvl.filter(filter);
-    return started.concat(sample(lvl.filter(w => !started.includes(w)), 40));
+    // сначала слова своего уровня, потом ниже
+    const mine = lvl.filter(w => w.lvl === lv && !started.includes(w)), lower = lvl.filter(w => w.lvl !== lv && !started.includes(w));
+    return started.concat(sample(mine, 30), sample(lower, 15));
   },
   // подбор слов для режима: сначала «срочные» и слабые
   pickWords(pool, n) {
     const now = Date.now();
-    const score = w => { const r = Store.srsGet(w.key); if (!r) return 1 + Math.random(); return (r.due <= now ? 0 : 2) + r.b * 0.3 + Math.random() * 0.8; };
+    // сначала «срочные» и слабые, слова выше уровня пользователя — в последнюю очередь
+    const score = w => { const r = Store.srsGet(w.key); const above = C.atLevel(w) ? 0 : 3;
+      if (!r) return above + 1 + Math.random(); return above + (r.due <= now ? 0 : 2) + r.b * 0.3 + Math.random() * 0.8; };
     return pool.slice().sort((a, b) => score(a) - score(b)).slice(0, n);
   },
+  // Вопросы строятся в момент показа (функции), чтобы учитывать сложность, набранную по ходу тренировки
   build(mode, pool, n) {
-    let ws;
+    const lazy = (ws, f) => ws.map(w => () => f(w) || Q.deRu(w, pool));
     switch (mode) {
       case 'flash': return this.pickWords(pool, Math.min(n || 15, pool.length)).map(w => Q.flash(w));
-      case 'quiz': ws = this.pickWords(pool, n || 12); return ws.map((w, i) => i % 2 ? Q.ruDe(w, pool) : Q.deRu(w, pool));
-      case 'listen': return this.pickWords(pool, n || 12).map(w => Q.listen(w, pool));
-      case 'write': return this.pickWords(pool, n || 10).map(w => Q.type(w));
-      case 'article': return this.pickWords(pool.filter(w => w.t === 'n' && splitArticle(w.de).art), n || 15).map(w => Q.article(w));
-      case 'plural': return this.pickWords(pool.filter(w => Q.canPlural(w)), n || 12).map(w => Q.pluralForms(w)).filter(Boolean);
-      case 'gap': return this.pickWords(pool.filter(w => Q.gapToken(w)), n || 10).map(w => Q.gap(w, pool)).filter(Boolean);
-      case 'order': return this.pickWords(pool.filter(w => w.ex), n || 8).map(w => Q.make('orderEx', w, pool)).filter(Boolean);
-      case 'dictation': return this.pickWords(pool.filter(w => w.ex), n || 8).map(w => Q.make('dictation', w, pool)).filter(Boolean);
+      case 'quiz': return lazy(this.pickWords(pool, n || 12), w => Adapt.eff(w) >= 2 || Math.random() < .4 ? Q.ruDe(w, pool) : Q.deRu(w, pool));
+      case 'listen': return lazy(this.pickWords(pool, n || 12), w => Adapt.eff(w) >= 4 && Math.random() < .5 ? Q.make('typeListen', w, pool) : Q.listen(w, pool));
+      case 'write': return lazy(this.pickWords(pool, n || 10), w => Q.type(w));
+      case 'article': return this.pickWords(pool.filter(w => w.t === 'n' && splitArticle(w.de).art), n || 15).map(w => () => Q.article(w));
+      case 'plural': return lazy(this.pickWords(pool.filter(w => Q.canPlural(w)), n || 12), w => Q.pluralForms(w));
+      case 'gap': return lazy(this.pickWords(pool.filter(w => Q.gapToken(w)), n || 10), w => Q.gap(w, pool));
+      case 'order': return lazy(this.pickWords(pool.filter(w => w.ex), n || 8), w => Q.make('orderEx', w, pool));
+      case 'dictation': return lazy(this.pickWords(pool.filter(w => w.ex), n || 8), w => Q.make('dictation', w, pool));
       case 'match': {
-        const out = []; const src = this.pickWords(pool, 18);
-        for (let i = 0; i + 4 <= src.length && out.length < 3; i += 6) out.push(Q.match(src.slice(i, i + 6)));
+        const out = []; let src = this.pickWords(pool, 30);
+        while (out.length < 3 && src.length >= 4) {
+          const set = Q.matchSet(src, 6);
+          if (set.length < 4) break;
+          out.push(Q.match(set));
+          src = src.filter(w => !set.includes(w));
+        }
         return out;
       }
-      case 'mix': return this.pickWords(pool, n || 12).map(w => Q.forWord(w, pool));
+      case 'mix': return this.pickWords(pool, n || 12).map(w => () => Q.forWord(w, pool));
     }
     return [];
   },
@@ -1190,21 +1646,27 @@ const Train = {
       .sort((a, b) => s.srs[a].due - s.srs[b].due);
     const today = Store.today();
     const newLeft = Math.max(0, s.settings.newPerDay - (today.nw || 0));
+    // если сейчас трудно — меньше новых слов, если легко — больше
+    const per = [3, 4, 6, 7, 8][Adapt.level()];
+    const want = Math.min(newLeft, per);
     let fresh = [];
-    if (newLeft) {
+    if (want) {
+      const lv = s.level, li = LEVELS.indexOf(lv);
       const order = [];
-      if (s.lastTopic && C.topicById[s.lastTopic]) order.push(C.topicById[s.lastTopic]);
-      const lv = s.level;
+      if (s.lastTopic && C.topicById[s.lastTopic] && LEVELS.indexOf(C.topicById[s.lastTopic].level) <= li) order.push(C.topicById[s.lastTopic]);
       C.topics.filter(t => t.level === lv).forEach(t => order.push(t));
-      C.topics.filter(t => LEVELS.indexOf(t.level) < LEVELS.indexOf(lv)).forEach(t => order.push(t));
+      C.topics.filter(t => LEVELS.indexOf(t.level) < li).forEach(t => order.push(t));
       C.topics.forEach(t => order.push(t));
-      for (const t of uniq(order)) {
-        for (const w of t.words) {
-          if (LEVELS.indexOf(w.lvl) > LEVELS.indexOf(lv) + 1) continue;
-          if (!s.srs[w.key]) fresh.push(w);
-          if (fresh.length >= Math.min(newLeft, 6)) break;
+      // сначала слова ровно своего уровня, потом ниже; выше уровня — никогда
+      for (const pass of [w => w.lvl === lv, w => LEVELS.indexOf(w.lvl) < li]) {
+        for (const t of uniq(order)) {
+          for (const w of t.words) {
+            if (fresh.length >= want) break;
+            if (!s.srs[w.key] && pass(w) && !fresh.includes(w)) fresh.push(w);
+          }
+          if (fresh.length >= want) break;
         }
-        if (fresh.length >= Math.min(newLeft, 6)) break;
+        if (fresh.length >= want) break;
       }
     }
     return { due, fresh };
@@ -1215,8 +1677,9 @@ const Train = {
     const qs = [];
     const later = [];
     fresh.forEach(w => { qs.push(Q.flash(w)); later.push(w); });
-    dueWords.forEach((w, i) => { qs.splice(Math.min(qs.length, i * 2 + 1), 0, Q.forWord(w)); });
-    later.forEach(w => qs.push(Q.forWord(w, null, pick(['deRu', 'listen', 'deRu']))));
+    dueWords.forEach((w, i) => { qs.splice(Math.min(qs.length, i * 2 + 1), 0, () => Q.forWord(w)); });
+    // новое слово закрепляем сразу после знакомства: сначала узнать, затем вспомнить
+    later.forEach(w => qs.push(() => Q.forWord(w, null, Adapt.level() >= 3 ? 'ruDe' : pick(['deRu', 'listen']))));
     if (!qs.length) {
       const pool = this.globalPool();
       return Engine.start({ title: 'Повторение', questions: this.build('mix', pool, 12), retry: () => this.smart() });
@@ -1234,9 +1697,14 @@ const Train = {
   },
   grammar(id) {
     const g = C.grammar.find(x => x.id === id);
-    const qs = g.exercises.map(x => Q.fromExercise(x)).filter(Boolean);
+    // от простого к сложному: выбор → ввод → порядок слов;
+    // если урок уже пройден хорошо — повторная попытка начинается сразу со сложных заданий
+    const prev = Store.state.grammar[id];
+    const rank = prev && prev.best >= 80 ? { input: 0, order: 1, choice: 2 } : { choice: 0, input: 1, order: 2 };
+    const ex = shuffle(g.exercises).sort((a, b) => rank[a.type] - rank[b.type]);
+    const qs = ex.map(x => Q.fromExercise(x)).filter(Boolean);
     Engine.start({
-      title: g.title, questions: shuffle(qs), xp: 6, retry: () => this.grammar(id),
+      title: g.title, questions: qs, xp: 6, retry: () => this.grammar(id),
       onFinish: r => {
         const st = Store.state.grammar[id] || { best: 0, done: false };
         st.best = Math.max(st.best, r.pct); if (r.pct >= 60) st.done = true;
@@ -1277,7 +1745,7 @@ const Train = {
     return `<div class="cats">${Object.entries(cats).map(([c, v]) => `<div class="cat"><span>${c}</span><div class="bar"><i style="width:${v.ok / v.n * 100}%"></i></div><b>${v.ok}/${v.n}</b></div>`).join('')}</div>`;
   },
   placement() {
-    const PER = 6, NEED = 4;
+    const PER = 8, NEED = 6;
     let li = 0, inStage = 0, ok = 0, reached = -1;
     const used = new Set();
     const res = {};
@@ -1366,6 +1834,18 @@ const levelFilter = (cur, extra = []) => `<div class="chips" role="tablist">${[[
   `<button class="chip ${cur === v ? 'on' : ''}" data-filter="${v}">${l}</button>`).join('')}</div>`;
 
 const Screens = {
+  levelCard(sug) {
+    return `<section class="card lvl-sug ${sug.dir}">
+      <div class="eyebrow">${sug.dir === 'up' ? 'Пора двигаться дальше' : 'Можно сделать шаг назад'}</div>
+      <b>${sug.dir === 'up' ? `Уровень ${Store.state.level} даётся легко. Перейти на ${sug.to}?` : `Уровень ${Store.state.level} пока тяжело даётся. Вернуться на ${sug.to}?`}</b>
+      <small class="muted">${esc(sug.why)}. Новые слова и подборки будут уровня ${sug.to}.</small>
+      <div class="row gap8 wrap"><button class="btn sm primary" data-lvlset="${sug.to}">Перейти на ${sug.to}</button><button class="btn sm ghost" data-lvlno>Позже</button></div>
+    </section>`;
+  },
+  bindLevelCard(root) {
+    $$('[data-lvlset]', root).forEach(b => b.onclick = () => { Store.state.level = b.dataset.lvlset; App.mem = {}; Store.save(); UI.toast(`Уровень ${b.dataset.lvlset} включён`); const c = b.closest('.lvl-sug'); if (c) c.remove(); if (!Engine.s) App.refresh(); });
+    $$('[data-lvlno]', root).forEach(b => b.onclick = () => { Adapt.dismiss(); const c = b.closest('.lvl-sug'); if (c) c.remove(); });
+  },
   // ================= ГЛАВНАЯ =================
   home: {
     title: 'Главная',
@@ -1390,10 +1870,12 @@ const Screens = {
         <div class="st">${ICON.words}<b>${known}</b><span>слов знаю</span></div>
         <div class="st">${ICON.bolt}<b>${s.xp}</b><span>всего XP</span></div>
       </div>
+      ${(() => { const sg = Adapt.suggestion(); return sg ? Screens.levelCard(sg) : ''; })()}
       <button class="cta" data-run="smart">
         <div class="cta-t"><span class="eyebrow">Ежедневная тренировка</span>
           <b>${plan.due.length || plan.fresh.length ? 'Начать занятие' : 'Повторить слова'}</b>
-          <span>${plan.due.length} на повторение · ${plan.fresh.length} ${plural(plan.fresh.length, 'новое слово', 'новых слова', 'новых слов')}</span></div>
+          <span>${plan.due.length} на повторение · ${plan.fresh.length} ${plural(plan.fresh.length, 'новое слово', 'новых слова', 'новых слов')} · уровень ${s.level}</span>
+          ${Adapt.on() ? `<span class="cta-diff">${Adapt.dots()} ${Adapt.label()}</span>` : ''}</div>
         <span class="cta-go">${ICON.play}</span>
       </button>
       ${wod ? `<section class="card wod ${artClass(wod.de)}">
@@ -1417,14 +1899,15 @@ const Screens = {
         <button class="li" data-go="reading"><span class="li-ic">${ICON.book}</span><span class="li-b"><b>Чтение</b><small>${DE.reading.length} текстов с вопросами</small></span></button>
         <button class="li" data-go="dialogues"><span class="li-ic">${ICON.chat}</span><span class="li-b"><b>Диалоги</b><small>${DE.dialogues.length} ситуаций с озвучкой</small></span></button>
       </div>`;
-    }
+    },
+    mount(el) { Screens.bindLevelCard(el); }
   },
 
   // ================= СЛОВА =================
   words: {
     title: 'Слова',
     html(p) {
-      const f = p.filter || App.mem.wordsFilter || 'all';
+      const f = App.mem.wordsFilter || Store.state.level;
       const list = f === 'all' ? C.topics : C.topics.filter(t => t.level === f);
       const favN = Object.keys(Store.state.fav).length;
       return `<h1 class="display page-h">Wortschatz</h1><p class="lead">${C.words.length} слов в ${C.topics.length} темах · уровни A1–C1</p>
@@ -1465,6 +1948,8 @@ const Screens = {
         <div><h1 class="display">${esc(t.title)}</h1><div class="muted">${esc(t.de)} · ${lvlChip(t.level)}</div></div>
       </section>
       <div class="prog-line"><span><b>${pr.known}</b> из ${pr.total} выучено</span><span>${Math.round(pr.pct * 100)}%</span></div>${bar(pr.pct, 'thick')}
+      <div class="lvl-dist">${LEVELS.map(l => { const n = ws.filter(w => w.lvl === l).length; return n ? `<span>${lvlChip(l)} ${n}</span>` : ''; }).join('')}
+        ${ws.some(w => !C.atLevel(w)) ? `<small class="muted">Слова выше уровня ${Store.state.level} даются в последнюю очередь</small>` : ''}</div>
       <button class="cta slim" data-run="topic:${t.id}:mix"><div class="cta-t"><b>Учить тему</b><span>Смешанная тренировка по уровню знания</span></div><span class="cta-go">${ICON.play}</span></button>
       <div class="modes">${modes.map(m => modeTile(`topic:${t.id}:${m}`, m)).join('')}</div>
       <div class="row between sec-row"><h2 class="sec">Слова · ${ws.length}</h2>
@@ -1480,7 +1965,7 @@ const Screens = {
       <button class="w-say" data-say="${esc(w.de)}" aria-label="Послушать">${ICON.sound}</button>
       <button class="w-main" data-word="${esc(w.key)}"><span class="w-de">${deHTML(w)}${w.t === 'n' && w.pl && w.pl !== '-' ? `<small> · ${esc(w.pl.replace(/^die /, ''))}</small>` : ''}</span>
         <span class="w-ru">${esc(w.ru)}${tp ? ` <small class="muted">· ${esc(tp.title)}</small>` : ''}</span></button>
-      ${UI.dots(Store.mastery(w.key))}
+      ${!C.atLevel(w) ? lvlChip(w.lvl) : ''}${UI.dots(Store.mastery(w.key))}
       <button class="w-fav ${fav ? 'faved' : ''}" data-fav="${esc(w.key)}" aria-label="В избранное">${ICON.star}</button>
     </div>`;
   },
@@ -1538,7 +2023,7 @@ const Screens = {
   grammar: {
     title: 'Грамматика',
     html(p) {
-      const f = App.mem.gramFilter || 'all';
+      const f = App.mem.gramFilter || Store.state.level;
       const st = Store.state.grammar;
       const done = C.grammar.filter(g => st[g.id] && st[g.id].done).length;
       return `<h1 class="display page-h">Grammatik</h1><p class="lead">${C.grammar.length} уроков с объяснениями и упражнениями · пройдено ${done}</p>
@@ -1642,7 +2127,7 @@ const Screens = {
   verbs: {
     title: 'Глаголы',
     html() {
-      const f = App.mem.verbFilter || 'all';
+      const f = App.mem.verbFilter || Store.state.level;
       return `<h1 class="display page-h">Verben</h1>
       <div class="search"><span>${ICON.search}</span><input id="vq" type="search" placeholder="Найти глагол" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.verbQ || '')}"></div>
       ${levelFilter(f)}
@@ -1650,7 +2135,7 @@ const Screens = {
       <div id="vlist" class="list"></div>`;
     },
     mount(el) {
-      const f = App.mem.verbFilter || 'all';
+      const f = App.mem.verbFilter || Store.state.level;
       $$('[data-filter]', el).forEach(b => b.onclick = () => { App.mem.verbFilter = b.dataset.filter; App.render(); });
       const inp = $('#vq', el), out = $('#vlist', el);
       const TYPES = { weak: 'слабый', strong: 'сильный', mixed: 'смешанный', modal: 'модальный', irregular: 'неправильный' };
@@ -1686,7 +2171,7 @@ const Screens = {
   reading: {
     title: 'Чтение',
     html() {
-      const f = App.mem.readFilter || 'all';
+      const f = App.mem.readFilter || Store.state.level;
       const ls = DE.reading.filter(r => f === 'all' || r.lvl === f).sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
       return `<h1 class="display page-h">Lesen</h1>${levelFilter(f)}
       <div class="list">${ls.map(r => { const st = Store.state.reading[r.id];
@@ -1741,7 +2226,7 @@ const Screens = {
   dialogues: {
     title: 'Диалоги',
     html() {
-      const f = App.mem.dialFilter || 'all';
+      const f = App.mem.dialFilter || Store.state.level;
       const ls = DE.dialogues.filter(d => f === 'all' || d.lvl === f).sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
       return `<h1 class="display page-h">Dialoge</h1>${levelFilter(f)}
       <div class="list">${ls.map(d => { const st = Store.state.dialogues[d.id];
@@ -1832,6 +2317,8 @@ const Screens = {
         <div class="tile"><b>${Store.streak()}</b><span>серия · рекорд ${Store.bestStreak()}</span></div>
         <div class="tile"><b>${Ach.known()}</b><span>слов знаю</span></div>
         <div class="tile"><b>${acc}%</b><span>точность · ${s.stats.answers} ответов</span></div>
+        <div class="tile"><b>${s.level}</b><span>мой уровень</span></div>
+        <div class="tile"><b class="tile-diff">${Adapt.dots()}</b><span>сложность · ${Adapt.label()}</span></div>
       </div>
       <h2 class="sec">XP за 14 дней</h2>
       <div class="card chart"><div class="bars" role="img" aria-label="XP по дням">
@@ -1876,6 +2363,7 @@ const Screens = {
         <div class="f-row"><span>Голос</span><select id="voice"><option value="">Автоматически</option>${voices.map(v => `<option value="${esc(v.voiceURI)}" ${st.voice === v.voiceURI ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select>
           <button class="btn sm" data-say="Hallo! Ich helfe dir, Deutsch zu lernen.">${ICON.sound} Проверить</button>
           ${!voices.length ? '<small class="muted">Немецкие голоса не найдены. На iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Немецкий.</small>' : ''}</div>
+        <label class="f-row sw"><span>Подстраивать сложность<small class="muted block">Сейчас: ${Adapt.label()}. Верные ответы — сложнее, ошибки — проще.</small></span><input type="checkbox" id="adaptive" ${st.adaptive !== false ? 'checked' : ''}></label>
         <label class="f-row sw"><span>Автоматически озвучивать</span><input type="checkbox" id="autoplay" ${st.autoplay ? 'checked' : ''}></label>
         <label class="f-row sw"><span>Звуки ответов</span><input type="checkbox" id="sound" ${st.sound ? 'checked' : ''}></label>
       </div>
@@ -1897,13 +2385,14 @@ const Screens = {
         const b = e.target.closest('[data-v]'); if (!b) return;
         e.preventDefault();
         const k = g.dataset.set, v = b.dataset.v;
-        if (k === 'level') s.level = v; else st[k] = isNaN(+v) ? v : +v;
+        if (k === 'level') { s.level = v; App.mem = {}; } else st[k] = isNaN(+v) ? v : +v;
         Store.save(); if (k === 'theme') App.applyTheme(); App.render();
       }));
       $('#rate', el).oninput = e => { st.rate = +e.target.value; $('#rateV', el).textContent = st.rate.toFixed(2); Store.save(); };
       $('#rate', el).onchange = () => Speech.say('Guten Tag!');
       $('#voice', el).onchange = e => { st.voice = e.target.value; Store.save(); Speech.say('Guten Tag!'); };
       $('#autoplay', el).onchange = e => { st.autoplay = e.target.checked; Store.save(); };
+      $('#adaptive', el).onchange = e => { st.adaptive = e.target.checked; Store.save(); App.render(); };
       $('#sound', el).onchange = e => { st.sound = e.target.checked; Store.save(); };
       $('#exp', el).onclick = () => {
         const data = Store.export();
