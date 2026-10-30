@@ -57,7 +57,7 @@ DE.topics.push({
       ex: "Der Junge spielt im Garten Fußball.", exRu: "Мальчик играет в саду в футбол." },
     { de: "das Mädchen", pl: "die Mädchen", ru: "девочка", t: "n", lvl: "A1",
       ex: "Das kleine Mädchen heißt Mia.", exRu: "Маленькую девочку зовут Мия." },
-    { de: "der Partner", pl: "die Partner", ru: "партнёр, спутник жизни", t: "n", lvl: "A2",
+    { de: "der Partner", pl: "die Partner", ru: "партнёр, спутник жизни", t: "n", lvl: "A1",
       ex: "Ich wohne mit meinem Partner zusammen.", exRu: "Я живу вместе со своим партнёром." },
     { de: "der Freund", pl: "die Freunde", ru: "друг, парень (бойфренд)", t: "n", lvl: "A1",
       ex: "Ihr Freund heißt Jonas und ist sehr nett.", exRu: "Её парня зовут Йонас, он очень милый." },
@@ -65,7 +65,7 @@ DE.topics.push({
       ex: "Meine Freundin kommt aus Spanien.", exRu: "Моя девушка из Испании." },
     { de: "das Paar", pl: "die Paare", ru: "пара", t: "n", lvl: "A2",
       ex: "Sie sind seit zehn Jahren ein Paar.", exRu: "Они вместе уже десять лет." },
-    { de: "die Hochzeit", pl: "die Hochzeiten", ru: "свадьба", t: "n", lvl: "A2",
+    { de: "die Hochzeit", pl: "die Hochzeiten", ru: "свадьба", t: "n", lvl: "A1",
       ex: "Die Hochzeit ist im Mai.", exRu: "Свадьба будет в мае." },
     { de: "die Schwiegermutter", pl: "die Schwiegermütter", ru: "свекровь, тёща", t: "n", lvl: "B1",
       ex: "Meine Schwiegermutter besucht uns sehr oft.", exRu: "Моя свекровь очень часто к нам приезжает." },
@@ -93,7 +93,7 @@ DE.topics.push({
       ex: "Bist du verheiratet? – Ja, seit fünf Jahren.", exRu: "Ты женат? — Да, уже пять лет." },
     { de: "ledig", ru: "холостой, незамужняя", t: "adj", lvl: "A1",
       ex: "Mein Bruder ist noch ledig.", exRu: "Мой брат ещё не женат." },
-    { de: "geschieden", ru: "разведённый", t: "adj", lvl: "A1",
+    { de: "geschieden", ru: "разведённый", t: "adj", lvl: "A2",
       ex: "Meine Eltern sind seit vielen Jahren geschieden.", exRu: "Мои родители в разводе уже много лет." },
     { de: "alt", ru: "старый; (столько-то) лет", t: "adj", lvl: "A1",
       ex: "Wie alt ist dein Sohn?", exRu: "Сколько лет твоему сыну?" },
@@ -103,7 +103,7 @@ DE.topics.push({
       ex: "Meine Schwester ist zwei Jahre älter als ich.", exRu: "Моя сестра на два года старше меня." },
     { de: "jünger", ru: "младше", t: "adj", lvl: "A1",
       ex: "Mein Mann ist drei Jahre jünger als ich.", exRu: "Мой муж на три года младше меня." },
-    { de: "ähnlich", ru: "похожий", t: "adj", lvl: "A2",
+    { de: "ähnlich", ru: "похожий", t: "adj", lvl: "B1",
       ex: "Du siehst deiner Mutter sehr ähnlich.", exRu: "Ты очень похожа на свою маму." }
   ]
 });

@@ -5,7 +5,7 @@ DE.topics.push({
   emoji: "🔢",
   level: "A1",
   words: [
-    { de: "die Zahl", pl: "die Zahlen", ru: "число, цифра", t: "n", lvl: "A1",
+    { de: "die Zahl", pl: "die Zahlen", ru: "число, цифра", t: "n", lvl: "A2",
       ex: "Die Zahlen von eins bis zwanzig sind leicht.", exRu: "Числа от одного до двадцати — лёгкие." },
 
     // количественные числительные
@@ -39,7 +39,7 @@ DE.topics.push({
       ex: "Hundert Gramm Käse, bitte.", exRu: "Сто грамм сыра, пожалуйста." },
     { de: "tausend", ru: "тысяча", t: "other", lvl: "A1",
       ex: "Das Fahrrad kostet fast tausend Euro.", exRu: "Велосипед стоит почти тысячу евро." },
-    { de: "die Million", pl: "die Millionen", ru: "миллион", t: "n", lvl: "A2",
+    { de: "die Million", pl: "die Millionen", ru: "миллион", t: "n", lvl: "A1",
       ex: "Berlin hat fast vier Millionen Einwohner.", exRu: "В Берлине почти четыре миллиона жителей." },
 
     // порядковые числительные
@@ -51,7 +51,7 @@ DE.topics.push({
       ex: "Am dritten Mai habe ich Geburtstag.", exRu: "Третьего мая у меня день рождения." },
     { de: "siebte", ru: "седьмой", t: "adj", lvl: "A1",
       ex: "Heute ist schon der siebte Tag ohne Regen.", exRu: "Сегодня уже седьмой день без дождя." },
-    { de: "die Hälfte", pl: "die Hälften", ru: "половина", t: "n", lvl: "A2",
+    { de: "die Hälfte", pl: "die Hälften", ru: "половина", t: "n", lvl: "B1",
       ex: "Die Hälfte der Pizza ist für dich.", exRu: "Половина пиццы — для тебя." },
 
     // время
@@ -95,7 +95,7 @@ DE.topics.push({
       ex: "Meine Schwester arbeitet oft in der Nacht.", exRu: "Моя сестра часто работает по ночам." },
     { de: "die Mitternacht", pl: "-", ru: "полночь", t: "n", lvl: "A2",
       ex: "Das Restaurant ist bis Mitternacht geöffnet.", exRu: "Ресторан открыт до полуночи." },
-    { de: "der Wecker", pl: "die Wecker", ru: "будильник", t: "n", lvl: "A2",
+    { de: "der Wecker", pl: "die Wecker", ru: "будильник", t: "n", lvl: "B1",
       ex: "Mein Wecker klingelt jeden Tag um sechs.", exRu: "Мой будильник звонит каждый день в шесть." },
 
     // наречия и прилагательные
@@ -103,15 +103,15 @@ DE.topics.push({
       ex: "Ich habe jetzt leider keine Zeit.", exRu: "У меня сейчас, к сожалению, нет времени." },
     { de: "gleich", ru: "сию минуту, скоро", t: "adv", lvl: "A1",
       ex: "Warte kurz, ich komme gleich!", exRu: "Подожди немного, я сейчас приду!" },
-    { de: "früh", ru: "рано, ранний", t: "adj", lvl: "A1",
+    { de: "früh", ru: "рано, ранний", t: "adj", lvl: "A2",
       ex: "Ich stehe jeden Tag sehr früh auf.", exRu: "Я каждый день встаю очень рано." },
     { de: "spät", ru: "поздно, поздний", t: "adj", lvl: "A1",
       ex: "Es ist schon spät, ich gehe nach Hause.", exRu: "Уже поздно, я иду домой." },
-    { de: "pünktlich", ru: "пунктуальный, вовремя", t: "adj", lvl: "A2",
+    { de: "pünktlich", ru: "пунктуальный, вовремя", t: "adj", lvl: "A1",
       ex: "Der Zug ist heute zum Glück pünktlich.", exRu: "Поезд сегодня, к счастью, вовремя." },
 
     // глаголы
-    { de: "zählen", ru: "считать (по порядку)", t: "v", lvl: "A2",
+    { de: "zählen", ru: "считать (по порядку)", t: "v", lvl: "B1",
       ex: "Mein Sohn kann schon bis hundert zählen.", exRu: "Мой сын уже умеет считать до ста." },
     { de: "rechnen", ru: "вычислять, считать (в уме)", t: "v", lvl: "A2",
       ex: "Ich kann nicht gut im Kopf rechnen.", exRu: "В уме я считаю плохо." },

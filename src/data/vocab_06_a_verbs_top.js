@@ -49,7 +49,7 @@ DE.topics.push({
       ex: "Kennst du ein gutes Restaurant hier?", exRu: "Ты знаешь здесь хороший ресторан?" },
     { de: "finden", ru: "находить; считать", t: "v", lvl: "A1",
       ex: "Ich finde meinen Schlüssel nicht.", exRu: "Я не могу найти свой ключ." },
-    { de: "denken", ru: "думать", t: "v", lvl: "A1",
+    { de: "denken", ru: "думать", t: "v", lvl: "A2",
       ex: "Ich denke, das ist eine gute Idee.", exRu: "Я думаю, это хорошая идея." },
     { de: "glauben", ru: "верить, полагать", t: "v", lvl: "A1",
       ex: "Ich glaube, der Zug hat Verspätung.", exRu: "Кажется, поезд опаздывает." },
