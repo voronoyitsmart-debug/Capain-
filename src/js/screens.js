@@ -2,14 +2,7 @@
 const lvlChip = l => `<span class="lvl lvl-${l}">${l}</span>`;
 const bar = (p, cls = '') => `<div class="pbar ${cls}"><i style="width:${Math.round(clamp(p, 0, 1) * 100)}%"></i></div>`;
 const modeTile = (run, m, extra = '') => `<button class="mode" data-run="${run}"><span class="mode-ic">${ICON[MODES[m].ic]}</span><span class="mode-t">${MODES[m].t}</span><span class="mode-d">${extra || MODES[m].d}</span></button>`;
-const greet = () => {
-  const h = new Date().getHours();
-  if (h < 5) return ['Gute Nacht!', 'Доброй ночи'];
-  if (h < 11) return ['Guten Morgen!', 'Доброе утро'];
-  if (h < 18) return ['Guten Tag!', 'Добрый день'];
-  if (h < 23) return ['Guten Abend!', 'Добрый вечер'];
-  return ['Gute Nacht!', 'Доброй ночи'];
-};
+const greet = () => L.ui.greet(new Date().getHours());
 const levelFilter = (cur, extra = []) => `<div class="chips" role="tablist">${[['all', 'Все']].concat(LEVELS.map(l => [l, l]), extra).map(([v, l]) =>
   `<button class="chip ${cur === v ? 'on' : ''}" data-filter="${v}">${l}</button>`).join('')}</div>`;
 
@@ -58,7 +51,7 @@ const Screens = {
           ${Adapt.on() ? `<span class="cta-diff">${Adapt.dots()} ${Adapt.label()}</span>` : ''}</div>
         <span class="cta-go">${ICON.play}</span>
       </button>
-      ${wod ? `<section class="card wod ${artClass(wod.de)}">
+      ${wod ? `<section class="card wod ${wClass(wod)}">
         <div class="row between"><span class="eyebrow">Слово дня · ${wod.lvl}</span>
           <div class="row gap8"><button class="icon-btn" data-say="${esc(wod.de)}" aria-label="Послушать">${ICON.sound}</button>
           <button class="icon-btn ${s.fav[wod.key] ? 'faved' : ''}" data-fav="${esc(wod.key)}" aria-label="В избранное">${ICON.star}</button></div></div>
@@ -90,7 +83,7 @@ const Screens = {
       const f = App.mem.wordsFilter || Store.state.level;
       const list = f === 'all' ? C.topics : C.topics.filter(t => t.level === f);
       const favN = Object.keys(Store.state.fav).length;
-      return `<h1 class="display page-h">Wortschatz</h1><p class="lead">${C.words.length} слов в ${C.topics.length} темах · уровни A1–C1</p>
+      return `<h1 class="display page-h">${L.ui.h.words}</h1><p class="lead">${C.words.length} слов в ${C.topics.length} темах · уровни A1–C1</p>
       <button class="search-fake" data-go="dict">${ICON.search}<span>Поиск по словарю</span></button>
       ${levelFilter(f)}
       ${favN ? `<button class="li fav-row" data-go="topic" data-id="fav"><span class="li-ic">${ICON.star}</span><span class="li-b"><b>Избранное</b><small>${favN} ${plural(favN, 'слово', 'слова', 'слов')}</small></span></button>` : ''}
@@ -98,7 +91,7 @@ const Screens = {
         const pr = C.topicProgress(t.id);
         return `<button class="topic" data-go="topic" data-id="${t.id}">
           <span class="t-emoji">${t.emoji}</span>
-          <span class="t-b"><b>${esc(t.title)}</b><small>${esc(t.de)}</small></span>
+          <span class="t-b"><b>${esc(t.title)}</b><small>${esc(t.de || t.ro || '')}</small></span>
           <span class="t-f">${lvlChip(t.level)}<small>${pr.known}/${pr.total}</small></span>
           ${bar(pr.pct)}
         </button>`;
@@ -112,7 +105,7 @@ const Screens = {
   topic: {
     title: p => p.id === 'fav' ? 'Избранное' : (C.topicById[p.id] || {}).title,
     html(p) {
-      const t = p.id === 'fav' ? { id: 'fav', title: 'Избранное', de: 'Favoriten', emoji: '⭐', level: Store.state.level } : C.topicById[p.id];
+      const t = p.id === 'fav' ? { id: 'fav', title: 'Избранное', de: L.ui.h.topicFav, emoji: '⭐', level: Store.state.level } : C.topicById[p.id];
       if (!t) return '<p>Тема не найдена</p>';
       const ws = C.topicWords(t.id);
       const pr = C.topicProgress(t.id);
@@ -122,10 +115,10 @@ const Screens = {
       const sort = App.mem.topicSort || 'list';
       let shown = ws.slice();
       if (sort === 'weak') shown.sort((a, b) => Store.mastery(a.key) - Store.mastery(b.key));
-      if (sort === 'az') shown.sort((a, b) => splitArticle(a.de).lemma.localeCompare(splitArticle(b.de).lemma, 'de'));
+      if (sort === 'az') shown.sort((a, b) => L.lemma(a).localeCompare(L.lemma(b), L.code));
       return `<section class="topic-head">
         <span class="t-emoji big">${t.emoji}</span>
-        <div><h1 class="display">${esc(t.title)}</h1><div class="muted">${esc(t.de)} · ${lvlChip(t.level)}</div></div>
+        <div><h1 class="display">${esc(t.title)}</h1><div class="muted">${esc(t.de || t.ro || '')} · ${lvlChip(t.level)}</div></div>
       </section>
       <div class="prog-line"><span><b>${pr.known}</b> из ${pr.total} выучено</span><span>${Math.round(pr.pct * 100)}%</span></div>${bar(pr.pct, 'thick')}
       <div class="lvl-dist">${LEVELS.map(l => { const n = ws.filter(w => w.lvl === l).length; return n ? `<span>${lvlChip(l)} ${n}</span>` : ''; }).join('')}
@@ -141,7 +134,7 @@ const Screens = {
   wordRow(w, showTopic) {
     const fav = Store.state.fav[w.key];
     const tp = showTopic && C.topicById[w.topic];
-    return `<div class="wrow ${artClass(w.de)}">
+    return `<div class="wrow ${wClass(w)}">
       <button class="w-say" data-say="${esc(w.de)}" aria-label="Послушать">${ICON.sound}</button>
       <button class="w-main" data-word="${esc(w.key)}"><span class="w-de">${deHTML(w)}${w.t === 'n' && w.pl && w.pl !== '-' ? `<small> · ${esc(w.pl.replace(/^die /, ''))}</small>` : ''}</span>
         <span class="w-ru">${esc(w.ru)}${tp ? ` <small class="muted">· ${esc(tp.title)}</small>` : ''}</span></button>
@@ -152,7 +145,7 @@ const Screens = {
   wordSheet(key) {
     const w = C.byKey[key]; if (!w) return;
     const r = Store.srsGet(key);
-    const m = UI.sheet(`<div class="sheet-h ${artClass(w.de)}"><div class="f-word">${deHTML(w)}</div>
+    const m = UI.sheet(`<div class="sheet-h ${wClass(w)}"><div class="f-word">${deHTML(w)}</div>
       <button class="icon-btn" data-close aria-label="Закрыть">${ICON.close}</button></div>
       <div class="f-ru">${esc(w.ru)}</div>
       ${w.t === 'n' && w.pl ? `<div class="muted">Мн. число: <b>${w.pl === '-' ? 'нет' : esc(w.pl)}</b></div>` : ''}
@@ -169,7 +162,7 @@ const Screens = {
   dict: {
     title: 'Словарь',
     html() {
-      return `<div class="search"><span>${ICON.search}</span><input id="q" type="search" placeholder="Немецкое или русское слово" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.dictQ || '')}"></div>
+      return `<div class="search"><span>${ICON.search}</span><input id="q" type="search" placeholder="${L.ui.adjCap} или русское слово" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.dictQ || '')}"></div>
         <div id="dres" class="wlist"></div>`;
     },
     mount(el) {
@@ -178,13 +171,13 @@ const Screens = {
       const run = () => {
         const q = norm(inp.value); App.mem.dictQ = inp.value;
         if (q.length < 2) { out.innerHTML = `<p class="muted pad">Введите хотя бы 2 буквы. В словаре ${all.length} слов и фраз.</p>`; return; }
-        const qd = deUmlaut(q);
+        const qd = L.translit(q);
         const score = w => {
-          const de = norm(w.de), lem = norm(splitArticle(w.de).lemma), ru = norm(w.ru);
+          const de = norm(w.de), lem = norm(L.lemma(w)), ru = norm(w.ru);
           if (lem === q || de === q || ru === q) return 0;
-          if (lem.startsWith(q) || deUmlaut(lem).startsWith(qd)) return 1;
+          if (lem.startsWith(q) || L.translit(lem).startsWith(qd) || L.plain(lem).startsWith(L.plain(q))) return 1;
           if (ru.split(/[,;]\s*/).some(x => x.startsWith(q))) return 1.5;
-          if (de.includes(q) || deUmlaut(de).includes(qd)) return 2;
+          if (de.includes(q) || L.translit(de).includes(qd) || L.plain(de).includes(L.plain(q))) return 2;
           if (ru.includes(q)) return 3;
           return 9;
         };
@@ -206,7 +199,7 @@ const Screens = {
       const f = App.mem.gramFilter || Store.state.level;
       const st = Store.state.grammar;
       const done = C.grammar.filter(g => st[g.id] && st[g.id].done).length;
-      return `<h1 class="display page-h">Grammatik</h1><p class="lead">${C.grammar.length} уроков с объяснениями и упражнениями · пройдено ${done}</p>
+      return `<h1 class="display page-h">${L.ui.h.grammar}</h1><p class="lead">${C.grammar.length} уроков с объяснениями и упражнениями · пройдено ${done}</p>
       ${levelFilter(f)}
       ${LEVELS.filter(l => f === 'all' || f === l).map(l => {
         const ls = C.grammar.filter(g => g.level === l);
@@ -240,10 +233,10 @@ const Screens = {
       </div>`;
     },
     mount(el) {
-      // немецкие примеры в уроке можно послушать по нажатию
+      // примеры на изучаемом языке в уроке можно послушать по нажатию
       $$('.lesson-body .ex, .lesson-body td, .lesson-body b', el).forEach(n => {
         const txt = n.classList.contains('ex') ? (n.querySelector('b') || n).textContent : n.textContent;
-        if (/[äöüßÄÖÜ]|\b(der|die|das|ich|du|er|sie|wir|ihr|ist|sind|habe|hat|nicht|ein|eine|den|dem|des)\b/i.test(txt) && !/[а-яё]/i.test(txt)) {
+        if (L.isTarget(txt)) {
           n.classList.add('speakable'); n.onclick = e => { e.stopPropagation(); Speech.say(txt.replace(/[—–].*$/, '')); };
         }
       });
@@ -256,8 +249,8 @@ const Screens = {
     html() {
       const s = Store.state;
       const mist = Object.keys(s.mistakes).length;
-      return `<h1 class="display page-h">Prüfungen</h1><p class="lead">Проверьте себя: тесты по уровням в формате Goethe / telc</p>
-      <button class="cta" data-run="placement"><div class="cta-t"><span class="eyebrow">Einstufungstest</span><b>Тест на определение уровня</b>
+      return `<h1 class="display page-h">${L.ui.h.tests}</h1><p class="lead">${L.ui.testsLead}</p>
+      <button class="cta" data-run="placement"><div class="cta-t"><span class="eyebrow">${L.ui.placement}</span><b>Тест на определение уровня</b>
         <span>${s.placement ? `Последний результат: уровень ${s.placement.solid}, рекомендован ${s.placement.level}` : 'Адаптивный: от A1 до C1, пока получается'}</span></div><span class="cta-go">${ICON.target}</span></button>
       <h2 class="sec">По уровням</h2>
       <div class="lvl-grid">${LEVELS.map(l => {
@@ -273,9 +266,9 @@ const Screens = {
       <h2 class="sec">Ещё проверки</h2>
       <div class="list">
         <button class="li" data-run="mistakes"><span class="li-ic warn">${ICON.redo}</span><span class="li-b"><b>Работа над ошибками</b><small>${mist ? `${mist} ${plural(mist, 'вопрос', 'вопроса', 'вопросов')} для повторения` : 'Ошибок пока нет'}</small></span></button>
-        <button class="li" data-run="verbs"><span class="li-ic">${ICON.verb}</span><span class="li-b"><b>Спряжение глаголов</b><small>Präsens, Präteritum, Perfekt</small></span></button>
+        <button class="li" data-run="verbs"><span class="li-ic">${ICON.verb}</span><span class="li-b"><b>Спряжение глаголов</b><small>${L.ui.verbTenses}</small></span></button>
         <button class="li" data-run="global:quiz"><span class="li-ic">${ICON.target}</span><span class="li-b"><b>Тест по словам</b><small>Слова вашего уровня и изучаемые</small></span></button>
-        <button class="li" data-run="global:article"><span class="li-ic">${ICON.layers}</span><span class="li-b"><b>Артикли der · die · das</b><small>Самая частая ошибка — тренируйте отдельно</small></span></button>
+        <button class="li" data-run="global:article"><span class="li-ic">${ICON.layers}</span><span class="li-b"><b>${L.ui.genderTest[0]}</b><small>${L.ui.genderTest[1]}</small></span></button>
         <button class="li" data-run="global:speed"><span class="li-ic">${ICON.timer}</span><span class="li-b"><b>Скорость · 60 секунд</b><small>Рекорд: ${s.best.speed || 0}</small></span></button>
       </div>`;
     }
@@ -287,7 +280,7 @@ const Screens = {
     html() {
       const item = (go, ic, t, d) => `<button class="li" data-go="${go}"><span class="li-ic">${ICON[ic]}</span><span class="li-b"><b>${t}</b><small>${d}</small></span></button>`;
       const achN = Object.keys(Store.state.ach).length;
-      return `<h1 class="display page-h">Mehr</h1>
+      return `<h1 class="display page-h">${L.ui.h.more}</h1>
       <h2 class="sec">Практика</h2><div class="list">
         ${item('reading', 'book', 'Чтение', `${DE.reading.length} текстов A1–C1 с вопросами и озвучкой`)}
         ${item('dialogues', 'chat', 'Диалоги', `${DE.dialogues.length} живых диалогов и ролевые игры`)}
@@ -295,6 +288,7 @@ const Screens = {
         ${item('verbs', 'verb', 'Глаголы', `${C.verbs.length} таблиц спряжения`)}
         ${item('dict', 'search', 'Словарь', 'Поиск по всем словам')}
       </div>
+      ${L.other && L.other.length ? `<h2 class="sec">Другие языки</h2><div class="list">${L.other.map(o => `<a class="li" href="${o.href}"><span class="li-ic"><span class="flag flag-${o.flag}" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="li-b"><b>${esc(o.t)}</b><small>${esc(o.d)}</small></span></a>`).join('')}</div>` : ''}
       <h2 class="sec">Прогресс</h2><div class="list">
         ${item('stats', 'chart', 'Статистика', 'Активность, точность, слова по уровням')}
         ${item('achievements', 'trophy', 'Достижения', `${achN} из ${ACH.length} получено`)}
@@ -308,7 +302,7 @@ const Screens = {
     title: 'Глаголы',
     html() {
       const f = App.mem.verbFilter || Store.state.level;
-      return `<h1 class="display page-h">Verben</h1>
+      return `<h1 class="display page-h">${L.ui.h.verbs}</h1>
       <div class="search"><span>${ICON.search}</span><input id="vq" type="search" placeholder="Найти глагол" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.verbQ || '')}"></div>
       ${levelFilter(f)}
       <button class="cta slim" data-run="verbs:${f}"><div class="cta-t"><b>Тренировать спряжение</b><span>${f === 'all' ? 'Глаголы до вашего уровня' : 'Глаголы уровня ' + f}</span></div><span class="cta-go">${ICON.play}</span></button>
@@ -323,7 +317,7 @@ const Screens = {
         const q = norm(inp.value); App.mem.verbQ = inp.value;
         const ls = C.verbs.filter(v => (f === 'all' || v.lvl === f) && (!q || norm(v.inf).includes(q) || norm(v.ru).includes(q)));
         out.innerHTML = ls.map(v => `<button class="li" data-go="verb" data-id="${esc(v.inf)}"><span class="li-b"><b>${esc(v.inf)}</b><small>${esc(v.ru)} · ${TYPES[v.type] || ''}${v.sep ? ', отделяемый' : ''}</small></span>
-          <span class="v-perf muted">${esc(v.perf)}</span>${lvlChip(v.lvl)}</button>`).join('') || '<p class="muted pad">Не найдено</p>';
+          <span class="v-perf muted">${esc(L.verbSummary(v))}</span>${lvlChip(v.lvl)}</button>`).join('') || '<p class="muted pad">Не найдено</p>';
       };
       inp.oninput = run; run();
     }
@@ -332,17 +326,11 @@ const Screens = {
     title: p => p.id,
     html(p) {
       const v = C.verbByInf[p.id]; if (!v) return '<p>Не найдено</p>';
-      const pr = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
-      const sp = ['ich', 'du', 'er', 'wir', 'ihr', 'sie'];
       return `<section class="topic-head"><div><h1 class="display">${esc(v.inf)}</h1><div class="muted">${esc(v.ru)} · ${lvlChip(v.lvl)}</div></div>
         <button class="btn round" data-say="${esc(v.inf)}">${ICON.sound}</button></section>
-        <div class="table-wrap"><table class="conj"><thead><tr><th></th><th>Präsens</th><th>Präteritum</th></tr></thead><tbody>
-        ${pr.map((x, i) => `<tr><td class="muted">${x}</td><td data-say="${esc(sp[i] + ' ' + v.praes[i])}"><b>${esc(v.praes[i])}</b></td><td data-say="${esc(sp[i] + ' ' + v.praet[i])}">${esc(v.praet[i])}</td></tr>`).join('')}
-        </tbody></table></div>
-        <div class="kv"><div data-say="er ${esc(v.perf)}"><span>Perfekt</span><b>er ${esc(v.perf)}</b></div>
-        ${v.imp ? `<div data-say="${esc(v.imp)}"><span>Imperativ</span><b>${esc(v.imp)}</b></div>` : ''}</div>
+        ${L.verbView(v)}
         ${v.ex ? `<div class="card f-ex"><button class="mini-audio" data-say="${esc(v.ex)}">${ICON.sound}</button><div>${esc(v.ex)}<div class="muted">${esc(v.exRu || '')}</div></div></div>` : ''}
-        <button class="cta slim" data-run="verb:${esc(v.inf)}"><div class="cta-t"><b>Тренировать этот глагол</b><span>9 заданий на все формы</span></div><span class="cta-go">${ICON.play}</span></button>
+        <button class="cta slim" data-run="verb:${esc(v.inf)}"><div class="cta-t"><b>Тренировать этот глагол</b><span>${L.verbAll(v).length} заданий на все формы</span></div><span class="cta-go">${ICON.play}</span></button>
         <p class="muted small pad-x">Нажмите на форму, чтобы услышать её.</p>`;
     }
   },
@@ -353,7 +341,7 @@ const Screens = {
     html() {
       const f = App.mem.readFilter || Store.state.level;
       const ls = DE.reading.filter(r => f === 'all' || r.lvl === f).sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
-      return `<h1 class="display page-h">Lesen</h1>${levelFilter(f)}
+      return `<h1 class="display page-h">${L.ui.h.reading}</h1>${levelFilter(f)}
       <div class="list">${ls.map(r => { const st = Store.state.reading[r.id];
         return `<button class="li" data-go="text" data-id="${r.id}"><span class="li-ic emoji">${r.emoji || '📄'}</span><span class="li-b"><b>${esc(r.title)}</b><small>${esc(r.ru)} · ${r.text.split(/\s+/).length} слов</small></span>
         ${st ? `<span class="pct">${st.best}%</span>` : ''}${lvlChip(r.lvl)}</button>`; }).join('')}</div>`;
@@ -408,7 +396,7 @@ const Screens = {
     html() {
       const f = App.mem.dialFilter || Store.state.level;
       const ls = DE.dialogues.filter(d => f === 'all' || d.lvl === f).sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
-      return `<h1 class="display page-h">Dialoge</h1>${levelFilter(f)}
+      return `<h1 class="display page-h">${L.ui.h.dialogues}</h1>${levelFilter(f)}
       <div class="list">${ls.map(d => { const st = Store.state.dialogues[d.id];
         return `<button class="li" data-go="dialogue" data-id="${d.id}"><span class="li-ic emoji">${d.emoji || '💬'}</span><span class="li-b"><b>${esc(d.title)}</b><small>${esc(d.context || '')}</small></span>
         ${st ? `<span class="pct">${st.best}%</span>` : ''}${lvlChip(d.lvl)}</button>`; }).join('')}</div>`;
@@ -457,7 +445,7 @@ const Screens = {
     title: 'Разговорник',
     html() {
       const ls = DE.phrases.slice().sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
-      return `<h1 class="display page-h">Sprachführer</h1><p class="lead">Готовые фразы для реальных ситуаций</p>
+      return `<h1 class="display page-h">${L.ui.h.phrases}</h1><p class="lead">Готовые фразы для реальных ситуаций</p>
       <div class="topics">${ls.map(p => { const pr = C.topicProgress('ph:' + p.id);
         return `<button class="topic" data-go="phraseset" data-id="${p.id}"><span class="t-emoji">${p.emoji || '💬'}</span>
         <span class="t-b"><b>${esc(p.title)}</b><small>${p.items.length} фраз</small></span><span class="t-f">${lvlChip(p.lvl)}<small>${pr.known}/${pr.total}</small></span>${bar(pr.pct)}</button>`; }).join('')}</div>`;
@@ -491,7 +479,7 @@ const Screens = {
       const lvlOf = xp => xp <= 0 ? 0 : xp < s.settings.goal * 0.5 ? 1 : xp < s.settings.goal ? 2 : xp < s.settings.goal * 2 ? 3 : 4;
       const byLvl = LEVELS.map(l => { const ws = C.words.filter(w => w.lvl === l); const k = ws.filter(w => Store.isKnown(w.key)).length; return { l, n: ws.length, k }; });
       const boxes = [0, 0, 0, 0]; Object.values(s.srs).forEach(r => boxes[r.b >= 5 ? 3 : r.b >= 2 ? 2 : r.b >= 1 ? 1 : 0]++);
-      return `<h1 class="display page-h">Statistik</h1>
+      return `<h1 class="display page-h">${L.ui.h.stats}</h1>
       <div class="tiles">
         <div class="tile"><b>${s.xp}</b><span>XP всего</span></div>
         <div class="tile"><b>${Store.streak()}</b><span>серия · рекорд ${Store.bestStreak()}</span></div>
@@ -519,7 +507,7 @@ const Screens = {
     title: 'Достижения',
     html() {
       const s = Store.state;
-      return `<h1 class="display page-h">Erfolge</h1><p class="lead">${Object.keys(s.ach).length} из ${ACH.length}</p>
+      return `<h1 class="display page-h">${L.ui.h.ach}</h1><p class="lead">${Object.keys(s.ach).length} из ${ACH.length}</p>
       <div class="ach">${ACH.map(a => `<div class="ach-i ${s.ach[a.id] ? 'got' : ''}"><span class="ach-ic">${a.ic}</span><b>${a.t}</b><small>${a.d}</small>
         ${s.ach[a.id] ? `<small class="muted">${new Date(s.ach[a.id]).toLocaleDateString('ru-RU')}</small>` : ''}</div>`).join('')}</div>`;
     }
@@ -533,7 +521,7 @@ const Screens = {
       const seg = (name, cur, opts) => `<div class="seg" data-set="${name}">${opts.map(([v, l]) => `<button class="${String(cur) === String(v) ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</div>`;
       const voices = Speech.voices;
       const c = C.counts();
-      return `<h1 class="display page-h">Einstellungen</h1>
+      return `<h1 class="display page-h">${L.ui.h.settings}</h1>
       <div class="form">
         <label class="f-row"><span>Мой уровень</span>${seg('level', s.level, LEVELS.map(l => [l, l]))}</label>
         <label class="f-row"><span>Цель на день</span>${seg('goal', st.goal, [[20, '20'], [50, '50'], [100, '100'], [200, '200']])}<small class="muted">XP в день</small></label>
@@ -541,8 +529,8 @@ const Screens = {
         <label class="f-row"><span>Тема</span>${seg('theme', st.theme, [['system', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']])}</label>
         <div class="f-row"><span>Скорость речи · <b id="rateV">${st.rate.toFixed(2)}</b></span><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
         <div class="f-row"><span>Голос</span><select id="voice"><option value="">Автоматически</option>${voices.map(v => `<option value="${esc(v.voiceURI)}" ${st.voice === v.voiceURI ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select>
-          <button class="btn sm" data-say="Hallo! Ich helfe dir, Deutsch zu lernen.">${ICON.sound} Проверить</button>
-          ${!voices.length ? '<small class="muted">Немецкие голоса не найдены. На iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Немецкий.</small>' : ''}</div>
+          <button class="btn sm" data-say="${esc(L.ui.voiceTest)}">${ICON.sound} Проверить</button>
+          ${!voices.length ? `<small class="muted">${L.ui.voiceMissing}</small>` : ''}</div>
         <label class="f-row sw"><span>Подстраивать сложность<small class="muted block">Сейчас: ${Adapt.label()}. Верные ответы — сложнее, ошибки — проще.</small></span><input type="checkbox" id="adaptive" ${st.adaptive !== false ? 'checked' : ''}></label>
         <label class="f-row sw"><span>Автоматически озвучивать</span><input type="checkbox" id="autoplay" ${st.autoplay ? 'checked' : ''}></label>
         <label class="f-row sw"><span>Звуки ответов</span><input type="checkbox" id="sound" ${st.sound ? 'checked' : ''}></label>
@@ -555,7 +543,7 @@ const Screens = {
         <button class="btn primary" id="impgo" hidden>Загрузить</button>
       </div>
       <h2 class="sec">О приложении</h2>
-      <div class="card small"><p><b>Deutsch Tag für Tag</b> — ${c.words} слов в ${c.topics} темах, ${c.grammar} уроков грамматики, ${c.tests} тестовых вопросов, ${c.verbs} глаголов, ${c.reading} текстов, ${c.dialogues} диалогов, ${c.phrases} разделов разговорника.</p>
+      <div class="card small"><p><b>${L.name}</b> — ${c.words} слов в ${c.topics} темах, ${c.grammar} уроков грамматики, ${c.tests} тестовых вопросов, ${c.verbs} глаголов, ${c.reading} текстов, ${c.dialogues} диалогов, ${c.phrases} разделов разговорника.</p>
         <p class="muted">Работает без интернета после первого открытия. Совет: в Safari нажмите «Поделиться» → «На экран „Домой“».</p>
         <button class="btn danger" id="reset">Сбросить весь прогресс</button></div>`;
     },
@@ -569,8 +557,8 @@ const Screens = {
         Store.save(); if (k === 'theme') App.applyTheme(); App.render();
       }));
       $('#rate', el).oninput = e => { st.rate = +e.target.value; $('#rateV', el).textContent = st.rate.toFixed(2); Store.save(); };
-      $('#rate', el).onchange = () => Speech.say('Guten Tag!');
-      $('#voice', el).onchange = e => { st.voice = e.target.value; Store.save(); Speech.say('Guten Tag!'); };
+      $('#rate', el).onchange = () => Speech.say(L.ui.greet(12)[0]);
+      $('#voice', el).onchange = e => { st.voice = e.target.value; Store.save(); Speech.say(L.ui.greet(12)[0]); };
       $('#autoplay', el).onchange = e => { st.autoplay = e.target.checked; Store.save(); };
       $('#adaptive', el).onchange = e => { st.adaptive = e.target.checked; Store.save(); App.render(); };
       $('#sound', el).onchange = e => { st.sound = e.target.checked; Store.save(); };

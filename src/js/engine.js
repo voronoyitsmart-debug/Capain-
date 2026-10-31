@@ -125,7 +125,7 @@ const Engine = {
     body.innerHTML = this.head(q) + `
       <div class="inp-wrap">${q.prefix ? `<span class="inp-prefix">${esc(q.prefix)}</span>` : ''}
         <input id="ans" class="inp" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="Ваш ответ" aria-label="Ваш ответ"></div>
-      <div class="uml">${['ä', 'ö', 'ü', 'ß', 'Ä', 'Ö', 'Ü'].map(c => `<button data-c="${c}">${c}</button>`).join('')}</div>`;
+      <div class="uml">${L.chars.map(c => `<button data-c="${c}">${c}</button>`).join('')}</div>`;
     foot.innerHTML = `<button class="btn ghost" id="dontknow">Не знаю</button><button class="btn primary grow" id="check">Проверить</button>`;
     const inp = $('#ans');
     $$('.uml button', body).forEach(b => b.onclick = e => {
@@ -162,9 +162,9 @@ const Engine = {
   checkInput(q, v) {
     let res = checkAnswer(v, q.answers, q.strict);
     if (res === 'ok') return { ok: true };
-    if (res === 'noumlaut') return { ok: false, note: `Не хватает умлаута: правильно <b>${esc(q.answers[0])}</b>. Умлаут меняет форму и смысл (schon — «уже», schön — «красивый»).` };
+    if (res === 'noumlaut') return L.missingOk(q.strict) ? { ok: true, warn: true, note: L.ui.missing(q.answers[0]) } : { ok: false, note: L.ui.missing(q.answers[0]) };
     if (res === 'typo') return { ok: true, warn: true, note: 'Засчитано, но есть опечатка — сравните с ответом выше' };
-    if (res === 'umlaut') return { ok: true, warn: true, note: 'Засчитано. Попробуйте писать умлауты: ä ö ü ß' };
+    if (res === 'umlaut') return { ok: true, warn: true, note: L.ui.translitOk };
     if (q.accepted && q.accepted.length && checkAnswer(v, q.accepted, true) === 'ok') return { ok: true, note: 'Засчитано — этот вариант вы раньше отметили как верный' };
     for (const s of q.soft || []) if (['ok', 'umlaut'].includes(checkAnswer(v, [s.a], q.strict))) return { ok: true, warn: true, note: s.note };
     for (const x of q.synonyms || []) {
@@ -224,13 +224,13 @@ const Engine = {
     const tag = { n: 'существительное', v: 'глагол', adj: 'прилагательное', adv: 'наречие', phr: 'фраза', other: 'слово' }[w.t] || '';
     body.innerHTML = `<div class="flash" id="flash" tabindex="0" role="button" aria-label="Перевернуть карточку">
       <div class="flash-in">
-        <div class="face front ${artClass(w.de)}">
+        <div class="face front ${wClass(w)}">
           <div class="f-tag">${tag} · ${w.lvl}</div>
           <div class="f-word">${deHTML(w)}</div>
           ${w.t === 'n' && w.pl && w.pl !== '-' ? `<div class="f-pl">${esc(w.pl)}</div>` : ''}
           <div class="f-hint">Нажмите, чтобы перевернуть</div>
         </div>
-        <div class="face back ${artClass(w.de)}">
+        <div class="face back ${wClass(w)}">
           <div class="f-tag">${deHTML(w)}</div>
           <div class="f-ru">${esc(w.ru)}</div>
           ${w.ex && w.ex !== w.de ? `<div class="f-ex"><button class="mini-audio" data-say="${esc(w.ex)}">${ICON.sound}</button><div>${esc(w.ex)}<div class="muted">${esc(w.exRu || '')}</div></div></div>` : ''}
@@ -338,7 +338,7 @@ const Engine = {
   feedback(q, ok, html, warn, override) {
     const foot = $('#ses-foot');
     foot.className = 'ses-foot fb ' + (ok ? (warn ? 'fb-warn' : 'fb-ok') : 'fb-bad');
-    const title = ok ? (warn ? 'Засчитано' : pick(['Richtig!', 'Super!', 'Genau!', 'Toll!', 'Prima!', 'Klasse!'])) : pick(['Nicht ganz', 'Leider falsch']);
+    const title = ok ? (warn ? 'Засчитано' : pick(L.ui.praise)) : pick(L.ui.wrong);
     const sayTxt = q.sayAfter || (q.kind === 'input' || q.kind === 'order' ? q.say : null);
     const lesson = q.lesson && C.grammar.find(g => g.id === q.lesson);
     const canOverride = override && this.s.mode === 'learn';
@@ -405,7 +405,7 @@ const Engine = {
     const wrong = s.done.filter(d => !d.ok && d.q.kind !== 'match' && d.q.kind !== 'flash');
     const uniqWrong = []; const seen = new Set();
     wrong.forEach(d => { const k = d.q.key || d.q.prompt; if (!seen.has(k)) { seen.add(k); uniqWrong.push(d); } });
-    const verdict = pct >= 90 ? 'Ausgezeichnet!' : pct >= 70 ? 'Gut gemacht!' : pct >= 50 ? 'Nicht schlecht!' : 'Weiter üben!';
+    const verdict = L.ui.verdict(pct);
     const sug = Adapt.suggestion();
     const body = $('#ses-body'), foot = $('#ses-foot');
     $('#ses-prog').style.width = '100%';

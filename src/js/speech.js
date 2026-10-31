@@ -5,7 +5,7 @@ const Speech = {
   init() {
     if (!this.ok) return;
     const load = () => {
-      this.voices = speechSynthesis.getVoices().filter(v => /^de(-|_|$)/i.test(v.lang));
+      this.voices = speechSynthesis.getVoices().filter(v => L.voiceRe.test(v.lang));
     };
     load();
     speechSynthesis.onvoiceschanged = load;
@@ -14,8 +14,8 @@ const Speech = {
   voice() {
     const s = Store.state.settings;
     if (s.voice) { const v = this.voices.find(v => v.voiceURI === s.voice); if (v) return v; }
-    const score = v => (/premium|enhanced|neural|natural/i.test(v.name) ? 4 : 0) + (/de-DE/i.test(v.lang) ? 2 : 0) +
-      (/anna|helena|petra|markus|yannick|google/i.test(v.name) ? 1 : 0);
+    const score = v => (/premium|enhanced|neural|natural/i.test(v.name) ? 4 : 0) + (v.lang.replace('_', '-') === L.tts ? 2 : 0) +
+      (L.voicePref.test(v.name) ? 1 : 0);
     return this.voices.slice().sort((a, b) => score(b) - score(a))[0] || null;
   },
   // queue=true — не прерывать текущую речь
@@ -24,7 +24,7 @@ const Speech = {
     return new Promise(res => {
       if (!opts.queue) speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(String(text).replace(/\s*\(.*?\)\s*/g, ' ').replace(/\+ ?(Akk|Dat|Gen)\.?/g, ''));
-      u.lang = 'de-DE';
+      u.lang = L.tts;
       const v = this.voice(); if (v) u.voice = v;
       u.rate = (opts.rate || Store.state.settings.rate || 0.9) * (opts.slow ? 0.7 : 1);
       u.pitch = opts.pitch || 1;

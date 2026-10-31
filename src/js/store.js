@@ -1,5 +1,5 @@
 // Прогресс пользователя: localStorage, всё в try/catch
-const STORE_KEY = 'deutsch.v1';
+const STORE_KEY = L.storeKey;
 const DEFAULT_STATE = () => ({
   v: 1,
   created: Date.now(),

@@ -3,6 +3,14 @@ const C = {
   words: [], byKey: {}, topics: [], topicById: {}, lex: {}, nounArt: {}, byDe: {},
   tests: [], testByKey: {}, gex: {}, verbs: [], verbByInf: {},
   init() {
+    // словари без прототипа: слова вроде «constructor» не должны совпадать со служебными свойствами
+    for (const k of ['byKey', 'topicById', 'lex', 'nounArt', 'byDe', 'testByKey', 'gex', 'verbByInf']) this[k] = Object.create(null);
+    // в румынских данных текст на изучаемом языке лежит в поле ro — внутри приложения это поле de
+    const fromRo = x => { if (x && x.ro !== undefined && x.de === undefined) x.de = x.ro; };
+    DE.topics.forEach(t => t.words.forEach(fromRo));
+    DE.dialogues.forEach(d => (d.lines || []).forEach(fromRo));
+    DE.phrases.forEach(p => (p.items || []).forEach(fromRo));
+    DE.reading.forEach(r => (r.glossary || []).forEach(fromRo));
     const lvlOrder = l => LEVELS.indexOf(l);
     this.topics = DE.topics.slice().sort((a, b) => lvlOrder(a.level) - lvlOrder(b.level));
     for (const t of this.topics) {
@@ -16,10 +24,11 @@ const C = {
         w.meanStrict = this.meanings(w.ru, false);
         const nd = norm(w.de);
         (this.byDe[nd] = this.byDe[nd] || []).push(w);
-        const { art: wart, lemma } = splitArticle(w.de);
+        const wart = L.gender(w), lemma = L.lemma(w);
         if (w.t === 'n' && wart && !/\s/.test(lemma)) this.nounArt[lemma.toLowerCase()] = wart;
-        const lk = lemma.toLowerCase().replace(/^sich /, '').replace(/ \+.*$/, '');
+        const lk = lemma.toLowerCase();
         if (!this.lex[lk]) this.lex[lk] = w;
+        (L.gapForms(w) || []).forEach(f => { const k = String(f || '').toLowerCase(); if (k && !this.lex[k]) this.lex[k] = w; });
       });
     }
     // Разговорник как «слова» для тренировки
@@ -35,12 +44,12 @@ const C = {
     this.tests = DE.tests;
     DE.grammar.forEach(g => g.exercises.forEach((x, i) => { x.key = `g|${g.id}|${i}`; x.lesson = g.id; this.gex[x.key] = x; }));
     this.grammar = DE.grammar.slice().sort((a, b) => lvlOrder(a.level) - lvlOrder(b.level));
-    this.verbs = DE.verbs.slice().sort((a, b) => lvlOrder(a.lvl) - lvlOrder(b.lvl) || a.inf.localeCompare(b.inf, 'de'));
+    this.verbs = DE.verbs.slice().sort((a, b) => lvlOrder(a.lvl) - lvlOrder(b.lvl) || a.inf.localeCompare(b.inf, L.code));
     this.verbs.forEach(v => {
       v.key = 'v|' + v.inf; this.verbByInf[v.inf] = v;
-      const lk = v.inf.replace(/^sich /, '').toLowerCase();
+      const lk = v.inf.replace(/^(sich|a se|a)\s+/, '').toLowerCase();
       if (!this.lex[lk]) this.lex[lk] = { de: v.inf, ru: v.ru, t: 'v' };
-      v.praes.concat(v.praet).forEach(f => { const k = f.split(' ')[0].toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: v.inf, ru: v.ru, t: 'v', form: f }; });
+      L.verbForms(v).forEach(f => { const k = f.split(' ')[0].toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: v.inf, ru: v.ru, t: 'v', form: f }; });
     });
     for (const r of DE.reading) (r.glossary || []).forEach(g => { const k = g.de.toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: g.de, ru: g.ru }; });
   },
@@ -71,20 +80,8 @@ const C = {
     }
     return out;
   },
-  // Все допустимые написания немецкого ответа
-  variants(de) {
-    const out = new Set([de]);
-    const noPar = de.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
-    out.add(noPar);
-    const noCase = noPar.replace(/\s*\+\s*(Akk|Dat|Gen)\.?/gi, '').trim();
-    out.add(noCase);
-    out.add(noCase.replace(/\b(etw|jdn|jdm|jds)\.\s*/g, '').replace(/\s+/g, ' ').trim());
-    const m = /^(der|die|das)\/(der|die|das) (.+)$/.exec(noPar);
-    if (m) { out.add(m[1] + ' ' + m[3]); out.add(m[2] + ' ' + m[3]); }
-    const parts = noPar.split(/\s*(?:\/|,|;)\s*/).filter(Boolean);
-    if (parts.length > 1 && parts.every(p => /^(der|die|das) /.test(p))) parts.forEach(p => out.add(p));
-    return Array.from(out).filter(Boolean);
-  },
+  // Все допустимые написания ответа — правила в языковом пакете
+  variants(de) { return L.variants(de); },
   topicWords(id) {
     if (id === 'fav') return Object.keys(Store.state.fav).map(k => this.byKey[k]).filter(Boolean);
     if (id && id.startsWith('ph:')) { const p = DE.phrases.find(p => 'ph:' + p.id === id); return p ? p.words : []; }
@@ -100,10 +97,10 @@ const C = {
   },
   // Поиск перевода слова из текста
   lookup(token) {
-    const t = token.toLowerCase().replace(/[^a-zäöüß-]/gi, '');
+    const t = token.toLowerCase().replace(/[^a-zäöüßăâîșțş ţ-]/gi, '').replace(/ş/g, 'ș').replace(/ţ/g, 'ț');
     if (!t) return null;
     if (this.lex[t]) return this.lex[t];
-    const tries = [t.replace(/(en|n|e|s|er|es|em)$/, ''), t.replace(/e$/, ''), t + 'en', t + 'n'];
+    const tries = L.lookupTries(t);
     for (const x of tries) if (this.lex[x]) return this.lex[x];
     return null;
   },

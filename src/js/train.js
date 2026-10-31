@@ -4,7 +4,7 @@ const MODES = {
   quiz: { t: 'Выбор перевода', d: 'DE ↔ RU', ic: 'target' },
   listen: { t: 'Аудирование', d: 'Слушай и выбирай', ic: 'ear' },
   write: { t: 'Письмо', d: 'Напиши слово', ic: 'pen' },
-  article: { t: 'Der · Die · Das', d: 'Тренажёр артиклей', ic: 'layers' },
+  article: { t: L.ui.genderMode.t, d: L.ui.genderMode.d, ic: 'layers' },
   plural: { t: 'Мн. число', d: 'Формы plural', ic: 'shuffle' },
   gap: { t: 'Пропуски', d: 'Слово в контексте', ic: 'gap' },
   order: { t: 'Собери фразу', d: 'Порядок слов', ic: 'puzzle' },
@@ -43,7 +43,7 @@ const Train = {
       case 'quiz': return lazy(this.pickWords(pool, n || 12), w => Adapt.eff(w) >= 2 || Math.random() < .4 ? Q.ruDe(w, pool) : Q.deRu(w, pool));
       case 'listen': return lazy(this.pickWords(pool, n || 12), w => Adapt.eff(w) >= 4 && Math.random() < .5 ? Q.make('typeListen', w, pool) : Q.listen(w, pool));
       case 'write': return lazy(this.pickWords(pool, n || 10), w => Q.type(w));
-      case 'article': return this.pickWords(pool.filter(w => w.t === 'n' && splitArticle(w.de).art), n || 15).map(w => () => Q.article(w));
+      case 'article': return this.pickWords(pool.filter(w => w.t === 'n' && L.gender(w)), n || 15).map(w => () => Q.article(w));
       case 'plural': return lazy(this.pickWords(pool.filter(w => Q.canPlural(w)), n || 12), w => Q.pluralForms(w));
       case 'gap': return lazy(this.pickWords(pool.filter(w => Q.gapToken(w)), n || 10), w => Q.gap(w, pool));
       case 'order': return lazy(this.pickWords(pool.filter(w => w.ex), n || 8), w => Q.make('orderEx', w, pool));
@@ -233,7 +233,7 @@ const Train = {
     Engine.start({ title: title || 'Спряжение глаголов', questions: qs, xp: 6, retry: () => this.verbs(list, title) });
   },
   verbAll(v) {
-    const qs = shuffle([0, 1, 2, 3, 4, 5].map(p => Q.verbQ(v, 'praes', p)).concat([Q.verbQ(v, 'praet', 0), Q.verbQ(v, 'praet', 3), Q.verbQ(v, 'perf')]));
+    const qs = shuffle(L.verbAll(v).map(([t, p]) => Q.verbQ(v, t, p)));
     Engine.start({ title: v.inf, questions: qs, xp: 5, retry: () => this.verbAll(v) });
   },
   reading(id) {

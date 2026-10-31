@@ -1,0 +1,59 @@
+DE.dialogues.push(
+  { id: "c1_radio_cercetare", title: "Радиоэфир: учёный о микропластике", emoji: "🎙️", lvl: "C1",
+    context: "Научная передача на радио. Ведущая беседует с исследователем из Тулчи о микропластике в дельте Дуная.",
+    lines: [
+      { s: "Moderatoare", ro: "Bună seara și bine v-am regăsit la „Știința de lângă noi”. Invitatul meu de astăzi este doctorul Mihai Stan, cercetător în ecologie acvatică la Tulcea. Bine ați venit!", ru: "Добрый вечер, мы снова с вами в программе «Наука рядом с нами». Мой сегодняшний гость — доктор Михай Стан, исследователь в области водной экологии из Тулчи. Добро пожаловать!" },
+      { s: "Cercetător", ro: "Bună seara și mulțumesc pentru invitație.", ru: "Добрый вечер, спасибо за приглашение." },
+      { s: "Moderatoare", ro: "Echipa dumneavoastră a publicat recent un studiu despre microplasticele din Delta Dunării. Ce v-a determinat să abordați această temă?", ru: "Ваша команда недавно опубликовала исследование о микропластике в дельте Дуная. Что побудило вас взяться за эту тему?" },
+      { s: "Cercetător", ro: "Am pornit de la o constatare simplă: Dunărea străbate zece țări și preia, practic, apele uzate a zeci de milioane de oameni. Delta este, într-un fel, locul în care ajunge tot ce s-a acumulat pe parcurs.", ru: "Мы исходили из простого наблюдения: Дунай протекает через десять стран и фактически принимает сточные воды десятков миллионов людей. Дельта — в каком-то смысле место, куда попадает всё, что накопилось по пути." },
+      { s: "Moderatoare", ro: "Și ce ați descoperit?", ru: "И что вы обнаружили?" },
+      { s: "Cercetător", ro: "Am găsit particule de microplastic în toate probele de apă și de sediment, dar și în tractul digestiv al aproximativ două treimi dintre peștii analizați.", ru: "Мы нашли частицы микропластика во всех пробах воды и донных отложений, а также в пищеварительном тракте примерно двух третей исследованных рыб." },
+      { s: "Moderatoare", ro: "Sună alarmant. Înseamnă asta că peștele din Deltă nu mai poate fi consumat?", ru: "Звучит тревожно. Значит ли это, что рыбу из дельты больше нельзя есть?" },
+      { s: "Cercetător", ro: "Aș evita concluziile pripite. Deocamdată nu avem dovezi că nivelurile detectate ar reprezenta un risc direct pentru sănătatea umană. Ce ne îngrijorează este tendința: concentrațiile au crescut față de măsurătorile de acum zece ani.", ru: "Я бы избегал поспешных выводов. Пока у нас нет доказательств, что обнаруженные уровни представляют прямой риск для здоровья человека. Нас тревожит тенденция: концентрации выросли по сравнению с измерениями десятилетней давности." },
+      { s: "Moderatoare", ro: "Care sunt sursele principale?", ru: "Каковы основные источники?" },
+      { s: "Cercetător", ro: "Fibrele sintetice care se desprind la spălarea hainelor, fragmentele de ambalaje și, nu în ultimul rând, uzura anvelopelor. Stațiile de epurare rețin o parte, însă nu sunt concepute pentru particule atât de mici.", ru: "Синтетические волокна, отделяющиеся при стирке одежды, фрагменты упаковки и, не в последнюю очередь, износ шин. Очистные сооружения задерживают часть, но они не рассчитаны на такие мелкие частицы." },
+      { s: "Moderatoare", ro: "Cum se finanțează o astfel de cercetare în România?", ru: "Как финансируются подобные исследования в Румынии?" },
+      { s: "Cercetător", ro: "În mare parte din proiecte europene. Finanțarea națională este, din păcate, sporadică, ceea ce îngreunează monitorizarea pe termen lung. Or, tocmai continuitatea datelor e esențială în știință.", ru: "В основном за счёт европейских проектов. Национальное финансирование, к сожалению, нерегулярное, что затрудняет долгосрочный мониторинг. А ведь именно непрерывность данных в науке принципиальна." },
+      { s: "Moderatoare", ro: "Ce pot face, concret, ascultătorii noștri?", ru: "Что конкретно могут сделать наши слушатели?" },
+      { s: "Cercetător", ro: "Gesturi mărunte, dar care se adună: să spele hainele sintetice la temperaturi mai joase și cu mașina plină, să renunțe la plasticul de unică folosință. Însă schimbarea reală trebuie să vină din reglementare, nu doar din conștiința fiecăruia.", ru: "Мелочи, которые складываются: стирать синтетику при более низкой температуре и с полной загрузкой, отказаться от одноразового пластика. Но настоящие перемены должны прийти через регулирование, а не только через сознательность каждого." },
+      { s: "Moderatoare", ro: "Domnule doctor Mihai Stan, vă mulțumesc pentru această discuție.", ru: "Доктор Михай Стан, благодарю вас за эту беседу." }
+    ],
+    quiz: [
+      { q: "В какой доле исследованных рыб нашли микропластик?", options: ["Во всех", "Примерно в двух третях", "Примерно в трети", "Ни в одной"], a: 1,
+        explain: "Исследователь: „în tractul digestiv al aproximativ două treimi dintre peștii analizați“." },
+      { q: "Что учёный говорит о безопасности рыбы из дельты?", options: ["Её нельзя есть", "Её можно есть только варёной", "Пока нет доказательств прямого риска для здоровья", "Она полезнее, чем раньше"], a: 2,
+        explain: "„Deocamdată nu avem dovezi că nivelurile detectate ar reprezenta un risc direct pentru sănătatea umană.“" },
+      { q: "Почему очистные сооружения не решают проблему?", options: ["Они не рассчитаны на такие мелкие частицы", "Их нет в дельте", "Они слишком дорогие", "Они сами выделяют пластик"], a: 0,
+        explain: "„Stațiile de epurare rețin o parte, însă nu sunt concepute pentru particule atât de mici.“" },
+      { q: "В чём проблема финансирования исследований?", options: ["Европейские проекты закрыты для Румынии", "Денег слишком много, но нет специалистов", "Финансирование только частное", "Национальное финансирование нерегулярно, что мешает долгосрочному мониторингу"], a: 3,
+        explain: "„Finanțarea națională este, din păcate, sporadică, ceea ce îngreunează monitorizarea pe termen lung.“" }
+    ] },
+
+  { id: "c1_dezbatere_politica", title: "Политические дебаты: обязательное голосование", emoji: "🗳️", lvl: "C1",
+    context: "Телевизионные дебаты о законопроекте, вводящем обязательное голосование. Участники — депутатка, автор проекта, и сенатор-оппонент (персонажи вымышленные).",
+    lines: [
+      { s: "Moderator", ro: "Bună seara. La ultimele alegeri, prezența la vot a fost sub 50%. Discutăm în această seară propunerea legislativă privind introducerea votului obligatoriu. Doamnă deputat, sunteți inițiatoarea proiectului.", ru: "Добрый вечер. На последних выборах явка была ниже 50%. Сегодня мы обсуждаем законопроект о введении обязательного голосования. Госпожа депутат, вы — инициатор проекта." },
+      { s: "Deputată", ro: "Bună seara. Pornesc de la o premisă simplă: o democrație în care decid mai puțin de jumătate dintre cetățeni își pierde treptat legitimitatea. Acolo unde votul e obligatoriu, campaniile se mută spre centru, pentru că trebuie să-i convingi pe toți, nu doar nucleul dur.", ru: "Добрый вечер. Я исхожу из простой посылки: демократия, в которой решает меньше половины граждан, постепенно теряет легитимность. Там, где голосование обязательно, кампании смещаются к центру, потому что убеждать приходится всех, а не только ядро сторонников." },
+      { s: "Senator", ro: "Respect intenția, dar consider că propunerea tratează simptomul, nu cauza. Oamenii nu vin la vot pentru că nu mai au încredere în clasa politică. Dacă îi obligi, nu le recâștigi încrederea; dimpotrivă, riști să adâncești resentimentele.", ru: "Уважаю намерение, но считаю, что проект лечит симптом, а не причину. Люди не ходят на выборы, потому что больше не доверяют политическому классу. Если их заставить, доверия не вернёшь; наоборот, рискуешь усилить недовольство." },
+      { s: "Deputată", ro: "Însă tocmai absenteismul întreține cercul vicios: politicienii se adresează celor care votează, iar ceilalți se simt și mai ignorați.", ru: "Но именно абсентеизм и поддерживает порочный круг: политики обращаются к тем, кто голосует, а остальные чувствуют себя ещё более забытыми." },
+      { s: "Senator", ro: "Mai e și o chestiune de principiu. Dreptul de a vota include, în opinia mea, și dreptul de a nu vota. Abținerea poate fi ea însăși o formă de exprimare politică.", ru: "Есть и вопрос принципа. Право голосовать, на мой взгляд, включает и право не голосовать. Воздержание само по себе может быть формой политического высказывания." },
+      { s: "Deputată", ro: "De aceea proiectul prevede pe buletinul de vot opțiunea „niciunul dintre candidați”. Nimeni nu e obligat să aleagă pe cineva, ci doar să se prezinte la urne.", ru: "Поэтому проект предусматривает в бюллетене вариант «ни один из кандидатов». Никто не обязан кого-то выбирать — только прийти на избирательный участок." },
+      { s: "Moderator", ro: "Și sancțiunile? Ce se întâmplă cu cei care nu se prezintă?", ru: "А санкции? Что будет с теми, кто не придёт?" },
+      { s: "Deputată", ro: "O amendă simbolică, de 100 de lei, cu numeroase excepții: boală, aflarea în străinătate, motive religioase.", ru: "Символический штраф в 100 лей, с многочисленными исключениями: болезнь, пребывание за границей, религиозные причины." },
+      { s: "Senator", ro: "Exact aici e punctul slab. O amendă simbolică nu descurajează pe nimeni, iar una mare ar fi profund nedreaptă față de cei săraci. Și cine ar aplica-o, într-o administrație deja suprasolicitată?", ru: "Вот здесь и слабое место. Символический штраф никого не остановит, а крупный был бы глубоко несправедлив по отношению к бедным. И кто будет его взимать при и так перегруженной администрации?" },
+      { s: "Moderator", ro: "Ce alternativă propuneți, domnule senator?", ru: "Какую альтернативу вы предлагаете, господин сенатор?" },
+      { s: "Senator", ro: "Extinderea votului prin corespondență și în țară, votul anticipat și, pe termen lung, o educație civică serioasă în școli. Să facem votul mai ușor, nu obligatoriu.", ru: "Распространить голосование по почте и внутри страны, ввести досрочное голосование, а в долгосрочной перспективе — серьёзное гражданское образование в школах. Сделать голосование проще, а не обязательным." },
+      { s: "Deputată", ro: "Nu sunt măsuri care se exclud reciproc, le susțin și eu. Dar experiența arată că, fără un impuls ferm, schimbările de comportament durează generații.", ru: "Эти меры не исключают друг друга, я их тоже поддерживаю. Но опыт показывает, что без решительного толчка изменения в поведении занимают поколения." },
+      { s: "Moderator", ro: "Vă mulțumesc amândurora. Rămâne de văzut ce va decide Parlamentul.", ru: "Благодарю вас обоих. Посмотрим, что решит парламент." }
+    ],
+    quiz: [
+      { q: "Какой была явка на последних выборах?", options: ["Ниже 50%", "Около 85%", "Ровно 50%", "Выше 60%"], a: 0,
+        explain: "Ведущий: „La ultimele alegeri, prezența la vot a fost sub 50%“." },
+      { q: "В чём главный упрёк сенатора к законопроекту?", options: ["Он слишком дорогой", "Он лечит симптом, а не причину — недоверие к политикам", "Он противоречит конституции", "Он выгоден одной партии"], a: 1,
+        explain: "Сенатор: „propunerea tratează simptomul, nu cauza. Oamenii nu vin la vot pentru că nu mai au încredere în clasa politică“." },
+      { q: "Как проект отвечает на аргумент о праве не голосовать?", options: ["Штрафы будут отменены", "Голосовать можно будет только онлайн", "Проект распространяется только на молодёжь", "В бюллетене будет вариант «ни один из кандидатов»"], a: 3,
+        explain: "Депутатка: „proiectul prevede pe buletinul de vot opțiunea „niciunul dintre candidați”“." },
+      { q: "Что предлагает сенатор вместо обязательного голосования?", options: ["Более крупные штрафы", "Снизить возраст голосования", "Голосование по почте, досрочное голосование и гражданское образование", "Отменить выборы в парламент"], a: 2,
+        explain: "Сенатор: „Extinderea votului prin corespondență și în țară, votul anticipat și... o educație civică serioasă în școli“." }
+    ] }
+);

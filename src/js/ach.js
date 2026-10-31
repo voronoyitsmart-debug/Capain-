@@ -29,6 +29,8 @@ const ACH = [
   { id: 'night', t: 'Nachteule', d: 'Заниматься после 23:00', ic: '🦉', f: () => new Date().getHours() >= 23 },
   { id: 'early', t: 'Frühaufsteher', d: 'Заниматься до 7:00', ic: '🌅', f: () => new Date().getHours() < 7 }
 ];
+// у каждого языка свои названия достижений
+if (L.achTitles) ACH.forEach(a => { if (L.achTitles[a.id]) a.t = L.achTitles[a.id]; });
 const Ach = {
   _known: null,
   known() { if (this._known == null) this._known = Object.values(Store.state.srs).filter(r => r.b >= 2).length; return this._known; },

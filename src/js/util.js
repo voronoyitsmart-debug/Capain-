@@ -18,7 +18,7 @@ function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^=
 
 // Нормализация ответа: регистр, пробелы, конечная пунктуация, типографские кавычки
 function norm(s) {
-  return String(s || '').toLowerCase().replace(/[’`´]/g, "'").replace(/[„“”«»"]/g, '')
+  return String(s || '').toLowerCase().replace(/ş/g, 'ș').replace(/ţ/g, 'ț').replace(/[’`´]/g, "'").replace(/[„“”«»"]/g, '')
     .replace(/[.!?,;:…¿¡]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 // Замены для тех, у кого нет немецкой раскладки
@@ -37,14 +37,13 @@ function lev(a, b) {
 }
 // Проверка ввода: 'ok' | 'umlaut' (ae вместо ä) | 'noumlaut' (умлаут пропущен) | 'typo' | 'bad'.
 // strict — без скидки на опечатки (грамматика и спряжение: там одна буква и есть суть задания)
-const plainUml = s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss');
 function checkAnswer(input, answers, strict) {
   const x = norm(input);
   if (!x) return 'bad';
   const list = answers.map(norm);
   if (list.includes(x)) return 'ok';
-  if (list.some(a => deUmlaut(a) === deUmlaut(x))) return 'umlaut';
-  if (list.some(a => /[äöü]/.test(a) && plainUml(a) === plainUml(x))) return 'noumlaut';
+  if (list.some(a => L.translit(a) === L.translit(x))) return 'umlaut';
+  if (list.some(a => L.hasDiacritics(a) && L.plain(a) === L.plain(x))) return 'noumlaut';
   if (!strict && list.some(a => a.length > 4 && lev(a, x) === 1)) return 'typo';
   return 'bad';
 }
@@ -55,14 +54,9 @@ function splitArticle(de) {
   return m ? { art: m[1], lemma: m[2] } : { art: '', lemma: de };
 }
 function artClass(de) { const a = splitArticle(de).art; return a ? 'a-' + a : ''; }
-// Слово с цветным артиклем
-function deHTML(w) {
-  if (w.t === 'n') {
-    const { art, lemma } = splitArticle(w.de);
-    if (art) return `<span class="art a-${art}">${art}</span> ${esc(lemma)}`;
-  }
-  return esc(w.de);
-}
+// Слово с цветом рода (артикль для немецкого, un/o для румынского) — из языкового пакета
+function deHTML(w) { return L.wordHTML(w); }
+function wClass(w) { return L.wordClass(w); }
 function plural(n, one, few, many) {
   const a = Math.abs(n) % 100, b = a % 10;
   if (a > 10 && a < 20) return many;

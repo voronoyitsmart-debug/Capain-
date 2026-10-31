@@ -1,11 +1,10 @@
 // Построители вопросов для движка упражнений
-const PERSONS = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
 const Q = {
   accepted(key) { return (Store.state.accepted || {})[key] || []; },
   // Может ли x быть неверным вариантом к w: не тот же немецкий, не синоним, не отмеченный пользователем
   conflict(w, x) {
     if (x === w) return true;
-    if (norm(x.de) === norm(w.de) || norm(splitArticle(x.de).lemma) === norm(splitArticle(w.de).lemma)) return true;
+    if (norm(x.de) === norm(w.de) || norm(L.lemma(x)) === norm(L.lemma(w))) return true;
     if (C.sameMeaning(w, x)) return true;
     const bp = Store.state.badPairs || {};
     return !!(bp[w.key + '|' + x.key] || bp[x.key + '|' + w.key]);
@@ -19,9 +18,9 @@ const Q = {
     if (cand.length < n * 2) cand = cand.concat(C.words.filter(x => ok(x) && !cand.includes(x)));
     if (cand.length < n) cand = cand.concat(C.words.filter(x => !this.conflict(w, x) && !cand.includes(x)));
     if (hard) {
-      const wl = splitArticle(w.de).lemma, wa = splitArticle(w.de).art;
-      const score = x => (x.topic === w.topic ? 2 : 0) + (wa && splitArticle(x.de).art === wa ? 1 : 0) +
-        (Math.abs(splitArticle(x.de).lemma.length - wl.length) <= 2 ? 1 : 0) + (splitArticle(x.de).lemma[0] === wl[0] ? 1 : 0) + Math.random() * 1.5;
+      const wl = L.lemma(w), wa = L.gender(w);
+      const score = x => (x.topic === w.topic ? 2 : 0) + (wa && L.gender(x) === wa ? 1 : 0) +
+        (Math.abs(L.lemma(x).length - wl.length) <= 2 ? 1 : 0) + (L.lemma(x)[0] === wl[0] ? 1 : 0) + Math.random() * 1.5;
       cand = cand.map(x => [score(x), x]).sort((a, b) => b[0] - a[0]).slice(0, n * 3).map(p => p[1]);
     }
     const out = [];
@@ -47,7 +46,7 @@ const Q = {
   ruDe(w, pool, eff = Adapt.eff(w)) {
     const ws = this.distract(w, pool, 'de', Adapt.options(eff) - 1, eff >= 2);
     return this.wordChoice(w, ws, x => ({ html: deHTML(x) }), {
-      qtype: 'ruDe', label: 'Как это по-немецки?', prompt: `<div class="q-word ru">${esc(w.ru)}</div>`, explain: this.wordExplain(w), sayAfter: w.de
+      qtype: 'ruDe', label: `Как это ${L.ui.inLang}?`, prompt: `<div class="q-word ru">${esc(w.ru)}</div>`, explain: this.wordExplain(w), sayAfter: w.de
     });
   },
   listen(w, pool, eff = Adapt.eff(w)) {
@@ -61,17 +60,14 @@ const Q = {
   type(w, eff = Adapt.eff(w), listen = false) {
     const answers = C.variants(w.de);
     (w.alt || []).forEach(a => C.variants(a).forEach(v => answers.push(v)));
-    const soft = [];
-    answers.slice().forEach(a => { if (/^sich /.test(a)) soft.push({ a: a.replace(/^sich /, ''), note: `Засчитано, но глагол возвратный: <b>${esc(a)}</b>` }); });
+    if (L.extraAnswers) L.extraAnswers(w).forEach(a => answers.push(a));
+    const soft = L.soft(answers, w);
     const syn = C.synonyms(w).filter(x => !answers.some(a => norm(a) === norm(x.de)));
     let hint = '';
-    if (!listen && eff <= 2 && w.t !== 'phr') {
-      const { art, lemma } = splitArticle(w.de.replace(/\s*\(.*?\)/g, ''));
-      hint = `Подсказка: ${art ? art + ' ' : ''}${esc(lemma.charAt(0))}${'·'.repeat(Math.max(0, lemma.length - 1))} (${lemma.length} букв)`;
-    }
+    if (!listen && eff <= 2 && w.t !== 'phr') hint = L.typeHint(w);
     return {
       kind: 'input', qtype: listen ? 'typeListen' : 'type',
-      label: listen ? 'Послушайте и напишите' : (w.t === 'n' ? 'Напишите по-немецки с артиклем' : 'Напишите по-немецки'),
+      label: listen ? 'Послушайте и напишите' : (w.t === 'n' ? L.ui.typeNoun : `Напишите ${L.ui.inLang}`),
       prompt: listen ? `<button class="big-audio" data-say>${ICON.sound}</button><div class="q-sub">${w.t === 'n' ? 'С артиклем' : ''}</div>`
         : `<div class="q-word ru">${esc(w.ru)}</div>${hint ? `<div class="q-hint">${hint}</div>` : ''}`,
       answers: uniq(answers), soft, synonyms: syn, accepted: this.accepted(w.key), reveal: deHTML(w), say: w.de, autoplay: listen,
@@ -79,43 +75,44 @@ const Q = {
     };
   },
   article(w) {
-    const { art, lemma } = splitArticle(w.de);
-    const arts = ['der', 'die', 'das'];
+    const g = L.gender(w), G = L.genders;
     return {
-      kind: 'choice', style: 'articles', qtype: 'article', label: 'Какой артикль?',
-      prompt: `<div class="q-word">${esc(lemma)}</div><div class="q-sub">${esc(w.ru)}</div>`,
-      options: arts.map(a => ({ html: a, cls: 'a-' + a })), a: arts.indexOf(art), sayAfter: w.de,
+      kind: 'choice', style: 'articles', qtype: 'article', label: L.ui.genderQ,
+      prompt: `<div class="q-word">${esc(L.lemma(w))}</div><div class="q-sub">${esc(w.ru)}</div>`,
+      options: G.map(x => ({ html: x.html, cls: x.cls })), a: G.findIndex(x => x.id === g), sayAfter: w.de,
       explain: this.wordExplain(w) + Explain.gender(w), key: w.key, srs: true, adapt: true, w
     };
   },
   pluralForms(w, eff = Adapt.eff(w)) {
-    const { lemma } = splitArticle(w.de);
-    const correct = w.pl.replace(/^die /, '');
-    const uml = s => s.replace(/(au|a|o|u)(?=[^aouäöü]*$)/i, m => ({ a: 'ä', o: 'ö', u: 'ü', au: 'äu', A: 'Ä', O: 'Ö', U: 'Ü', Au: 'Äu' }[m] || m));
-    const base = lemma.replace(/e$/, '');
-    const cands = [lemma + 'e', lemma + 'en', lemma + 'n', lemma + 'er', lemma + 's', uml(lemma) + 'e', uml(lemma) + 'er', lemma, uml(lemma), base + 'en', lemma + 'nen'];
-    const wrong = shuffle(uniq(cands).filter(c => c !== correct && c !== lemma + 'nn' && !/(.)\1\1/.test(c))).slice(0, Adapt.options(eff) - 1);
+    const P = L.pluralOptions(w);
+    const wrong = shuffle(P.wrong).slice(0, Adapt.options(eff) - 1);
     if (wrong.length < 2) return null;
-    const opts = shuffle([correct].concat(wrong));
+    const opts = shuffle([P.correct].concat(wrong));
     return {
       kind: 'choice', qtype: 'plural', label: 'Множественное число', prompt: `<div class="q-word">${deHTML(w)}</div><div class="q-sub">${esc(w.ru)}</div>`,
-      options: opts.map(x => ({ html: 'die ' + esc(x) })), a: opts.indexOf(correct),
+      options: opts.map(x => ({ html: P.show(x) })), a: opts.indexOf(P.correct),
       explain: Explain.plural(w), key: w.key, srs: true, adapt: true, w, sayAfter: w.pl
     };
   },
-  canPlural(w) { return w.t === 'n' && w.pl && w.pl !== '-' && /^die \S+$/.test(w.pl) && !/\(Pl/.test(w.de); },
+  canPlural(w) { return L.canPlural(w); },
+  // слово в примере: ищем начальную форму или (для румынского) форму с артиклем
   gapToken(w) {
     if (!w.ex || w.t === 'phr') return null;
-    const lemma = splitArticle(w.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
-    if (/\s/.test(lemma)) return null;
     const toks = w.ex.split(/\s+/);
-    const i = toks.findIndex(t => t.replace(/[.,!?;:„“"]/g, '').toLowerCase() === lemma.toLowerCase());
-    return i < 0 ? null : { toks, i, lemma: toks[i].replace(/[.,!?;:„“"]/g, '') };
+    const clean = t => t.replace(/[.,!?;:„“"]/g, '').toLowerCase();
+    const forms = L.gapForms(w);
+    for (let k = 0; k < forms.length; k++) {
+      const f = (forms[k] || '').toLowerCase();
+      if (!f || /\s/.test(f)) continue;
+      const i = toks.findIndex(t => clean(t) === f);
+      if (i >= 0) return { toks, i, k, lemma: toks[i].replace(/[.,!?;:„“"]/g, '') };
+    }
+    return null;
   },
   gap(w, pool, eff = Adapt.eff(w)) {
     const g = this.gapToken(w);
     if (!g) return null;
-    const lem = x => splitArticle(x.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
+    const lem = x => L.gapForms(x)[g.k] || L.lemma(x);
     const others = this.distract(w, pool, 'de', 6, eff >= 3).filter(x => !/\s/.test(lem(x)) && lem(x).toLowerCase() !== g.lemma.toLowerCase()).slice(0, Adapt.options(eff) - 1);
     if (others.length < 2) return null;
     const fix = s => /^[A-ZÄÖÜ]/.test(g.lemma) ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -188,7 +185,7 @@ const Q = {
       case 'listen': return this.listen(w, pool, eff);
       case 'type': return this.type(w, eff);
       case 'typeListen': return w.t === 'phr' || w.de.length > 40 ? null : this.type(w, eff, true);
-      case 'article': return w.t === 'n' && splitArticle(w.de).art ? this.article(w) : null;
+      case 'article': return w.t === 'n' && L.gender(w) ? this.article(w) : null;
       case 'plural': return this.canPlural(w) ? this.pluralForms(w, eff) : null;
       case 'gap': return this.gap(w, pool, eff);
       case 'orderEx': return w.ex ? this.order(w.ex, w.exRu, w.key, { srs: true, extra: { w } }) : null;
@@ -234,26 +231,23 @@ const Q = {
 
   // ---- Глаголы ----
   verbQ(v, tense, p) {
-    tense = tense || pick(v.lvl === 'A1' ? ['praes', 'praes', 'perf'] : ['praes', 'praet', 'perf']);
-    if (tense === 'perf') {
-      const parts = v.perf.split(' ');
-      const aux = parts[0], rest = parts.slice(1).join(' ');
-      const answers = aux.includes('/') ? aux.split('/').map(a => a + ' ' + rest) : [v.perf];
-      return { kind: 'input', label: 'Perfekt · er/sie/es', prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)} — напишите вспомогательный глагол и Partizip II</div>`,
-        answers, accepted: this.accepted(`v|${v.inf}|perf|2`), reveal: esc(v.perf), explain: `er ${esc(v.perf)}`, key: `v|${v.inf}|perf|2`, say: 'er ' + v.perf, prefix: 'er',
-        verb: v, tense: 'perf', person: 2, strict: true };
+    const T = L.tenses(v);
+    const t = T.find(x => x.id === (tense || L.pickTense(v))) || T[0];
+    if (t.single) {
+      const sg = t.single, key = `v|${v.inf}|${t.id}|${sg.p}`;
+      return { kind: 'input', label: `${t.label} · ${L.persons[sg.p]}`, prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)}${sg.hint ? ' — ' + sg.hint : ''}</div>`,
+        answers: sg.answers, accepted: this.accepted(key), reveal: sg.reveal, explain: `${esc(sg.prefix)} ${sg.reveal}`, key, say: sg.say, prefix: sg.prefix,
+        verb: v, tense: t.id, person: sg.p, strict: true };
     }
     p = p == null ? rnd(6) : p;
-    const forms = tense === 'praes' ? v.praes : v.praet;
-    const pron = ['ich', 'du', 'er', 'wir', 'ihr', 'sie'][p];
-    return { kind: 'input', label: (tense === 'praes' ? 'Präsens' : 'Präteritum') + ' · ' + PERSONS[p],
+    const pron = L.pron[p];
+    return { kind: 'input', label: t.label + ' · ' + L.persons[p],
       prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)}</div>`,
-      answers: [forms[p]], accepted: this.accepted(`v|${v.inf}|${tense}|${p}`), reveal: `${pron} ${esc(forms[p])}`, explain: this.verbTable(v, tense),
-      key: `v|${v.inf}|${tense}|${p}`, say: pron + ' ' + forms[p], prefix: pron, verb: v, tense, person: p, strict: true };
+      answers: [t.forms[p]], accepted: this.accepted(`v|${v.inf}|${t.id}|${p}`), reveal: `${esc(pron)} ${esc(t.forms[p])}`, explain: this.verbTable(t.forms),
+      key: `v|${v.inf}|${t.id}|${p}`, say: pron + ' ' + t.forms[p], prefix: pron, verb: v, tense: t.id, person: p, strict: true };
   },
-  verbTable(v, tense) {
-    const forms = tense === 'praet' ? v.praet : v.praes;
-    return `<table class="mini"><tbody>${PERSONS.map((p, i) => `<tr><td class="muted">${p}</td><td><b>${esc(forms[i])}</b></td></tr>`).join('')}</tbody></table>`;
+  verbTable(forms) {
+    return `<table class="mini"><tbody>${L.persons.map((p, i) => `<tr><td class="muted">${p}</td><td><b>${esc(forms[i])}</b></td></tr>`).join('')}</tbody></table>`;
   },
 
   // Восстановление вопроса по ключу (для «работы над ошибками»)

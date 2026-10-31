@@ -19,7 +19,7 @@ function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^=
 
 // Нормализация ответа: регистр, пробелы, конечная пунктуация, типографские кавычки
 function norm(s) {
-  return String(s || '').toLowerCase().replace(/[’`´]/g, "'").replace(/[„“”«»"]/g, '')
+  return String(s || '').toLowerCase().replace(/ş/g, 'ș').replace(/ţ/g, 'ț').replace(/[’`´]/g, "'").replace(/[„“”«»"]/g, '')
     .replace(/[.!?,;:…¿¡]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 // Замены для тех, у кого нет немецкой раскладки
@@ -38,14 +38,13 @@ function lev(a, b) {
 }
 // Проверка ввода: 'ok' | 'umlaut' (ae вместо ä) | 'noumlaut' (умлаут пропущен) | 'typo' | 'bad'.
 // strict — без скидки на опечатки (грамматика и спряжение: там одна буква и есть суть задания)
-const plainUml = s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss');
 function checkAnswer(input, answers, strict) {
   const x = norm(input);
   if (!x) return 'bad';
   const list = answers.map(norm);
   if (list.includes(x)) return 'ok';
-  if (list.some(a => deUmlaut(a) === deUmlaut(x))) return 'umlaut';
-  if (list.some(a => /[äöü]/.test(a) && plainUml(a) === plainUml(x))) return 'noumlaut';
+  if (list.some(a => L.translit(a) === L.translit(x))) return 'umlaut';
+  if (list.some(a => L.hasDiacritics(a) && L.plain(a) === L.plain(x))) return 'noumlaut';
   if (!strict && list.some(a => a.length > 4 && lev(a, x) === 1)) return 'typo';
   return 'bad';
 }
@@ -56,14 +55,9 @@ function splitArticle(de) {
   return m ? { art: m[1], lemma: m[2] } : { art: '', lemma: de };
 }
 function artClass(de) { const a = splitArticle(de).art; return a ? 'a-' + a : ''; }
-// Слово с цветным артиклем
-function deHTML(w) {
-  if (w.t === 'n') {
-    const { art, lemma } = splitArticle(w.de);
-    if (art) return `<span class="art a-${art}">${art}</span> ${esc(lemma)}`;
-  }
-  return esc(w.de);
-}
+// Слово с цветом рода (артикль для немецкого, un/o для румынского) — из языкового пакета
+function deHTML(w) { return L.wordHTML(w); }
+function wClass(w) { return L.wordClass(w); }
 function plural(n, one, few, many) {
   const a = Math.abs(n) % 100, b = a % 10;
   if (a > 10 && a < 20) return many;
@@ -74,9 +68,270 @@ function plural(n, one, few, many) {
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1'];
 const LEVEL_NAMES = { A1: 'Начальный', A2: 'Элементарный', B1: 'Средний', B2: 'Выше среднего', C1: 'Продвинутый' };
 
+/* lang/de.js */
+// Языковой пакет: немецкий. Всё, что зависит от языка: артикли, умлауты, спряжение,
+// правила для объяснений ошибок и подписи интерфейса.
+const L = {
+  code: 'de',
+  name: 'Deutsch Tag für Tag',
+  storeKey: 'deutsch.v1',
+  other: [{ flag: 'ro', t: 'Română zi de zi', d: 'Румынский язык — отдельный прогресс', href: 'ro/' }],
+  tts: 'de-DE',
+  voiceRe: /^de(-|_|$)/i,
+  voicePref: /anna|helena|petra|markus|yannick|google/i,
+  chars: ['ä', 'ö', 'ü', 'ß', 'Ä', 'Ö', 'Ü'],
+  persons: ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'],
+  pron: ['ich', 'du', 'er', 'wir', 'ihr', 'sie'],
+  ui: {
+    inLang: 'по-немецки', adjCap: 'Немецкое', langGen: 'немецкого',
+    greet(h) {
+      if (h < 5) return ['Gute Nacht!', 'Доброй ночи'];
+      if (h < 11) return ['Guten Morgen!', 'Доброе утро'];
+      if (h < 18) return ['Guten Tag!', 'Добрый день'];
+      if (h < 23) return ['Guten Abend!', 'Добрый вечер'];
+      return ['Gute Nacht!', 'Доброй ночи'];
+    },
+    praise: ['Richtig!', 'Super!', 'Genau!', 'Toll!', 'Prima!', 'Klasse!'],
+    wrong: ['Nicht ganz', 'Leider falsch'],
+    verdict: pct => pct >= 90 ? 'Ausgezeichnet!' : pct >= 70 ? 'Gut gemacht!' : pct >= 50 ? 'Nicht schlecht!' : 'Weiter üben!',
+    h: { words: 'Wortschatz', grammar: 'Grammatik', tests: 'Prüfungen', more: 'Mehr', verbs: 'Verben', reading: 'Lesen', dialogues: 'Dialoge',
+      phrases: 'Sprachführer', stats: 'Statistik', ach: 'Erfolge', settings: 'Einstellungen', topicFav: 'Favoriten' },
+    testsLead: 'Проверьте себя: тесты по уровням в формате Goethe / telc',
+    placement: 'Einstufungstest',
+    genderMode: { t: 'Der · Die · Das', d: 'Тренажёр артиклей' },
+    genderTest: ['Артикли der · die · das', 'Самая частая ошибка — тренируйте отдельно'],
+    genderQ: 'Какой артикль?',
+    typeNoun: 'Напишите по-немецки с артиклем',
+    voiceTest: 'Hallo! Ich helfe dir, Deutsch zu lernen.',
+    voiceMissing: 'Немецкие голоса не найдены. На iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Немецкий.',
+    missing: ans => `Не хватает умлаута: правильно <b>${esc(ans)}</b>. Умлаут меняет форму и смысл (schon — «уже», schön — «красивый»).`,
+    translitOk: 'Засчитано. Попробуйте писать умлауты: ä ö ü ß',
+    verbTenses: 'Präsens, Präteritum, Perfekt'
+  },
+  // правописание: ae/oe/ue/ss — допустимая замена умлаутов; пропуск умлаута — ошибка
+  translit: s => s.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss'),
+  plain: s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss'),
+  hasDiacritics: s => /[äöü]/.test(s),
+  missingOk: () => false,
+
+  // ---- существительные ----
+  genders: [{ id: 'der', html: 'der', cls: 'a-der' }, { id: 'die', html: 'die', cls: 'a-die' }, { id: 'das', html: 'das', cls: 'a-das' }],
+  gender(w) { return w.t === 'n' ? splitArticle(w.de).art : ''; },
+  lemma(w) { return splitArticle(w.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, ''); },
+  wordHTML(w) {
+    if (w.t === 'n') {
+      const { art, lemma } = splitArticle(w.de);
+      if (art) return `<span class="art a-${art}">${art}</span> ${esc(lemma)}`;
+    }
+    return esc(w.de);
+  },
+  wordClass(w) { const a = this.gender(w); return a ? 'a-' + a : ''; },
+  pluralShort(w) { return w.pl.replace(/^die /, ''); },
+  canPlural(w) { return w.t === 'n' && w.pl && w.pl !== '-' && /^die \S+$/.test(w.pl) && !/\(Pl/.test(w.de); },
+  pluralOptions(w) {
+    const { lemma } = splitArticle(w.de);
+    const correct = w.pl.replace(/^die /, '');
+    const uml = s => s.replace(/(au|a|o|u)(?=[^aouäöü]*$)/i, m => ({ a: 'ä', o: 'ö', u: 'ü', au: 'äu', A: 'Ä', O: 'Ö', U: 'Ü', Au: 'Äu' }[m] || m));
+    const base = lemma.replace(/e$/, '');
+    const cands = [lemma + 'e', lemma + 'en', lemma + 'n', lemma + 'er', lemma + 's', uml(lemma) + 'e', uml(lemma) + 'er', lemma, uml(lemma), base + 'en', lemma + 'nen'];
+    return { correct, wrong: uniq(cands).filter(c => c !== correct && c !== lemma + 'nn' && !/(.)\1\1/.test(c)), show: x => 'die ' + esc(x) };
+  },
+  // формы, которые могут встретиться в примере (для упражнения «пропуск»)
+  gapForms(w) { return [this.lemma(w)]; },
+  typeHint(w) {
+    const { art, lemma } = splitArticle(w.de.replace(/\s*\(.*?\)/g, ''));
+    return `Подсказка: ${art ? art + ' ' : ''}${esc(lemma.charAt(0))}${'·'.repeat(Math.max(0, lemma.length - 1))} (${lemma.length} букв)`;
+  },
+  // все допустимые написания ответа
+  variants(de) {
+    const out = new Set([de]);
+    const noPar = de.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    out.add(noPar);
+    const noCase = noPar.replace(/\s*\+\s*(Akk|Dat|Gen)\.?/gi, '').trim();
+    out.add(noCase);
+    out.add(noCase.replace(/\b(etw|jdn|jdm|jds)\.\s*/g, '').replace(/\s+/g, ' ').trim());
+    const m = /^(der|die|das)\/(der|die|das) (.+)$/.exec(noPar);
+    if (m) { out.add(m[1] + ' ' + m[3]); out.add(m[2] + ' ' + m[3]); }
+    const parts = noPar.split(/\s*(?:\/|,|;)\s*/).filter(Boolean);
+    if (parts.length > 1 && parts.every(p => /^(der|die|das) /.test(p))) parts.forEach(p => out.add(p));
+    return Array.from(out).filter(Boolean);
+  },
+  // ответы, которые засчитываются с пометкой
+  soft(answers) {
+    return answers.filter(a => /^sich /.test(a)).map(a => ({ a: a.replace(/^sich /, ''), note: `Засчитано, но глагол возвратный: <b>${esc(a)}</b>` }));
+  },
+  // поиск слова из текста в словаре
+  lookupTries(t) { return [t.replace(/(en|n|e|s|er|es|em)$/, ''), t.replace(/e$/, ''), t + 'en', t + 'n']; },
+  isTarget(txt) { return /[äöüßÄÖÜ]|\b(der|die|das|ich|du|er|sie|wir|ihr|ist|sind|habe|hat|nicht|ein|eine|den|dem|des)\b/i.test(txt) && !/[а-яё]/i.test(txt); },
+
+  // ---- глаголы ----
+  verbForms(v) { return v.praes.concat(v.praet); },
+  verbSummary(v) { return v.perf; },
+  tenses(v) {
+    const parts = v.perf.split(' ');
+    const aux = parts[0], rest = parts.slice(1).join(' ');
+    return [
+      { id: 'praes', label: 'Präsens', forms: v.praes },
+      { id: 'praet', label: 'Präteritum', forms: v.praet },
+      { id: 'perf', label: 'Perfekt', single: { p: 2, prefix: 'er', answers: aux.includes('/') ? aux.split('/').map(a => a + ' ' + rest) : [v.perf],
+        reveal: esc(v.perf), say: 'er ' + v.perf, hint: 'напишите вспомогательный глагол и Partizip II' } }
+    ];
+  },
+  pickTense(v) { return pick(v.lvl === 'A1' ? ['praes', 'praes', 'perf'] : ['praes', 'praet', 'perf']); },
+  verbView(v) {
+    return `<div class="table-wrap"><table class="conj"><thead><tr><th></th><th>Präsens</th><th>Präteritum</th></tr></thead><tbody>
+      ${this.persons.map((x, i) => `<tr><td class="muted">${x}</td><td data-say="${esc(this.pron[i] + ' ' + v.praes[i])}"><b>${esc(v.praes[i])}</b></td><td data-say="${esc(this.pron[i] + ' ' + v.praet[i])}">${esc(v.praet[i])}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="kv"><div data-say="er ${esc(v.perf)}"><span>Perfekt</span><b>er ${esc(v.perf)}</b></div>
+      ${v.imp ? `<div data-say="${esc(v.imp)}"><span>Imperativ</span><b>${esc(v.imp)}</b></div>` : ''}</div>`;
+  },
+  verbAll(v) { return [0, 1, 2, 3, 4, 5].map(p => ['praes', p]).concat([['praet', 0], ['praet', 3], ['perf', 2]]); },
+
+  // если ответ — форма с другим артиклем или без него
+  inputNoun(w, gn) {
+    const { art, lemma } = splitArticle(w.de);
+    const u = splitArticle(gn.replace(/^(der|die|das)(?=\S)/, '$1 '));
+    if (norm(u.lemma) === norm(lemma) || gn === norm(lemma)) {
+      return (u.art ? `Слово верное, но артикль другой: <b class="a-${art}">${art}</b> ${esc(lemma)}` : `Не хватает артикля: <b class="a-${art}">${art}</b> ${esc(lemma)}. Существительные учим сразу с артиклем.`) + this.explain.gender(w);
+    }
+    return '';
+  },
+
+  // ---- правила для объяснений ошибок ----
+  explain: {
+  gender(w) {
+    const { art, lemma } = splitArticle(w.de);
+    if (!art) return '';
+    const l = lemma.toLowerCase();
+    const R = [
+      [/(ung|heit|keit|schaft|ion|tät|ik|ur|ei|enz|anz|ie)$/, 'die', 'Слова на -ung, -heit, -keit, -schaft, -ion, -tät, -ik, -ei, -ie почти всегда женского рода'],
+      [/(chen|lein)$/, 'das', 'Уменьшительные на -chen и -lein — всегда das'],
+      [/(ment|um|ma|nis|tum)$/, 'das', 'Слова на -ment, -um, -tum и многие на -nis — среднего рода'],
+      [/^ge.*e$/, 'das', 'Собирательные слова на Ge-…-e обычно среднего рода (das Gemüse, das Gebäude)'],
+      [/(ling|ismus|ich|ig|or|ist|ant|ent)$/, 'der', 'Суффиксы -ling, -ismus, -ig, -or, -ist, -ant обычно мужского рода'],
+      [/(er)$/, 'der', 'Слова на -er (профессии, инструменты) часто мужского рода'],
+      [/e$/, 'die', 'Около 90% слов на -e — женского рода']
+    ];
+    const lines = [];
+    // сложное слово: род по последней части
+    for (let k = 1; k < lemma.length - 2; k++) {
+      const tail = lemma.slice(k).toLowerCase();
+      const ta = C.nounArt[tail];
+      if (ta && /^[a-zäöüß]/i.test(tail)) {
+        const tl = tail.charAt(0).toUpperCase() + tail.slice(1);
+        lines.push(ta === art ? `Сложное слово: род берётся от последней части — <b class="a-${ta}">${ta}</b> ${esc(tl)} → <b class="a-${art}">${art}</b> ${esc(lemma)}`
+          : `Обычно род сложного слова берётся от последней части (${ta} ${esc(tl)}), но здесь — <b class="a-${art}">${art}</b>`);
+        break;
+      }
+    }
+    if (!lines.length) {
+      const hit = R.find(([re]) => re.test(l));
+      if (hit) lines.push(hit[1] === art ? hit[2] : `${hit[2]}, но <b>${esc(lemma)}</b> — исключение: <b class="a-${art}">${art}</b>`);
+      else if (w.topic === 'calendar' && art === 'der') lines.push('Дни недели, месяцы и времена года — мужского рода');
+      else lines.push(`Здесь правила нет — запомните слово вместе с артиклем и цветом: <b class="a-${art}">${art}</b> ${esc(lemma)} (${({ der: 'синий — мужской', die: 'красный — женский', das: 'зелёный — средний' })[art]} род)`);
+    }
+    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+  },
+  plural(w) {
+    const { art, lemma } = splitArticle(w.de);
+    const pl = (w.pl || '').replace(/^die /, '');
+    const plain = s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/äu/g, 'au');
+    const um = pl !== lemma && plain(pl).startsWith(plain(lemma)) && !pl.startsWith(lemma);
+    let suf = '';
+    if (pl === lemma) suf = '';
+    else for (const s of ['nen', 'se', 'en', 'er', 'n', 'e', 's']) {
+      if (pl.endsWith(s) && plain(pl.slice(0, -s.length)) === plain(lemma)) { suf = s; break; }
+    }
+    if (!suf && pl !== lemma && plain(pl) !== plain(lemma)) {
+      return `<div class="why"><div>💡 ${esc(lemma)} → <b>${esc(pl)}</b>: особая форма множественного числа — её нужно запомнить.</div></div>`;
+    }
+    const RULE = {
+      '': 'Слова мужского и среднего рода на -er, -el, -en, а также -chen и -lein во множественном числе не меняются',
+      n: art === 'der' ? 'Слова мужского рода на -e (n-склонение: der Junge, der Kollege) получают -n' : 'Почти все слова женского рода получают -(e)n, а на -e — просто -n',
+      en: 'Слова женского рода (особенно на -ung, -heit, -keit, -ion, -schaft) получают -en',
+      nen: 'Женские формы на -in получают -nen: die Lehrerin → die Lehrerinnen',
+      e: art === 'der' ? 'Многие слова мужского рода получают -e, часто с умлаутом: der Stuhl → die Stühle' : 'Окончание -e: многие односложные слова (der Tag → die Tage)',
+      er: 'Односложные слова среднего рода часто получают -er с умлаутом: das Buch → die Bücher',
+      s: 'Слова на гласную (кроме -e), сокращения и заимствования получают -s: das Auto → die Autos',
+      se: 'Слова на -nis получают -se: das Ergebnis → die Ergebnisse'
+    };
+    const kind = (suf ? `окончание -${suf}` : 'без окончания') + (um ? ' + умлаут' : '');
+    return `<div class="why"><div>💡 ${esc(lemma)} → <b>${esc(pl)}</b>: ${kind}.</div><div class="muted">${RULE[suf]}.</div></div>`;
+  },
+  verb(v, tense, p, given) {
+    const PR = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
+    const lines = [];
+    const gn = norm(given || '');
+    const forms = tense === 'praet' ? v.praet : v.praes;
+    if (tense !== 'perf' && gn) {
+      const j = forms.findIndex(f => norm(f) === gn);
+      if (j >= 0 && j !== p) lines.push(`«${esc(given)}» — это форма для <b>${PR[j]}</b>, а нужна для <b>${PR[p]}</b>.`);
+      const other = tense === 'praes' ? v.praet : v.praes;
+      if (other.some(f => norm(f) === gn)) lines.push(`«${esc(given)}» — форма ${tense === 'praes' ? 'прошедшего времени (Präteritum)' : 'настоящего времени (Präsens)'}.`);
+    }
+    const stem = v.inf.replace(/^sich /, '').split(' ')[0].replace(/(e?n)$/, '');
+    if (tense === 'praes') {
+      if (v.type === 'modal' || /^(sein|haben|werden|wissen)$/.test(v.inf)) lines.push(`${esc(v.inf)} — неправильный глагол, его формы нужно запомнить.`);
+      else {
+        lines.push('Окончания Präsens: ich -e, du -st, er/sie/es -t, wir -en, ihr -t, sie/Sie -en.');
+        const duStem = v.praes[1].split(' ')[0].replace(/(e?st|t)$/, '');
+        if ((p === 1 || p === 2) && duStem !== stem && !stem.startsWith(duStem)) lines.push(`У этого глагола в формах du и er/sie/es меняется корень: ${esc(v.inf)} → du ${esc(v.praes[1])}, er ${esc(v.praes[2])}.`);
+        if (/[td]$/.test(stem) && (p === 1 || p === 2 || p === 4)) lines.push('Основа на -t/-d: перед окончанием добавляется -e- (du arbeitest, er findet).');
+      }
+      if (v.sep) lines.push(`Отделяемая приставка уходит в конец: ich ${esc(v.praes[0])}.`);
+    } else if (tense === 'praet') {
+      if (v.type === 'weak') lines.push('Слабый глагол: в Präteritum добавляется -te-: machen → machte. У ich и er/sie/es формы совпадают.');
+      else lines.push(`Сильный/неправильный глагол: в Präteritum меняется корень (${esc(v.inf)} → ${esc(v.praet[0])}). У ich и er/sie/es окончания нет.`);
+      if (v.sep) lines.push('Отделяемая приставка стоит в конце.');
+    } else {
+      const aux = v.perf.split(' ')[0];
+      const part = v.perf.split(' ').slice(1).join(' ');
+      if (/ist/.test(aux)) lines.push('Perfekt с <b>sein</b>: так образуют глаголы движения и изменения состояния (gehen, fahren, aufstehen, werden), а также sein и bleiben.');
+      else lines.push('Perfekt с <b>haben</b>: так образует большинство глаголов, в том числе все возвратные и с прямым дополнением.');
+      if (/ieren$/.test(v.inf)) lines.push(`Глаголы на -ieren образуют Partizip II без ge-: ${esc(part)}.`);
+      else if (/^(be|ver|er|ent|emp|ge|zer|miss)/.test(v.inf.replace(/^sich /, '')) && !/^ge/.test(part)) lines.push(`Неотделяемая приставка — без ge-: ${esc(part)}.`);
+      else if (v.sep) lines.push(`Отделяемая приставка: ge- встаёт внутрь: ${esc(part)}.`);
+      else if (/t$/.test(part)) lines.push(`Слабый глагол: Partizip II по схеме ge-…-t (${esc(part)}).`);
+      else lines.push(`Сильный глагол: Partizip II на -en, часто с другой гласной (${esc(part)}) — запомните.`);
+    }
+    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+  },
+  order(q, given) {
+    const toks = q.tokens.map(t => t.replace(/[.,!?;:„“"]/g, ''));
+    const low = toks.map(t => t.toLowerCase());
+    const g = (given || []).map(t => t.replace(/[.,!?;:„“"]/g, ''));
+    const lines = [];
+    const k = g.findIndex((t, i) => t !== toks[i]);
+    if (k >= 0 && g.length) lines.push(`Расхождение с ${k + 1}-го слова: у вас «${esc(g[k] || '…')}», а нужно «${esc(toks[k])}».`);
+    const SUB = ['weil', 'dass', 'wenn', 'ob', 'obwohl', 'als', 'damit', 'bevor', 'nachdem', 'während', 'bis', 'seit', 'seitdem', 'sobald', 'falls', 'sodass', 'indem', 'solange', 'ehe'];
+    const W = ['wer', 'was', 'wo', 'wann', 'wie', 'warum', 'woher', 'wohin', 'welcher', 'welche', 'welches', 'wen', 'wem', 'wieso', 'weshalb'];
+    const sub = low.find((t, i) => SUB.includes(t) && i < low.length - 1);
+    const rel = q.tokens.some((t, i) => /,$/.test(t) && ['der', 'die', 'das', 'den', 'dem', 'deren', 'dessen', 'denen'].includes(low[i + 1]));
+    if (sub) lines.push(`В придаточном предложении после «${esc(sub)}» спрягаемый глагол стоит в самом конце.`);
+    if (rel) lines.push('В относительном придаточном (после der/die/das через запятую) глагол тоже уходит в конец.');
+    if (q.tail === '?') {
+      if (W.includes(low[0]) || W.includes(low[1])) lines.push('Вопрос с вопросительным словом: сразу за ним идёт глагол, потом подлежащее.');
+      else lines.push('Вопрос без вопросительного слова (ответ «да/нет») начинается с глагола.');
+    } else if (!sub || low.indexOf(sub) > 0) {
+      lines.push('В обычном предложении спрягаемый глагол стоит на 2-м месте. Если первым идёт не подлежащее (например, «Heute» или «Am Montag»), подлежащее встаёт после глагола.');
+    }
+    const AUX = /^(kann|kannst|können|könnt|muss|musst|müssen|müsst|will|willst|wollen|wollt|darf|darfst|dürfen|dürft|soll|sollst|sollen|sollt|möchte|möchtest|möchten|möchtet|habe|hast|hat|haben|habt|bin|bist|ist|sind|seid|werde|wirst|wird|werden|werdet|hatte|hattest|hatten|war|warst|waren|würde|würdest|würden)$/;
+    const last = low[low.length - 1] || '';
+    const lastTok = toks[toks.length - 1] || '';
+    const verbLike = /^[a-zäöü]/.test(lastTok) && (/en$/.test(last) || /^ge.+(t|en)$/.test(last)) &&
+      !/^(offen|trocken|eben|oben|unten|morgen|einen|keinen|meinen|deinen|seinen|ihren|unseren|diesen|den|wen|allen|vielen)$/.test(last);
+    if (low.slice(0, -1).some(t => AUX.test(t)) && verbLike && !sub) lines.push(`Второй глагол (инфинитив или Partizip II) — «${esc(toks[toks.length - 1])}» — стоит в конце: так получается «рамка».`);
+    if (['an', 'auf', 'aus', 'ein', 'mit', 'zu', 'ab', 'vor', 'nach', 'zurück', 'fern', 'los', 'weg', 'her', 'hin', 'fest', 'statt', 'teil', 'kennen'].includes(last) && !sub)
+      lines.push(`Отделяемая приставка «${esc(toks[toks.length - 1])}» стоит в самом конце предложения.`);
+    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+  }
+  }
+};
+function plainVowels(s) { return String(s).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u'); }
+
 /* js/store.js */
 // Прогресс пользователя: localStorage, всё в try/catch
-const STORE_KEY = 'deutsch.v1';
+const STORE_KEY = L.storeKey;
 const DEFAULT_STATE = () => ({
   v: 1,
   created: Date.now(),
@@ -217,7 +472,7 @@ const Speech = {
   init() {
     if (!this.ok) return;
     const load = () => {
-      this.voices = speechSynthesis.getVoices().filter(v => /^de(-|_|$)/i.test(v.lang));
+      this.voices = speechSynthesis.getVoices().filter(v => L.voiceRe.test(v.lang));
     };
     load();
     speechSynthesis.onvoiceschanged = load;
@@ -226,8 +481,8 @@ const Speech = {
   voice() {
     const s = Store.state.settings;
     if (s.voice) { const v = this.voices.find(v => v.voiceURI === s.voice); if (v) return v; }
-    const score = v => (/premium|enhanced|neural|natural/i.test(v.name) ? 4 : 0) + (/de-DE/i.test(v.lang) ? 2 : 0) +
-      (/anna|helena|petra|markus|yannick|google/i.test(v.name) ? 1 : 0);
+    const score = v => (/premium|enhanced|neural|natural/i.test(v.name) ? 4 : 0) + (v.lang.replace('_', '-') === L.tts ? 2 : 0) +
+      (L.voicePref.test(v.name) ? 1 : 0);
     return this.voices.slice().sort((a, b) => score(b) - score(a))[0] || null;
   },
   // queue=true — не прерывать текущую речь
@@ -236,7 +491,7 @@ const Speech = {
     return new Promise(res => {
       if (!opts.queue) speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(String(text).replace(/\s*\(.*?\)\s*/g, ' ').replace(/\+ ?(Akk|Dat|Gen)\.?/g, ''));
-      u.lang = 'de-DE';
+      u.lang = L.tts;
       const v = this.voice(); if (v) u.voice = v;
       u.rate = (opts.rate || Store.state.settings.rate || 0.9) * (opts.slow ? 0.7 : 1);
       u.pitch = opts.pitch || 1;
@@ -323,6 +578,14 @@ const C = {
   words: [], byKey: {}, topics: [], topicById: {}, lex: {}, nounArt: {}, byDe: {},
   tests: [], testByKey: {}, gex: {}, verbs: [], verbByInf: {},
   init() {
+    // словари без прототипа: слова вроде «constructor» не должны совпадать со служебными свойствами
+    for (const k of ['byKey', 'topicById', 'lex', 'nounArt', 'byDe', 'testByKey', 'gex', 'verbByInf']) this[k] = Object.create(null);
+    // в румынских данных текст на изучаемом языке лежит в поле ro — внутри приложения это поле de
+    const fromRo = x => { if (x && x.ro !== undefined && x.de === undefined) x.de = x.ro; };
+    DE.topics.forEach(t => t.words.forEach(fromRo));
+    DE.dialogues.forEach(d => (d.lines || []).forEach(fromRo));
+    DE.phrases.forEach(p => (p.items || []).forEach(fromRo));
+    DE.reading.forEach(r => (r.glossary || []).forEach(fromRo));
     const lvlOrder = l => LEVELS.indexOf(l);
     this.topics = DE.topics.slice().sort((a, b) => lvlOrder(a.level) - lvlOrder(b.level));
     for (const t of this.topics) {
@@ -336,10 +599,11 @@ const C = {
         w.meanStrict = this.meanings(w.ru, false);
         const nd = norm(w.de);
         (this.byDe[nd] = this.byDe[nd] || []).push(w);
-        const { art: wart, lemma } = splitArticle(w.de);
+        const wart = L.gender(w), lemma = L.lemma(w);
         if (w.t === 'n' && wart && !/\s/.test(lemma)) this.nounArt[lemma.toLowerCase()] = wart;
-        const lk = lemma.toLowerCase().replace(/^sich /, '').replace(/ \+.*$/, '');
+        const lk = lemma.toLowerCase();
         if (!this.lex[lk]) this.lex[lk] = w;
+        (L.gapForms(w) || []).forEach(f => { const k = String(f || '').toLowerCase(); if (k && !this.lex[k]) this.lex[k] = w; });
       });
     }
     // Разговорник как «слова» для тренировки
@@ -355,12 +619,12 @@ const C = {
     this.tests = DE.tests;
     DE.grammar.forEach(g => g.exercises.forEach((x, i) => { x.key = `g|${g.id}|${i}`; x.lesson = g.id; this.gex[x.key] = x; }));
     this.grammar = DE.grammar.slice().sort((a, b) => lvlOrder(a.level) - lvlOrder(b.level));
-    this.verbs = DE.verbs.slice().sort((a, b) => lvlOrder(a.lvl) - lvlOrder(b.lvl) || a.inf.localeCompare(b.inf, 'de'));
+    this.verbs = DE.verbs.slice().sort((a, b) => lvlOrder(a.lvl) - lvlOrder(b.lvl) || a.inf.localeCompare(b.inf, L.code));
     this.verbs.forEach(v => {
       v.key = 'v|' + v.inf; this.verbByInf[v.inf] = v;
-      const lk = v.inf.replace(/^sich /, '').toLowerCase();
+      const lk = v.inf.replace(/^(sich|a se|a)\s+/, '').toLowerCase();
       if (!this.lex[lk]) this.lex[lk] = { de: v.inf, ru: v.ru, t: 'v' };
-      v.praes.concat(v.praet).forEach(f => { const k = f.split(' ')[0].toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: v.inf, ru: v.ru, t: 'v', form: f }; });
+      L.verbForms(v).forEach(f => { const k = f.split(' ')[0].toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: v.inf, ru: v.ru, t: 'v', form: f }; });
     });
     for (const r of DE.reading) (r.glossary || []).forEach(g => { const k = g.de.toLowerCase(); if (!this.lex[k]) this.lex[k] = { de: g.de, ru: g.ru }; });
   },
@@ -391,20 +655,8 @@ const C = {
     }
     return out;
   },
-  // Все допустимые написания немецкого ответа
-  variants(de) {
-    const out = new Set([de]);
-    const noPar = de.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
-    out.add(noPar);
-    const noCase = noPar.replace(/\s*\+\s*(Akk|Dat|Gen)\.?/gi, '').trim();
-    out.add(noCase);
-    out.add(noCase.replace(/\b(etw|jdn|jdm|jds)\.\s*/g, '').replace(/\s+/g, ' ').trim());
-    const m = /^(der|die|das)\/(der|die|das) (.+)$/.exec(noPar);
-    if (m) { out.add(m[1] + ' ' + m[3]); out.add(m[2] + ' ' + m[3]); }
-    const parts = noPar.split(/\s*(?:\/|,|;)\s*/).filter(Boolean);
-    if (parts.length > 1 && parts.every(p => /^(der|die|das) /.test(p))) parts.forEach(p => out.add(p));
-    return Array.from(out).filter(Boolean);
-  },
+  // Все допустимые написания ответа — правила в языковом пакете
+  variants(de) { return L.variants(de); },
   topicWords(id) {
     if (id === 'fav') return Object.keys(Store.state.fav).map(k => this.byKey[k]).filter(Boolean);
     if (id && id.startsWith('ph:')) { const p = DE.phrases.find(p => 'ph:' + p.id === id); return p ? p.words : []; }
@@ -420,10 +672,10 @@ const C = {
   },
   // Поиск перевода слова из текста
   lookup(token) {
-    const t = token.toLowerCase().replace(/[^a-zäöüß-]/gi, '');
+    const t = token.toLowerCase().replace(/[^a-zäöüßăâîșțş ţ-]/gi, '').replace(/ş/g, 'ș').replace(/ţ/g, 'ț');
     if (!t) return null;
     if (this.lex[t]) return this.lex[t];
-    const tries = [t.replace(/(en|n|e|s|er|es|em)$/, ''), t.replace(/e$/, ''), t + 'en', t + 'n'];
+    const tries = L.lookupTries(t);
     for (const x of tries) if (this.lex[x]) return this.lex[x];
     return null;
   },
@@ -527,68 +779,11 @@ const Explain = {
     return `<div class="dif"><div><span class="muted">Ваш ответ</span><b class="dif-g">${d.g}</b></div><div><span class="muted">Правильно</span><b class="dif-c">${d.c}</b></div></div>`;
   },
 
-  // ---------- род существительного ----------
-  gender(w) {
-    const { art, lemma } = splitArticle(w.de);
-    if (!art) return '';
-    const l = lemma.toLowerCase();
-    const R = [
-      [/(ung|heit|keit|schaft|ion|tät|ik|ur|ei|enz|anz|ie)$/, 'die', 'Слова на -ung, -heit, -keit, -schaft, -ion, -tät, -ik, -ei, -ie почти всегда женского рода'],
-      [/(chen|lein)$/, 'das', 'Уменьшительные на -chen и -lein — всегда das'],
-      [/(ment|um|ma|nis|tum)$/, 'das', 'Слова на -ment, -um, -tum и многие на -nis — среднего рода'],
-      [/^ge.*e$/, 'das', 'Собирательные слова на Ge-…-e обычно среднего рода (das Gemüse, das Gebäude)'],
-      [/(ling|ismus|ich|ig|or|ist|ant|ent)$/, 'der', 'Суффиксы -ling, -ismus, -ig, -or, -ist, -ant обычно мужского рода'],
-      [/(er)$/, 'der', 'Слова на -er (профессии, инструменты) часто мужского рода'],
-      [/e$/, 'die', 'Около 90% слов на -e — женского рода']
-    ];
-    const lines = [];
-    // сложное слово: род по последней части
-    for (let k = 1; k < lemma.length - 2; k++) {
-      const tail = lemma.slice(k).toLowerCase();
-      const ta = C.nounArt[tail];
-      if (ta && /^[a-zäöüß]/i.test(tail)) {
-        const tl = tail.charAt(0).toUpperCase() + tail.slice(1);
-        lines.push(ta === art ? `Сложное слово: род берётся от последней части — <b class="a-${ta}">${ta}</b> ${esc(tl)} → <b class="a-${art}">${art}</b> ${esc(lemma)}`
-          : `Обычно род сложного слова берётся от последней части (${ta} ${esc(tl)}), но здесь — <b class="a-${art}">${art}</b>`);
-        break;
-      }
-    }
-    if (!lines.length) {
-      const hit = R.find(([re]) => re.test(l));
-      if (hit) lines.push(hit[1] === art ? hit[2] : `${hit[2]}, но <b>${esc(lemma)}</b> — исключение: <b class="a-${art}">${art}</b>`);
-      else if (w.topic === 'calendar' && art === 'der') lines.push('Дни недели, месяцы и времена года — мужского рода');
-      else lines.push(`Здесь правила нет — запомните слово вместе с артиклем и цветом: <b class="a-${art}">${art}</b> ${esc(lemma)} (${({ der: 'синий — мужской', die: 'красный — женский', das: 'зелёный — средний' })[art]} род)`);
-    }
-    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
-  },
-
-  // ---------- множественное число ----------
-  plural(w) {
-    const { art, lemma } = splitArticle(w.de);
-    const pl = (w.pl || '').replace(/^die /, '');
-    const plain = s => s.replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/äu/g, 'au');
-    const um = pl !== lemma && plain(pl).startsWith(plain(lemma)) && !pl.startsWith(lemma);
-    let suf = '';
-    if (pl === lemma) suf = '';
-    else for (const s of ['nen', 'se', 'en', 'er', 'n', 'e', 's']) {
-      if (pl.endsWith(s) && plain(pl.slice(0, -s.length)) === plain(lemma)) { suf = s; break; }
-    }
-    if (!suf && pl !== lemma && plain(pl) !== plain(lemma)) {
-      return `<div class="why"><div>💡 ${esc(lemma)} → <b>${esc(pl)}</b>: особая форма множественного числа — её нужно запомнить.</div></div>`;
-    }
-    const RULE = {
-      '': 'Слова мужского и среднего рода на -er, -el, -en, а также -chen и -lein во множественном числе не меняются',
-      n: art === 'der' ? 'Слова мужского рода на -e (n-склонение: der Junge, der Kollege) получают -n' : 'Почти все слова женского рода получают -(e)n, а на -e — просто -n',
-      en: 'Слова женского рода (особенно на -ung, -heit, -keit, -ion, -schaft) получают -en',
-      nen: 'Женские формы на -in получают -nen: die Lehrerin → die Lehrerinnen',
-      e: art === 'der' ? 'Многие слова мужского рода получают -e, часто с умлаутом: der Stuhl → die Stühle' : 'Окончание -e: многие односложные слова (der Tag → die Tage)',
-      er: 'Односложные слова среднего рода часто получают -er с умлаутом: das Buch → die Bücher',
-      s: 'Слова на гласную (кроме -e), сокращения и заимствования получают -s: das Auto → die Autos',
-      se: 'Слова на -nis получают -se: das Ergebnis → die Ergebnisse'
-    };
-    const kind = (suf ? `окончание -${suf}` : 'без окончания') + (um ? ' + умлаут' : '');
-    return `<div class="why"><div>💡 ${esc(lemma)} → <b>${esc(pl)}</b>: ${kind}.</div><div class="muted">${RULE[suf]}.</div></div>`;
-  },
+  // правила зависят от языка — они в языковом пакете (lang/*.js)
+  gender(w) { return L.explain.gender(w); },
+  plural(w) { return L.explain.plural(w); },
+  verb(v, tense, p, given) { return L.explain.verb(v, tense, p, given); },
+  order(q, given) { return L.explain.order(q, given); },
 
   // ---------- выбор варианта ----------
   choice(q, i) {
@@ -613,16 +808,8 @@ const Explain = {
     if (q.w) {
       const w = q.w;
       const gn = norm(given);
-      const other = (C.byDe[gn] || [])[0] || C.words.find(x => norm(splitArticle(x.de).lemma) === gn && x !== w);
-      if (q.nounCheck) {
-        const { art, lemma } = splitArticle(w.de);
-        const u = splitArticle(gn.replace(/^(der|die|das)(?=\S)/, '$1 '));
-        if (norm(u.lemma) === norm(lemma) || gn === norm(lemma)) {
-          out.push(u.art ? `Слово верное, но артикль другой: <b class="a-${art}">${art}</b> ${esc(lemma)}` : `Не хватает артикля: <b class="a-${art}">${art}</b> ${esc(lemma)}. Существительные учим сразу с артиклем.`);
-          out.push(this.gender(w));
-          return out.join('');
-        }
-      }
+      const other = (C.byDe[gn] || [])[0] || C.words.find(x => norm(L.lemma(x)) === gn && x !== w);
+      if (w.t === 'n') { const n = L.inputNoun(w, gn); if (n) return n; }
       if (other && other !== w) out.push(`<div class="why"><div>${deHTML(other)} — это «${esc(other.ru)}». Здесь нужно «${esc(w.ru)}».</div></div>`);
       out.push(this.diffBlock(given, q.answers[0]));
       if (w.t === 'n') out.push(this.gender(w));
@@ -630,90 +817,17 @@ const Explain = {
     }
     if (q.verb) return this.diffBlock(given, q.answers[0]) + this.verb(q.verb, q.tense, q.person, given);
     return this.diffBlock(given, q.answers[0]);
-  },
-
-  // ---------- спряжение ----------
-  verb(v, tense, p, given) {
-    const PR = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
-    const lines = [];
-    const gn = norm(given || '');
-    const forms = tense === 'praet' ? v.praet : v.praes;
-    if (tense !== 'perf' && gn) {
-      const j = forms.findIndex(f => norm(f) === gn);
-      if (j >= 0 && j !== p) lines.push(`«${esc(given)}» — это форма для <b>${PR[j]}</b>, а нужна для <b>${PR[p]}</b>.`);
-      const other = tense === 'praes' ? v.praet : v.praes;
-      if (other.some(f => norm(f) === gn)) lines.push(`«${esc(given)}» — форма ${tense === 'praes' ? 'прошедшего времени (Präteritum)' : 'настоящего времени (Präsens)'}.`);
-    }
-    const stem = v.inf.replace(/^sich /, '').split(' ')[0].replace(/(e?n)$/, '');
-    if (tense === 'praes') {
-      if (v.type === 'modal' || /^(sein|haben|werden|wissen)$/.test(v.inf)) lines.push(`${esc(v.inf)} — неправильный глагол, его формы нужно запомнить.`);
-      else {
-        lines.push('Окончания Präsens: ich -e, du -st, er/sie/es -t, wir -en, ihr -t, sie/Sie -en.');
-        const duStem = v.praes[1].split(' ')[0].replace(/(e?st|t)$/, '');
-        if ((p === 1 || p === 2) && duStem !== stem && !stem.startsWith(duStem)) lines.push(`У этого глагола в формах du и er/sie/es меняется корень: ${esc(v.inf)} → du ${esc(v.praes[1])}, er ${esc(v.praes[2])}.`);
-        if (/[td]$/.test(stem) && (p === 1 || p === 2 || p === 4)) lines.push('Основа на -t/-d: перед окончанием добавляется -e- (du arbeitest, er findet).');
-      }
-      if (v.sep) lines.push(`Отделяемая приставка уходит в конец: ich ${esc(v.praes[0])}.`);
-    } else if (tense === 'praet') {
-      if (v.type === 'weak') lines.push('Слабый глагол: в Präteritum добавляется -te-: machen → machte. У ich и er/sie/es формы совпадают.');
-      else lines.push(`Сильный/неправильный глагол: в Präteritum меняется корень (${esc(v.inf)} → ${esc(v.praet[0])}). У ich и er/sie/es окончания нет.`);
-      if (v.sep) lines.push('Отделяемая приставка стоит в конце.');
-    } else {
-      const aux = v.perf.split(' ')[0];
-      const part = v.perf.split(' ').slice(1).join(' ');
-      if (/ist/.test(aux)) lines.push('Perfekt с <b>sein</b>: так образуют глаголы движения и изменения состояния (gehen, fahren, aufstehen, werden), а также sein и bleiben.');
-      else lines.push('Perfekt с <b>haben</b>: так образует большинство глаголов, в том числе все возвратные и с прямым дополнением.');
-      if (/ieren$/.test(v.inf)) lines.push(`Глаголы на -ieren образуют Partizip II без ge-: ${esc(part)}.`);
-      else if (/^(be|ver|er|ent|emp|ge|zer|miss)/.test(v.inf.replace(/^sich /, '')) && !/^ge/.test(part)) lines.push(`Неотделяемая приставка — без ge-: ${esc(part)}.`);
-      else if (v.sep) lines.push(`Отделяемая приставка: ge- встаёт внутрь: ${esc(part)}.`);
-      else if (/t$/.test(part)) lines.push(`Слабый глагол: Partizip II по схеме ge-…-t (${esc(part)}).`);
-      else lines.push(`Сильный глагол: Partizip II на -en, часто с другой гласной (${esc(part)}) — запомните.`);
-    }
-    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
-  },
-
-  // ---------- порядок слов ----------
-  order(q, given) {
-    const toks = q.tokens.map(t => t.replace(/[.,!?;:„“"]/g, ''));
-    const low = toks.map(t => t.toLowerCase());
-    const g = (given || []).map(t => t.replace(/[.,!?;:„“"]/g, ''));
-    const lines = [];
-    const k = g.findIndex((t, i) => t !== toks[i]);
-    if (k >= 0 && g.length) lines.push(`Расхождение с ${k + 1}-го слова: у вас «${esc(g[k] || '…')}», а нужно «${esc(toks[k])}».`);
-    const SUB = ['weil', 'dass', 'wenn', 'ob', 'obwohl', 'als', 'damit', 'bevor', 'nachdem', 'während', 'bis', 'seit', 'seitdem', 'sobald', 'falls', 'sodass', 'indem', 'solange', 'ehe'];
-    const W = ['wer', 'was', 'wo', 'wann', 'wie', 'warum', 'woher', 'wohin', 'welcher', 'welche', 'welches', 'wen', 'wem', 'wieso', 'weshalb'];
-    const sub = low.find((t, i) => SUB.includes(t) && i < low.length - 1);
-    const rel = q.tokens.some((t, i) => /,$/.test(t) && ['der', 'die', 'das', 'den', 'dem', 'deren', 'dessen', 'denen'].includes(low[i + 1]));
-    if (sub) lines.push(`В придаточном предложении после «${esc(sub)}» спрягаемый глагол стоит в самом конце.`);
-    if (rel) lines.push('В относительном придаточном (после der/die/das через запятую) глагол тоже уходит в конец.');
-    if (q.tail === '?') {
-      if (W.includes(low[0]) || W.includes(low[1])) lines.push('Вопрос с вопросительным словом: сразу за ним идёт глагол, потом подлежащее.');
-      else lines.push('Вопрос без вопросительного слова (ответ «да/нет») начинается с глагола.');
-    } else if (!sub || low.indexOf(sub) > 0) {
-      lines.push('В обычном предложении спрягаемый глагол стоит на 2-м месте. Если первым идёт не подлежащее (например, «Heute» или «Am Montag»), подлежащее встаёт после глагола.');
-    }
-    const AUX = /^(kann|kannst|können|könnt|muss|musst|müssen|müsst|will|willst|wollen|wollt|darf|darfst|dürfen|dürft|soll|sollst|sollen|sollt|möchte|möchtest|möchten|möchtet|habe|hast|hat|haben|habt|bin|bist|ist|sind|seid|werde|wirst|wird|werden|werdet|hatte|hattest|hatten|war|warst|waren|würde|würdest|würden)$/;
-    const last = low[low.length - 1] || '';
-    const lastTok = toks[toks.length - 1] || '';
-    const verbLike = /^[a-zäöü]/.test(lastTok) && (/en$/.test(last) || /^ge.+(t|en)$/.test(last)) &&
-      !/^(offen|trocken|eben|oben|unten|morgen|einen|keinen|meinen|deinen|seinen|ihren|unseren|diesen|den|wen|allen|vielen)$/.test(last);
-    if (low.slice(0, -1).some(t => AUX.test(t)) && verbLike && !sub) lines.push(`Второй глагол (инфинитив или Partizip II) — «${esc(toks[toks.length - 1])}» — стоит в конце: так получается «рамка».`);
-    if (['an', 'auf', 'aus', 'ein', 'mit', 'zu', 'ab', 'vor', 'nach', 'zurück', 'fern', 'los', 'weg', 'her', 'hin', 'fest', 'statt', 'teil', 'kennen'].includes(last) && !sub)
-      lines.push(`Отделяемая приставка «${esc(toks[toks.length - 1])}» стоит в самом конце предложения.`);
-    return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
   }
 };
-function plainVowels(s) { return String(s).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u'); }
 
 /* js/modes.js */
 // Построители вопросов для движка упражнений
-const PERSONS = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
 const Q = {
   accepted(key) { return (Store.state.accepted || {})[key] || []; },
   // Может ли x быть неверным вариантом к w: не тот же немецкий, не синоним, не отмеченный пользователем
   conflict(w, x) {
     if (x === w) return true;
-    if (norm(x.de) === norm(w.de) || norm(splitArticle(x.de).lemma) === norm(splitArticle(w.de).lemma)) return true;
+    if (norm(x.de) === norm(w.de) || norm(L.lemma(x)) === norm(L.lemma(w))) return true;
     if (C.sameMeaning(w, x)) return true;
     const bp = Store.state.badPairs || {};
     return !!(bp[w.key + '|' + x.key] || bp[x.key + '|' + w.key]);
@@ -727,9 +841,9 @@ const Q = {
     if (cand.length < n * 2) cand = cand.concat(C.words.filter(x => ok(x) && !cand.includes(x)));
     if (cand.length < n) cand = cand.concat(C.words.filter(x => !this.conflict(w, x) && !cand.includes(x)));
     if (hard) {
-      const wl = splitArticle(w.de).lemma, wa = splitArticle(w.de).art;
-      const score = x => (x.topic === w.topic ? 2 : 0) + (wa && splitArticle(x.de).art === wa ? 1 : 0) +
-        (Math.abs(splitArticle(x.de).lemma.length - wl.length) <= 2 ? 1 : 0) + (splitArticle(x.de).lemma[0] === wl[0] ? 1 : 0) + Math.random() * 1.5;
+      const wl = L.lemma(w), wa = L.gender(w);
+      const score = x => (x.topic === w.topic ? 2 : 0) + (wa && L.gender(x) === wa ? 1 : 0) +
+        (Math.abs(L.lemma(x).length - wl.length) <= 2 ? 1 : 0) + (L.lemma(x)[0] === wl[0] ? 1 : 0) + Math.random() * 1.5;
       cand = cand.map(x => [score(x), x]).sort((a, b) => b[0] - a[0]).slice(0, n * 3).map(p => p[1]);
     }
     const out = [];
@@ -755,7 +869,7 @@ const Q = {
   ruDe(w, pool, eff = Adapt.eff(w)) {
     const ws = this.distract(w, pool, 'de', Adapt.options(eff) - 1, eff >= 2);
     return this.wordChoice(w, ws, x => ({ html: deHTML(x) }), {
-      qtype: 'ruDe', label: 'Как это по-немецки?', prompt: `<div class="q-word ru">${esc(w.ru)}</div>`, explain: this.wordExplain(w), sayAfter: w.de
+      qtype: 'ruDe', label: `Как это ${L.ui.inLang}?`, prompt: `<div class="q-word ru">${esc(w.ru)}</div>`, explain: this.wordExplain(w), sayAfter: w.de
     });
   },
   listen(w, pool, eff = Adapt.eff(w)) {
@@ -769,17 +883,14 @@ const Q = {
   type(w, eff = Adapt.eff(w), listen = false) {
     const answers = C.variants(w.de);
     (w.alt || []).forEach(a => C.variants(a).forEach(v => answers.push(v)));
-    const soft = [];
-    answers.slice().forEach(a => { if (/^sich /.test(a)) soft.push({ a: a.replace(/^sich /, ''), note: `Засчитано, но глагол возвратный: <b>${esc(a)}</b>` }); });
+    if (L.extraAnswers) L.extraAnswers(w).forEach(a => answers.push(a));
+    const soft = L.soft(answers, w);
     const syn = C.synonyms(w).filter(x => !answers.some(a => norm(a) === norm(x.de)));
     let hint = '';
-    if (!listen && eff <= 2 && w.t !== 'phr') {
-      const { art, lemma } = splitArticle(w.de.replace(/\s*\(.*?\)/g, ''));
-      hint = `Подсказка: ${art ? art + ' ' : ''}${esc(lemma.charAt(0))}${'·'.repeat(Math.max(0, lemma.length - 1))} (${lemma.length} букв)`;
-    }
+    if (!listen && eff <= 2 && w.t !== 'phr') hint = L.typeHint(w);
     return {
       kind: 'input', qtype: listen ? 'typeListen' : 'type',
-      label: listen ? 'Послушайте и напишите' : (w.t === 'n' ? 'Напишите по-немецки с артиклем' : 'Напишите по-немецки'),
+      label: listen ? 'Послушайте и напишите' : (w.t === 'n' ? L.ui.typeNoun : `Напишите ${L.ui.inLang}`),
       prompt: listen ? `<button class="big-audio" data-say>${ICON.sound}</button><div class="q-sub">${w.t === 'n' ? 'С артиклем' : ''}</div>`
         : `<div class="q-word ru">${esc(w.ru)}</div>${hint ? `<div class="q-hint">${hint}</div>` : ''}`,
       answers: uniq(answers), soft, synonyms: syn, accepted: this.accepted(w.key), reveal: deHTML(w), say: w.de, autoplay: listen,
@@ -787,43 +898,44 @@ const Q = {
     };
   },
   article(w) {
-    const { art, lemma } = splitArticle(w.de);
-    const arts = ['der', 'die', 'das'];
+    const g = L.gender(w), G = L.genders;
     return {
-      kind: 'choice', style: 'articles', qtype: 'article', label: 'Какой артикль?',
-      prompt: `<div class="q-word">${esc(lemma)}</div><div class="q-sub">${esc(w.ru)}</div>`,
-      options: arts.map(a => ({ html: a, cls: 'a-' + a })), a: arts.indexOf(art), sayAfter: w.de,
+      kind: 'choice', style: 'articles', qtype: 'article', label: L.ui.genderQ,
+      prompt: `<div class="q-word">${esc(L.lemma(w))}</div><div class="q-sub">${esc(w.ru)}</div>`,
+      options: G.map(x => ({ html: x.html, cls: x.cls })), a: G.findIndex(x => x.id === g), sayAfter: w.de,
       explain: this.wordExplain(w) + Explain.gender(w), key: w.key, srs: true, adapt: true, w
     };
   },
   pluralForms(w, eff = Adapt.eff(w)) {
-    const { lemma } = splitArticle(w.de);
-    const correct = w.pl.replace(/^die /, '');
-    const uml = s => s.replace(/(au|a|o|u)(?=[^aouäöü]*$)/i, m => ({ a: 'ä', o: 'ö', u: 'ü', au: 'äu', A: 'Ä', O: 'Ö', U: 'Ü', Au: 'Äu' }[m] || m));
-    const base = lemma.replace(/e$/, '');
-    const cands = [lemma + 'e', lemma + 'en', lemma + 'n', lemma + 'er', lemma + 's', uml(lemma) + 'e', uml(lemma) + 'er', lemma, uml(lemma), base + 'en', lemma + 'nen'];
-    const wrong = shuffle(uniq(cands).filter(c => c !== correct && c !== lemma + 'nn' && !/(.)\1\1/.test(c))).slice(0, Adapt.options(eff) - 1);
+    const P = L.pluralOptions(w);
+    const wrong = shuffle(P.wrong).slice(0, Adapt.options(eff) - 1);
     if (wrong.length < 2) return null;
-    const opts = shuffle([correct].concat(wrong));
+    const opts = shuffle([P.correct].concat(wrong));
     return {
       kind: 'choice', qtype: 'plural', label: 'Множественное число', prompt: `<div class="q-word">${deHTML(w)}</div><div class="q-sub">${esc(w.ru)}</div>`,
-      options: opts.map(x => ({ html: 'die ' + esc(x) })), a: opts.indexOf(correct),
+      options: opts.map(x => ({ html: P.show(x) })), a: opts.indexOf(P.correct),
       explain: Explain.plural(w), key: w.key, srs: true, adapt: true, w, sayAfter: w.pl
     };
   },
-  canPlural(w) { return w.t === 'n' && w.pl && w.pl !== '-' && /^die \S+$/.test(w.pl) && !/\(Pl/.test(w.de); },
+  canPlural(w) { return L.canPlural(w); },
+  // слово в примере: ищем начальную форму или (для румынского) форму с артиклем
   gapToken(w) {
     if (!w.ex || w.t === 'phr') return null;
-    const lemma = splitArticle(w.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
-    if (/\s/.test(lemma)) return null;
     const toks = w.ex.split(/\s+/);
-    const i = toks.findIndex(t => t.replace(/[.,!?;:„“"]/g, '').toLowerCase() === lemma.toLowerCase());
-    return i < 0 ? null : { toks, i, lemma: toks[i].replace(/[.,!?;:„“"]/g, '') };
+    const clean = t => t.replace(/[.,!?;:„“"]/g, '').toLowerCase();
+    const forms = L.gapForms(w);
+    for (let k = 0; k < forms.length; k++) {
+      const f = (forms[k] || '').toLowerCase();
+      if (!f || /\s/.test(f)) continue;
+      const i = toks.findIndex(t => clean(t) === f);
+      if (i >= 0) return { toks, i, k, lemma: toks[i].replace(/[.,!?;:„“"]/g, '') };
+    }
+    return null;
   },
   gap(w, pool, eff = Adapt.eff(w)) {
     const g = this.gapToken(w);
     if (!g) return null;
-    const lem = x => splitArticle(x.de).lemma.replace(/^sich /, '').replace(/ \+.*$/, '');
+    const lem = x => L.gapForms(x)[g.k] || L.lemma(x);
     const others = this.distract(w, pool, 'de', 6, eff >= 3).filter(x => !/\s/.test(lem(x)) && lem(x).toLowerCase() !== g.lemma.toLowerCase()).slice(0, Adapt.options(eff) - 1);
     if (others.length < 2) return null;
     const fix = s => /^[A-ZÄÖÜ]/.test(g.lemma) ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -896,7 +1008,7 @@ const Q = {
       case 'listen': return this.listen(w, pool, eff);
       case 'type': return this.type(w, eff);
       case 'typeListen': return w.t === 'phr' || w.de.length > 40 ? null : this.type(w, eff, true);
-      case 'article': return w.t === 'n' && splitArticle(w.de).art ? this.article(w) : null;
+      case 'article': return w.t === 'n' && L.gender(w) ? this.article(w) : null;
       case 'plural': return this.canPlural(w) ? this.pluralForms(w, eff) : null;
       case 'gap': return this.gap(w, pool, eff);
       case 'orderEx': return w.ex ? this.order(w.ex, w.exRu, w.key, { srs: true, extra: { w } }) : null;
@@ -942,26 +1054,23 @@ const Q = {
 
   // ---- Глаголы ----
   verbQ(v, tense, p) {
-    tense = tense || pick(v.lvl === 'A1' ? ['praes', 'praes', 'perf'] : ['praes', 'praet', 'perf']);
-    if (tense === 'perf') {
-      const parts = v.perf.split(' ');
-      const aux = parts[0], rest = parts.slice(1).join(' ');
-      const answers = aux.includes('/') ? aux.split('/').map(a => a + ' ' + rest) : [v.perf];
-      return { kind: 'input', label: 'Perfekt · er/sie/es', prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)} — напишите вспомогательный глагол и Partizip II</div>`,
-        answers, accepted: this.accepted(`v|${v.inf}|perf|2`), reveal: esc(v.perf), explain: `er ${esc(v.perf)}`, key: `v|${v.inf}|perf|2`, say: 'er ' + v.perf, prefix: 'er',
-        verb: v, tense: 'perf', person: 2, strict: true };
+    const T = L.tenses(v);
+    const t = T.find(x => x.id === (tense || L.pickTense(v))) || T[0];
+    if (t.single) {
+      const sg = t.single, key = `v|${v.inf}|${t.id}|${sg.p}`;
+      return { kind: 'input', label: `${t.label} · ${L.persons[sg.p]}`, prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)}${sg.hint ? ' — ' + sg.hint : ''}</div>`,
+        answers: sg.answers, accepted: this.accepted(key), reveal: sg.reveal, explain: `${esc(sg.prefix)} ${sg.reveal}`, key, say: sg.say, prefix: sg.prefix,
+        verb: v, tense: t.id, person: sg.p, strict: true };
     }
     p = p == null ? rnd(6) : p;
-    const forms = tense === 'praes' ? v.praes : v.praet;
-    const pron = ['ich', 'du', 'er', 'wir', 'ihr', 'sie'][p];
-    return { kind: 'input', label: (tense === 'praes' ? 'Präsens' : 'Präteritum') + ' · ' + PERSONS[p],
+    const pron = L.pron[p];
+    return { kind: 'input', label: t.label + ' · ' + L.persons[p],
       prompt: `<div class="q-word">${esc(v.inf)}</div><div class="q-sub">${esc(v.ru)}</div>`,
-      answers: [forms[p]], accepted: this.accepted(`v|${v.inf}|${tense}|${p}`), reveal: `${pron} ${esc(forms[p])}`, explain: this.verbTable(v, tense),
-      key: `v|${v.inf}|${tense}|${p}`, say: pron + ' ' + forms[p], prefix: pron, verb: v, tense, person: p, strict: true };
+      answers: [t.forms[p]], accepted: this.accepted(`v|${v.inf}|${t.id}|${p}`), reveal: `${esc(pron)} ${esc(t.forms[p])}`, explain: this.verbTable(t.forms),
+      key: `v|${v.inf}|${t.id}|${p}`, say: pron + ' ' + t.forms[p], prefix: pron, verb: v, tense: t.id, person: p, strict: true };
   },
-  verbTable(v, tense) {
-    const forms = tense === 'praet' ? v.praet : v.praes;
-    return `<table class="mini"><tbody>${PERSONS.map((p, i) => `<tr><td class="muted">${p}</td><td><b>${esc(forms[i])}</b></td></tr>`).join('')}</tbody></table>`;
+  verbTable(forms) {
+    return `<table class="mini"><tbody>${L.persons.map((p, i) => `<tr><td class="muted">${p}</td><td><b>${esc(forms[i])}</b></td></tr>`).join('')}</tbody></table>`;
   },
 
   // Восстановление вопроса по ключу (для «работы над ошибками»)
@@ -1172,7 +1281,7 @@ const Engine = {
     body.innerHTML = this.head(q) + `
       <div class="inp-wrap">${q.prefix ? `<span class="inp-prefix">${esc(q.prefix)}</span>` : ''}
         <input id="ans" class="inp" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="Ваш ответ" aria-label="Ваш ответ"></div>
-      <div class="uml">${['ä', 'ö', 'ü', 'ß', 'Ä', 'Ö', 'Ü'].map(c => `<button data-c="${c}">${c}</button>`).join('')}</div>`;
+      <div class="uml">${L.chars.map(c => `<button data-c="${c}">${c}</button>`).join('')}</div>`;
     foot.innerHTML = `<button class="btn ghost" id="dontknow">Не знаю</button><button class="btn primary grow" id="check">Проверить</button>`;
     const inp = $('#ans');
     $$('.uml button', body).forEach(b => b.onclick = e => {
@@ -1209,9 +1318,9 @@ const Engine = {
   checkInput(q, v) {
     let res = checkAnswer(v, q.answers, q.strict);
     if (res === 'ok') return { ok: true };
-    if (res === 'noumlaut') return { ok: false, note: `Не хватает умлаута: правильно <b>${esc(q.answers[0])}</b>. Умлаут меняет форму и смысл (schon — «уже», schön — «красивый»).` };
+    if (res === 'noumlaut') return L.missingOk(q.strict) ? { ok: true, warn: true, note: L.ui.missing(q.answers[0]) } : { ok: false, note: L.ui.missing(q.answers[0]) };
     if (res === 'typo') return { ok: true, warn: true, note: 'Засчитано, но есть опечатка — сравните с ответом выше' };
-    if (res === 'umlaut') return { ok: true, warn: true, note: 'Засчитано. Попробуйте писать умлауты: ä ö ü ß' };
+    if (res === 'umlaut') return { ok: true, warn: true, note: L.ui.translitOk };
     if (q.accepted && q.accepted.length && checkAnswer(v, q.accepted, true) === 'ok') return { ok: true, note: 'Засчитано — этот вариант вы раньше отметили как верный' };
     for (const s of q.soft || []) if (['ok', 'umlaut'].includes(checkAnswer(v, [s.a], q.strict))) return { ok: true, warn: true, note: s.note };
     for (const x of q.synonyms || []) {
@@ -1271,13 +1380,13 @@ const Engine = {
     const tag = { n: 'существительное', v: 'глагол', adj: 'прилагательное', adv: 'наречие', phr: 'фраза', other: 'слово' }[w.t] || '';
     body.innerHTML = `<div class="flash" id="flash" tabindex="0" role="button" aria-label="Перевернуть карточку">
       <div class="flash-in">
-        <div class="face front ${artClass(w.de)}">
+        <div class="face front ${wClass(w)}">
           <div class="f-tag">${tag} · ${w.lvl}</div>
           <div class="f-word">${deHTML(w)}</div>
           ${w.t === 'n' && w.pl && w.pl !== '-' ? `<div class="f-pl">${esc(w.pl)}</div>` : ''}
           <div class="f-hint">Нажмите, чтобы перевернуть</div>
         </div>
-        <div class="face back ${artClass(w.de)}">
+        <div class="face back ${wClass(w)}">
           <div class="f-tag">${deHTML(w)}</div>
           <div class="f-ru">${esc(w.ru)}</div>
           ${w.ex && w.ex !== w.de ? `<div class="f-ex"><button class="mini-audio" data-say="${esc(w.ex)}">${ICON.sound}</button><div>${esc(w.ex)}<div class="muted">${esc(w.exRu || '')}</div></div></div>` : ''}
@@ -1385,7 +1494,7 @@ const Engine = {
   feedback(q, ok, html, warn, override) {
     const foot = $('#ses-foot');
     foot.className = 'ses-foot fb ' + (ok ? (warn ? 'fb-warn' : 'fb-ok') : 'fb-bad');
-    const title = ok ? (warn ? 'Засчитано' : pick(['Richtig!', 'Super!', 'Genau!', 'Toll!', 'Prima!', 'Klasse!'])) : pick(['Nicht ganz', 'Leider falsch']);
+    const title = ok ? (warn ? 'Засчитано' : pick(L.ui.praise)) : pick(L.ui.wrong);
     const sayTxt = q.sayAfter || (q.kind === 'input' || q.kind === 'order' ? q.say : null);
     const lesson = q.lesson && C.grammar.find(g => g.id === q.lesson);
     const canOverride = override && this.s.mode === 'learn';
@@ -1452,7 +1561,7 @@ const Engine = {
     const wrong = s.done.filter(d => !d.ok && d.q.kind !== 'match' && d.q.kind !== 'flash');
     const uniqWrong = []; const seen = new Set();
     wrong.forEach(d => { const k = d.q.key || d.q.prompt; if (!seen.has(k)) { seen.add(k); uniqWrong.push(d); } });
-    const verdict = pct >= 90 ? 'Ausgezeichnet!' : pct >= 70 ? 'Gut gemacht!' : pct >= 50 ? 'Nicht schlecht!' : 'Weiter üben!';
+    const verdict = L.ui.verdict(pct);
     const sug = Adapt.suggestion();
     const body = $('#ses-body'), foot = $('#ses-foot');
     $('#ses-prog').style.width = '100%';
@@ -1526,6 +1635,8 @@ const ACH = [
   { id: 'night', t: 'Nachteule', d: 'Заниматься после 23:00', ic: '🦉', f: () => new Date().getHours() >= 23 },
   { id: 'early', t: 'Frühaufsteher', d: 'Заниматься до 7:00', ic: '🌅', f: () => new Date().getHours() < 7 }
 ];
+// у каждого языка свои названия достижений
+if (L.achTitles) ACH.forEach(a => { if (L.achTitles[a.id]) a.t = L.achTitles[a.id]; });
 const Ach = {
   _known: null,
   known() { if (this._known == null) this._known = Object.values(Store.state.srs).filter(r => r.b >= 2).length; return this._known; },
@@ -1552,7 +1663,7 @@ const MODES = {
   quiz: { t: 'Выбор перевода', d: 'DE ↔ RU', ic: 'target' },
   listen: { t: 'Аудирование', d: 'Слушай и выбирай', ic: 'ear' },
   write: { t: 'Письмо', d: 'Напиши слово', ic: 'pen' },
-  article: { t: 'Der · Die · Das', d: 'Тренажёр артиклей', ic: 'layers' },
+  article: { t: L.ui.genderMode.t, d: L.ui.genderMode.d, ic: 'layers' },
   plural: { t: 'Мн. число', d: 'Формы plural', ic: 'shuffle' },
   gap: { t: 'Пропуски', d: 'Слово в контексте', ic: 'gap' },
   order: { t: 'Собери фразу', d: 'Порядок слов', ic: 'puzzle' },
@@ -1591,7 +1702,7 @@ const Train = {
       case 'quiz': return lazy(this.pickWords(pool, n || 12), w => Adapt.eff(w) >= 2 || Math.random() < .4 ? Q.ruDe(w, pool) : Q.deRu(w, pool));
       case 'listen': return lazy(this.pickWords(pool, n || 12), w => Adapt.eff(w) >= 4 && Math.random() < .5 ? Q.make('typeListen', w, pool) : Q.listen(w, pool));
       case 'write': return lazy(this.pickWords(pool, n || 10), w => Q.type(w));
-      case 'article': return this.pickWords(pool.filter(w => w.t === 'n' && splitArticle(w.de).art), n || 15).map(w => () => Q.article(w));
+      case 'article': return this.pickWords(pool.filter(w => w.t === 'n' && L.gender(w)), n || 15).map(w => () => Q.article(w));
       case 'plural': return lazy(this.pickWords(pool.filter(w => Q.canPlural(w)), n || 12), w => Q.pluralForms(w));
       case 'gap': return lazy(this.pickWords(pool.filter(w => Q.gapToken(w)), n || 10), w => Q.gap(w, pool));
       case 'order': return lazy(this.pickWords(pool.filter(w => w.ex), n || 8), w => Q.make('orderEx', w, pool));
@@ -1781,7 +1892,7 @@ const Train = {
     Engine.start({ title: title || 'Спряжение глаголов', questions: qs, xp: 6, retry: () => this.verbs(list, title) });
   },
   verbAll(v) {
-    const qs = shuffle([0, 1, 2, 3, 4, 5].map(p => Q.verbQ(v, 'praes', p)).concat([Q.verbQ(v, 'praet', 0), Q.verbQ(v, 'praet', 3), Q.verbQ(v, 'perf')]));
+    const qs = shuffle(L.verbAll(v).map(([t, p]) => Q.verbQ(v, t, p)));
     Engine.start({ title: v.inf, questions: qs, xp: 5, retry: () => this.verbAll(v) });
   },
   reading(id) {
@@ -1822,14 +1933,7 @@ const Train = {
 const lvlChip = l => `<span class="lvl lvl-${l}">${l}</span>`;
 const bar = (p, cls = '') => `<div class="pbar ${cls}"><i style="width:${Math.round(clamp(p, 0, 1) * 100)}%"></i></div>`;
 const modeTile = (run, m, extra = '') => `<button class="mode" data-run="${run}"><span class="mode-ic">${ICON[MODES[m].ic]}</span><span class="mode-t">${MODES[m].t}</span><span class="mode-d">${extra || MODES[m].d}</span></button>`;
-const greet = () => {
-  const h = new Date().getHours();
-  if (h < 5) return ['Gute Nacht!', 'Доброй ночи'];
-  if (h < 11) return ['Guten Morgen!', 'Доброе утро'];
-  if (h < 18) return ['Guten Tag!', 'Добрый день'];
-  if (h < 23) return ['Guten Abend!', 'Добрый вечер'];
-  return ['Gute Nacht!', 'Доброй ночи'];
-};
+const greet = () => L.ui.greet(new Date().getHours());
 const levelFilter = (cur, extra = []) => `<div class="chips" role="tablist">${[['all', 'Все']].concat(LEVELS.map(l => [l, l]), extra).map(([v, l]) =>
   `<button class="chip ${cur === v ? 'on' : ''}" data-filter="${v}">${l}</button>`).join('')}</div>`;
 
@@ -1878,7 +1982,7 @@ const Screens = {
           ${Adapt.on() ? `<span class="cta-diff">${Adapt.dots()} ${Adapt.label()}</span>` : ''}</div>
         <span class="cta-go">${ICON.play}</span>
       </button>
-      ${wod ? `<section class="card wod ${artClass(wod.de)}">
+      ${wod ? `<section class="card wod ${wClass(wod)}">
         <div class="row between"><span class="eyebrow">Слово дня · ${wod.lvl}</span>
           <div class="row gap8"><button class="icon-btn" data-say="${esc(wod.de)}" aria-label="Послушать">${ICON.sound}</button>
           <button class="icon-btn ${s.fav[wod.key] ? 'faved' : ''}" data-fav="${esc(wod.key)}" aria-label="В избранное">${ICON.star}</button></div></div>
@@ -1910,7 +2014,7 @@ const Screens = {
       const f = App.mem.wordsFilter || Store.state.level;
       const list = f === 'all' ? C.topics : C.topics.filter(t => t.level === f);
       const favN = Object.keys(Store.state.fav).length;
-      return `<h1 class="display page-h">Wortschatz</h1><p class="lead">${C.words.length} слов в ${C.topics.length} темах · уровни A1–C1</p>
+      return `<h1 class="display page-h">${L.ui.h.words}</h1><p class="lead">${C.words.length} слов в ${C.topics.length} темах · уровни A1–C1</p>
       <button class="search-fake" data-go="dict">${ICON.search}<span>Поиск по словарю</span></button>
       ${levelFilter(f)}
       ${favN ? `<button class="li fav-row" data-go="topic" data-id="fav"><span class="li-ic">${ICON.star}</span><span class="li-b"><b>Избранное</b><small>${favN} ${plural(favN, 'слово', 'слова', 'слов')}</small></span></button>` : ''}
@@ -1918,7 +2022,7 @@ const Screens = {
         const pr = C.topicProgress(t.id);
         return `<button class="topic" data-go="topic" data-id="${t.id}">
           <span class="t-emoji">${t.emoji}</span>
-          <span class="t-b"><b>${esc(t.title)}</b><small>${esc(t.de)}</small></span>
+          <span class="t-b"><b>${esc(t.title)}</b><small>${esc(t.de || t.ro || '')}</small></span>
           <span class="t-f">${lvlChip(t.level)}<small>${pr.known}/${pr.total}</small></span>
           ${bar(pr.pct)}
         </button>`;
@@ -1932,7 +2036,7 @@ const Screens = {
   topic: {
     title: p => p.id === 'fav' ? 'Избранное' : (C.topicById[p.id] || {}).title,
     html(p) {
-      const t = p.id === 'fav' ? { id: 'fav', title: 'Избранное', de: 'Favoriten', emoji: '⭐', level: Store.state.level } : C.topicById[p.id];
+      const t = p.id === 'fav' ? { id: 'fav', title: 'Избранное', de: L.ui.h.topicFav, emoji: '⭐', level: Store.state.level } : C.topicById[p.id];
       if (!t) return '<p>Тема не найдена</p>';
       const ws = C.topicWords(t.id);
       const pr = C.topicProgress(t.id);
@@ -1942,10 +2046,10 @@ const Screens = {
       const sort = App.mem.topicSort || 'list';
       let shown = ws.slice();
       if (sort === 'weak') shown.sort((a, b) => Store.mastery(a.key) - Store.mastery(b.key));
-      if (sort === 'az') shown.sort((a, b) => splitArticle(a.de).lemma.localeCompare(splitArticle(b.de).lemma, 'de'));
+      if (sort === 'az') shown.sort((a, b) => L.lemma(a).localeCompare(L.lemma(b), L.code));
       return `<section class="topic-head">
         <span class="t-emoji big">${t.emoji}</span>
-        <div><h1 class="display">${esc(t.title)}</h1><div class="muted">${esc(t.de)} · ${lvlChip(t.level)}</div></div>
+        <div><h1 class="display">${esc(t.title)}</h1><div class="muted">${esc(t.de || t.ro || '')} · ${lvlChip(t.level)}</div></div>
       </section>
       <div class="prog-line"><span><b>${pr.known}</b> из ${pr.total} выучено</span><span>${Math.round(pr.pct * 100)}%</span></div>${bar(pr.pct, 'thick')}
       <div class="lvl-dist">${LEVELS.map(l => { const n = ws.filter(w => w.lvl === l).length; return n ? `<span>${lvlChip(l)} ${n}</span>` : ''; }).join('')}
@@ -1961,7 +2065,7 @@ const Screens = {
   wordRow(w, showTopic) {
     const fav = Store.state.fav[w.key];
     const tp = showTopic && C.topicById[w.topic];
-    return `<div class="wrow ${artClass(w.de)}">
+    return `<div class="wrow ${wClass(w)}">
       <button class="w-say" data-say="${esc(w.de)}" aria-label="Послушать">${ICON.sound}</button>
       <button class="w-main" data-word="${esc(w.key)}"><span class="w-de">${deHTML(w)}${w.t === 'n' && w.pl && w.pl !== '-' ? `<small> · ${esc(w.pl.replace(/^die /, ''))}</small>` : ''}</span>
         <span class="w-ru">${esc(w.ru)}${tp ? ` <small class="muted">· ${esc(tp.title)}</small>` : ''}</span></button>
@@ -1972,7 +2076,7 @@ const Screens = {
   wordSheet(key) {
     const w = C.byKey[key]; if (!w) return;
     const r = Store.srsGet(key);
-    const m = UI.sheet(`<div class="sheet-h ${artClass(w.de)}"><div class="f-word">${deHTML(w)}</div>
+    const m = UI.sheet(`<div class="sheet-h ${wClass(w)}"><div class="f-word">${deHTML(w)}</div>
       <button class="icon-btn" data-close aria-label="Закрыть">${ICON.close}</button></div>
       <div class="f-ru">${esc(w.ru)}</div>
       ${w.t === 'n' && w.pl ? `<div class="muted">Мн. число: <b>${w.pl === '-' ? 'нет' : esc(w.pl)}</b></div>` : ''}
@@ -1989,7 +2093,7 @@ const Screens = {
   dict: {
     title: 'Словарь',
     html() {
-      return `<div class="search"><span>${ICON.search}</span><input id="q" type="search" placeholder="Немецкое или русское слово" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.dictQ || '')}"></div>
+      return `<div class="search"><span>${ICON.search}</span><input id="q" type="search" placeholder="${L.ui.adjCap} или русское слово" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.dictQ || '')}"></div>
         <div id="dres" class="wlist"></div>`;
     },
     mount(el) {
@@ -1998,13 +2102,13 @@ const Screens = {
       const run = () => {
         const q = norm(inp.value); App.mem.dictQ = inp.value;
         if (q.length < 2) { out.innerHTML = `<p class="muted pad">Введите хотя бы 2 буквы. В словаре ${all.length} слов и фраз.</p>`; return; }
-        const qd = deUmlaut(q);
+        const qd = L.translit(q);
         const score = w => {
-          const de = norm(w.de), lem = norm(splitArticle(w.de).lemma), ru = norm(w.ru);
+          const de = norm(w.de), lem = norm(L.lemma(w)), ru = norm(w.ru);
           if (lem === q || de === q || ru === q) return 0;
-          if (lem.startsWith(q) || deUmlaut(lem).startsWith(qd)) return 1;
+          if (lem.startsWith(q) || L.translit(lem).startsWith(qd) || L.plain(lem).startsWith(L.plain(q))) return 1;
           if (ru.split(/[,;]\s*/).some(x => x.startsWith(q))) return 1.5;
-          if (de.includes(q) || deUmlaut(de).includes(qd)) return 2;
+          if (de.includes(q) || L.translit(de).includes(qd) || L.plain(de).includes(L.plain(q))) return 2;
           if (ru.includes(q)) return 3;
           return 9;
         };
@@ -2026,7 +2130,7 @@ const Screens = {
       const f = App.mem.gramFilter || Store.state.level;
       const st = Store.state.grammar;
       const done = C.grammar.filter(g => st[g.id] && st[g.id].done).length;
-      return `<h1 class="display page-h">Grammatik</h1><p class="lead">${C.grammar.length} уроков с объяснениями и упражнениями · пройдено ${done}</p>
+      return `<h1 class="display page-h">${L.ui.h.grammar}</h1><p class="lead">${C.grammar.length} уроков с объяснениями и упражнениями · пройдено ${done}</p>
       ${levelFilter(f)}
       ${LEVELS.filter(l => f === 'all' || f === l).map(l => {
         const ls = C.grammar.filter(g => g.level === l);
@@ -2060,10 +2164,10 @@ const Screens = {
       </div>`;
     },
     mount(el) {
-      // немецкие примеры в уроке можно послушать по нажатию
+      // примеры на изучаемом языке в уроке можно послушать по нажатию
       $$('.lesson-body .ex, .lesson-body td, .lesson-body b', el).forEach(n => {
         const txt = n.classList.contains('ex') ? (n.querySelector('b') || n).textContent : n.textContent;
-        if (/[äöüßÄÖÜ]|\b(der|die|das|ich|du|er|sie|wir|ihr|ist|sind|habe|hat|nicht|ein|eine|den|dem|des)\b/i.test(txt) && !/[а-яё]/i.test(txt)) {
+        if (L.isTarget(txt)) {
           n.classList.add('speakable'); n.onclick = e => { e.stopPropagation(); Speech.say(txt.replace(/[—–].*$/, '')); };
         }
       });
@@ -2076,8 +2180,8 @@ const Screens = {
     html() {
       const s = Store.state;
       const mist = Object.keys(s.mistakes).length;
-      return `<h1 class="display page-h">Prüfungen</h1><p class="lead">Проверьте себя: тесты по уровням в формате Goethe / telc</p>
-      <button class="cta" data-run="placement"><div class="cta-t"><span class="eyebrow">Einstufungstest</span><b>Тест на определение уровня</b>
+      return `<h1 class="display page-h">${L.ui.h.tests}</h1><p class="lead">${L.ui.testsLead}</p>
+      <button class="cta" data-run="placement"><div class="cta-t"><span class="eyebrow">${L.ui.placement}</span><b>Тест на определение уровня</b>
         <span>${s.placement ? `Последний результат: уровень ${s.placement.solid}, рекомендован ${s.placement.level}` : 'Адаптивный: от A1 до C1, пока получается'}</span></div><span class="cta-go">${ICON.target}</span></button>
       <h2 class="sec">По уровням</h2>
       <div class="lvl-grid">${LEVELS.map(l => {
@@ -2093,9 +2197,9 @@ const Screens = {
       <h2 class="sec">Ещё проверки</h2>
       <div class="list">
         <button class="li" data-run="mistakes"><span class="li-ic warn">${ICON.redo}</span><span class="li-b"><b>Работа над ошибками</b><small>${mist ? `${mist} ${plural(mist, 'вопрос', 'вопроса', 'вопросов')} для повторения` : 'Ошибок пока нет'}</small></span></button>
-        <button class="li" data-run="verbs"><span class="li-ic">${ICON.verb}</span><span class="li-b"><b>Спряжение глаголов</b><small>Präsens, Präteritum, Perfekt</small></span></button>
+        <button class="li" data-run="verbs"><span class="li-ic">${ICON.verb}</span><span class="li-b"><b>Спряжение глаголов</b><small>${L.ui.verbTenses}</small></span></button>
         <button class="li" data-run="global:quiz"><span class="li-ic">${ICON.target}</span><span class="li-b"><b>Тест по словам</b><small>Слова вашего уровня и изучаемые</small></span></button>
-        <button class="li" data-run="global:article"><span class="li-ic">${ICON.layers}</span><span class="li-b"><b>Артикли der · die · das</b><small>Самая частая ошибка — тренируйте отдельно</small></span></button>
+        <button class="li" data-run="global:article"><span class="li-ic">${ICON.layers}</span><span class="li-b"><b>${L.ui.genderTest[0]}</b><small>${L.ui.genderTest[1]}</small></span></button>
         <button class="li" data-run="global:speed"><span class="li-ic">${ICON.timer}</span><span class="li-b"><b>Скорость · 60 секунд</b><small>Рекорд: ${s.best.speed || 0}</small></span></button>
       </div>`;
     }
@@ -2107,7 +2211,7 @@ const Screens = {
     html() {
       const item = (go, ic, t, d) => `<button class="li" data-go="${go}"><span class="li-ic">${ICON[ic]}</span><span class="li-b"><b>${t}</b><small>${d}</small></span></button>`;
       const achN = Object.keys(Store.state.ach).length;
-      return `<h1 class="display page-h">Mehr</h1>
+      return `<h1 class="display page-h">${L.ui.h.more}</h1>
       <h2 class="sec">Практика</h2><div class="list">
         ${item('reading', 'book', 'Чтение', `${DE.reading.length} текстов A1–C1 с вопросами и озвучкой`)}
         ${item('dialogues', 'chat', 'Диалоги', `${DE.dialogues.length} живых диалогов и ролевые игры`)}
@@ -2115,6 +2219,7 @@ const Screens = {
         ${item('verbs', 'verb', 'Глаголы', `${C.verbs.length} таблиц спряжения`)}
         ${item('dict', 'search', 'Словарь', 'Поиск по всем словам')}
       </div>
+      ${L.other && L.other.length ? `<h2 class="sec">Другие языки</h2><div class="list">${L.other.map(o => `<a class="li" href="${o.href}"><span class="li-ic"><span class="flag flag-${o.flag}" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="li-b"><b>${esc(o.t)}</b><small>${esc(o.d)}</small></span></a>`).join('')}</div>` : ''}
       <h2 class="sec">Прогресс</h2><div class="list">
         ${item('stats', 'chart', 'Статистика', 'Активность, точность, слова по уровням')}
         ${item('achievements', 'trophy', 'Достижения', `${achN} из ${ACH.length} получено`)}
@@ -2128,7 +2233,7 @@ const Screens = {
     title: 'Глаголы',
     html() {
       const f = App.mem.verbFilter || Store.state.level;
-      return `<h1 class="display page-h">Verben</h1>
+      return `<h1 class="display page-h">${L.ui.h.verbs}</h1>
       <div class="search"><span>${ICON.search}</span><input id="vq" type="search" placeholder="Найти глагол" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(App.mem.verbQ || '')}"></div>
       ${levelFilter(f)}
       <button class="cta slim" data-run="verbs:${f}"><div class="cta-t"><b>Тренировать спряжение</b><span>${f === 'all' ? 'Глаголы до вашего уровня' : 'Глаголы уровня ' + f}</span></div><span class="cta-go">${ICON.play}</span></button>
@@ -2143,7 +2248,7 @@ const Screens = {
         const q = norm(inp.value); App.mem.verbQ = inp.value;
         const ls = C.verbs.filter(v => (f === 'all' || v.lvl === f) && (!q || norm(v.inf).includes(q) || norm(v.ru).includes(q)));
         out.innerHTML = ls.map(v => `<button class="li" data-go="verb" data-id="${esc(v.inf)}"><span class="li-b"><b>${esc(v.inf)}</b><small>${esc(v.ru)} · ${TYPES[v.type] || ''}${v.sep ? ', отделяемый' : ''}</small></span>
-          <span class="v-perf muted">${esc(v.perf)}</span>${lvlChip(v.lvl)}</button>`).join('') || '<p class="muted pad">Не найдено</p>';
+          <span class="v-perf muted">${esc(L.verbSummary(v))}</span>${lvlChip(v.lvl)}</button>`).join('') || '<p class="muted pad">Не найдено</p>';
       };
       inp.oninput = run; run();
     }
@@ -2152,17 +2257,11 @@ const Screens = {
     title: p => p.id,
     html(p) {
       const v = C.verbByInf[p.id]; if (!v) return '<p>Не найдено</p>';
-      const pr = ['ich', 'du', 'er/sie/es', 'wir', 'ihr', 'sie/Sie'];
-      const sp = ['ich', 'du', 'er', 'wir', 'ihr', 'sie'];
       return `<section class="topic-head"><div><h1 class="display">${esc(v.inf)}</h1><div class="muted">${esc(v.ru)} · ${lvlChip(v.lvl)}</div></div>
         <button class="btn round" data-say="${esc(v.inf)}">${ICON.sound}</button></section>
-        <div class="table-wrap"><table class="conj"><thead><tr><th></th><th>Präsens</th><th>Präteritum</th></tr></thead><tbody>
-        ${pr.map((x, i) => `<tr><td class="muted">${x}</td><td data-say="${esc(sp[i] + ' ' + v.praes[i])}"><b>${esc(v.praes[i])}</b></td><td data-say="${esc(sp[i] + ' ' + v.praet[i])}">${esc(v.praet[i])}</td></tr>`).join('')}
-        </tbody></table></div>
-        <div class="kv"><div data-say="er ${esc(v.perf)}"><span>Perfekt</span><b>er ${esc(v.perf)}</b></div>
-        ${v.imp ? `<div data-say="${esc(v.imp)}"><span>Imperativ</span><b>${esc(v.imp)}</b></div>` : ''}</div>
+        ${L.verbView(v)}
         ${v.ex ? `<div class="card f-ex"><button class="mini-audio" data-say="${esc(v.ex)}">${ICON.sound}</button><div>${esc(v.ex)}<div class="muted">${esc(v.exRu || '')}</div></div></div>` : ''}
-        <button class="cta slim" data-run="verb:${esc(v.inf)}"><div class="cta-t"><b>Тренировать этот глагол</b><span>9 заданий на все формы</span></div><span class="cta-go">${ICON.play}</span></button>
+        <button class="cta slim" data-run="verb:${esc(v.inf)}"><div class="cta-t"><b>Тренировать этот глагол</b><span>${L.verbAll(v).length} заданий на все формы</span></div><span class="cta-go">${ICON.play}</span></button>
         <p class="muted small pad-x">Нажмите на форму, чтобы услышать её.</p>`;
     }
   },
@@ -2173,7 +2272,7 @@ const Screens = {
     html() {
       const f = App.mem.readFilter || Store.state.level;
       const ls = DE.reading.filter(r => f === 'all' || r.lvl === f).sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
-      return `<h1 class="display page-h">Lesen</h1>${levelFilter(f)}
+      return `<h1 class="display page-h">${L.ui.h.reading}</h1>${levelFilter(f)}
       <div class="list">${ls.map(r => { const st = Store.state.reading[r.id];
         return `<button class="li" data-go="text" data-id="${r.id}"><span class="li-ic emoji">${r.emoji || '📄'}</span><span class="li-b"><b>${esc(r.title)}</b><small>${esc(r.ru)} · ${r.text.split(/\s+/).length} слов</small></span>
         ${st ? `<span class="pct">${st.best}%</span>` : ''}${lvlChip(r.lvl)}</button>`; }).join('')}</div>`;
@@ -2228,7 +2327,7 @@ const Screens = {
     html() {
       const f = App.mem.dialFilter || Store.state.level;
       const ls = DE.dialogues.filter(d => f === 'all' || d.lvl === f).sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
-      return `<h1 class="display page-h">Dialoge</h1>${levelFilter(f)}
+      return `<h1 class="display page-h">${L.ui.h.dialogues}</h1>${levelFilter(f)}
       <div class="list">${ls.map(d => { const st = Store.state.dialogues[d.id];
         return `<button class="li" data-go="dialogue" data-id="${d.id}"><span class="li-ic emoji">${d.emoji || '💬'}</span><span class="li-b"><b>${esc(d.title)}</b><small>${esc(d.context || '')}</small></span>
         ${st ? `<span class="pct">${st.best}%</span>` : ''}${lvlChip(d.lvl)}</button>`; }).join('')}</div>`;
@@ -2277,7 +2376,7 @@ const Screens = {
     title: 'Разговорник',
     html() {
       const ls = DE.phrases.slice().sort((a, b) => LEVELS.indexOf(a.lvl) - LEVELS.indexOf(b.lvl));
-      return `<h1 class="display page-h">Sprachführer</h1><p class="lead">Готовые фразы для реальных ситуаций</p>
+      return `<h1 class="display page-h">${L.ui.h.phrases}</h1><p class="lead">Готовые фразы для реальных ситуаций</p>
       <div class="topics">${ls.map(p => { const pr = C.topicProgress('ph:' + p.id);
         return `<button class="topic" data-go="phraseset" data-id="${p.id}"><span class="t-emoji">${p.emoji || '💬'}</span>
         <span class="t-b"><b>${esc(p.title)}</b><small>${p.items.length} фраз</small></span><span class="t-f">${lvlChip(p.lvl)}<small>${pr.known}/${pr.total}</small></span>${bar(pr.pct)}</button>`; }).join('')}</div>`;
@@ -2311,7 +2410,7 @@ const Screens = {
       const lvlOf = xp => xp <= 0 ? 0 : xp < s.settings.goal * 0.5 ? 1 : xp < s.settings.goal ? 2 : xp < s.settings.goal * 2 ? 3 : 4;
       const byLvl = LEVELS.map(l => { const ws = C.words.filter(w => w.lvl === l); const k = ws.filter(w => Store.isKnown(w.key)).length; return { l, n: ws.length, k }; });
       const boxes = [0, 0, 0, 0]; Object.values(s.srs).forEach(r => boxes[r.b >= 5 ? 3 : r.b >= 2 ? 2 : r.b >= 1 ? 1 : 0]++);
-      return `<h1 class="display page-h">Statistik</h1>
+      return `<h1 class="display page-h">${L.ui.h.stats}</h1>
       <div class="tiles">
         <div class="tile"><b>${s.xp}</b><span>XP всего</span></div>
         <div class="tile"><b>${Store.streak()}</b><span>серия · рекорд ${Store.bestStreak()}</span></div>
@@ -2339,7 +2438,7 @@ const Screens = {
     title: 'Достижения',
     html() {
       const s = Store.state;
-      return `<h1 class="display page-h">Erfolge</h1><p class="lead">${Object.keys(s.ach).length} из ${ACH.length}</p>
+      return `<h1 class="display page-h">${L.ui.h.ach}</h1><p class="lead">${Object.keys(s.ach).length} из ${ACH.length}</p>
       <div class="ach">${ACH.map(a => `<div class="ach-i ${s.ach[a.id] ? 'got' : ''}"><span class="ach-ic">${a.ic}</span><b>${a.t}</b><small>${a.d}</small>
         ${s.ach[a.id] ? `<small class="muted">${new Date(s.ach[a.id]).toLocaleDateString('ru-RU')}</small>` : ''}</div>`).join('')}</div>`;
     }
@@ -2353,7 +2452,7 @@ const Screens = {
       const seg = (name, cur, opts) => `<div class="seg" data-set="${name}">${opts.map(([v, l]) => `<button class="${String(cur) === String(v) ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</div>`;
       const voices = Speech.voices;
       const c = C.counts();
-      return `<h1 class="display page-h">Einstellungen</h1>
+      return `<h1 class="display page-h">${L.ui.h.settings}</h1>
       <div class="form">
         <label class="f-row"><span>Мой уровень</span>${seg('level', s.level, LEVELS.map(l => [l, l]))}</label>
         <label class="f-row"><span>Цель на день</span>${seg('goal', st.goal, [[20, '20'], [50, '50'], [100, '100'], [200, '200']])}<small class="muted">XP в день</small></label>
@@ -2361,8 +2460,8 @@ const Screens = {
         <label class="f-row"><span>Тема</span>${seg('theme', st.theme, [['system', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']])}</label>
         <div class="f-row"><span>Скорость речи · <b id="rateV">${st.rate.toFixed(2)}</b></span><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
         <div class="f-row"><span>Голос</span><select id="voice"><option value="">Автоматически</option>${voices.map(v => `<option value="${esc(v.voiceURI)}" ${st.voice === v.voiceURI ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select>
-          <button class="btn sm" data-say="Hallo! Ich helfe dir, Deutsch zu lernen.">${ICON.sound} Проверить</button>
-          ${!voices.length ? '<small class="muted">Немецкие голоса не найдены. На iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Немецкий.</small>' : ''}</div>
+          <button class="btn sm" data-say="${esc(L.ui.voiceTest)}">${ICON.sound} Проверить</button>
+          ${!voices.length ? `<small class="muted">${L.ui.voiceMissing}</small>` : ''}</div>
         <label class="f-row sw"><span>Подстраивать сложность<small class="muted block">Сейчас: ${Adapt.label()}. Верные ответы — сложнее, ошибки — проще.</small></span><input type="checkbox" id="adaptive" ${st.adaptive !== false ? 'checked' : ''}></label>
         <label class="f-row sw"><span>Автоматически озвучивать</span><input type="checkbox" id="autoplay" ${st.autoplay ? 'checked' : ''}></label>
         <label class="f-row sw"><span>Звуки ответов</span><input type="checkbox" id="sound" ${st.sound ? 'checked' : ''}></label>
@@ -2375,7 +2474,7 @@ const Screens = {
         <button class="btn primary" id="impgo" hidden>Загрузить</button>
       </div>
       <h2 class="sec">О приложении</h2>
-      <div class="card small"><p><b>Deutsch Tag für Tag</b> — ${c.words} слов в ${c.topics} темах, ${c.grammar} уроков грамматики, ${c.tests} тестовых вопросов, ${c.verbs} глаголов, ${c.reading} текстов, ${c.dialogues} диалогов, ${c.phrases} разделов разговорника.</p>
+      <div class="card small"><p><b>${L.name}</b> — ${c.words} слов в ${c.topics} темах, ${c.grammar} уроков грамматики, ${c.tests} тестовых вопросов, ${c.verbs} глаголов, ${c.reading} текстов, ${c.dialogues} диалогов, ${c.phrases} разделов разговорника.</p>
         <p class="muted">Работает без интернета после первого открытия. Совет: в Safari нажмите «Поделиться» → «На экран „Домой“».</p>
         <button class="btn danger" id="reset">Сбросить весь прогресс</button></div>`;
     },
@@ -2389,8 +2488,8 @@ const Screens = {
         Store.save(); if (k === 'theme') App.applyTheme(); App.render();
       }));
       $('#rate', el).oninput = e => { st.rate = +e.target.value; $('#rateV', el).textContent = st.rate.toFixed(2); Store.save(); };
-      $('#rate', el).onchange = () => Speech.say('Guten Tag!');
-      $('#voice', el).onchange = e => { st.voice = e.target.value; Store.save(); Speech.say('Guten Tag!'); };
+      $('#rate', el).onchange = () => Speech.say(L.ui.greet(12)[0]);
+      $('#voice', el).onchange = e => { st.voice = e.target.value; Store.save(); Speech.say(L.ui.greet(12)[0]); };
       $('#autoplay', el).onchange = e => { st.autoplay = e.target.checked; Store.save(); };
       $('#adaptive', el).onchange = e => { st.adaptive = e.target.checked; Store.save(); App.render(); };
       $('#sound', el).onchange = e => { st.sound = e.target.checked; Store.save(); };
