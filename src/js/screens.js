@@ -288,7 +288,8 @@ const Screens = {
         ${item('verbs', 'verb', 'Глаголы', `${C.verbs.length} таблиц спряжения`)}
         ${item('dict', 'search', 'Словарь', 'Поиск по всем словам')}
       </div>
-      ${L.other && L.other.length ? `<h2 class="sec">Другие языки</h2><div class="list">${L.other.map(o => `<a class="li" href="${o.href}"><span class="li-ic"><span class="flag flag-${o.flag}" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="li-b"><b>${esc(o.t)}</b><small>${esc(o.d)}</small></span></a>`).join('')}</div>` : ''}
+      <h2 class="sec">Язык</h2><div class="list">${Object.keys(LANGS).filter(c => c !== L.code).map(c => `<a class="li" href="./?lang=${c}"><span class="li-ic"><span class="flag flag-${Boot.info[c].flag}" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="li-b"><b>Перейти на ${Boot.info[c].ru.toLowerCase()}</b><small>${Boot.info[c].native} · отдельный прогресс</small></span></a>`).join('')}
+        <a class="li" href="./"><span class="li-ic">${ICON.globe}</span><span class="li-b"><b>Экран выбора языка</b><small>Сейчас: ${Boot.info[L.code].ru.toLowerCase()}</small></span></a></div>
       <h2 class="sec">Прогресс</h2><div class="list">
         ${item('stats', 'chart', 'Статистика', 'Активность, точность, слова по уровням')}
         ${item('achievements', 'trophy', 'Достижения', `${achN} из ${ACH.length} получено`)}

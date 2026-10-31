@@ -1,38 +1,14 @@
 <!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Română zi de zi</title>
-<meta name="description" content="Румынский язык каждый день: слова, грамматика, тесты A1–C1">
-<meta name="theme-color" content="#f2f3f6">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Română">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="icon" type="image/png" href="icons/favicon.png">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Jost:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="app.css?v=a0727baa31">
-<style>body{padding-top:env(safe-area-inset-top,0px)}</style>
-</head>
-<body>
-<div id="app">
-  <header id="top">
-    <button class="icon-btn" id="back" aria-label="Назад" hidden></button>
-    <div class="brand"><span class="flag flag-ro" aria-hidden="true"><i></i><i></i><i></i></span>Română zi de zi</div>
-    <div id="ttl"></div>
-  </header>
-  <main id="view" class="view"></main>
-  <nav id="tabs" aria-label="Разделы"></nav>
-</div>
-<div id="session" hidden></div>
-<noscript>Для работы приложения нужен JavaScript.</noscript>
-
-<script src="data.js?v=a0727baa31"></script>
-<script src="app.js?v=a0727baa31"></script>
-<script>if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(function () {});</script>
-</body>
-</html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capain</title><meta http-equiv="refresh" content="2; url=../?lang=ro"></head>
+<body style="font-family:-apple-system,system-ui,sans-serif;padding:24px">
+<p>Румынский теперь внутри общего приложения Capain. Открываем…</p>
+<script>
+(async function () {
+  try {
+    if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) if (/\/ro\/$/.test(r.scope)) await r.unregister();
+    if (window.caches) for (const k of await caches.keys()) if (k.startsWith('romana-')) await caches.delete(k);
+  } catch (e) {}
+  location.replace('../?lang=ro');
+})();
+</script></body></html>

@@ -6,11 +6,12 @@ const CACHE = PREFIX + '-__VERSION__';
 const FONTS = PREFIX + '-fonts';
 const ASSETS = __ASSETS__;
 const EXCLUDE = __EXCLUDE__;
+const LEGACY = __LEGACY__;   // кэши прежних отдельных приложений
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith(PREFIX + '-') && k !== CACHE && k !== FONTS).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => (k.startsWith(PREFIX + '-') && k !== CACHE && k !== FONTS) || LEGACY.some(p => k.startsWith(p + '-'))).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {

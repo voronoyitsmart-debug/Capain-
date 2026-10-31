@@ -1,16 +1,17 @@
 // Офлайн-кэш. Версия, префикс и список файлов подставляются при сборке.
 // Несколько приложений живут на одном сайте (немецкий в корне, румынский в /ro/),
 // поэтому каждое трогает только свои кэши и не обслуживает чужие папки.
-const PREFIX = 'deutsch';
-const CACHE = PREFIX + '-1b4af4f8cd';
+const PREFIX = 'capain';
+const CACHE = PREFIX + '-521f7e5b70';
 const FONTS = PREFIX + '-fonts';
-const ASSETS = ["./","index.html","app.css?v=1b4af4f8cd","data.js?v=1b4af4f8cd","app.js?v=1b4af4f8cd","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png"];
+const ASSETS = ["./","index.html","app.css?v=521f7e5b70","app.js?v=521f7e5b70","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png","data-de.js?v=521f7e5b70","data-ro.js?v=521f7e5b70"];
 const EXCLUDE = ["ro/"];
+const LEGACY = ["deutsch","romana"];   // кэши прежних отдельных приложений
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith(PREFIX + '-') && k !== CACHE && k !== FONTS).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => (k.startsWith(PREFIX + '-') && k !== CACHE && k !== FONTS) || LEGACY.some(p => k.startsWith(p + '-'))).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {

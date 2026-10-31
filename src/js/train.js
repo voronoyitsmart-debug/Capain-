@@ -4,7 +4,7 @@ const MODES = {
   quiz: { t: 'Выбор перевода', d: 'DE ↔ RU', ic: 'target' },
   listen: { t: 'Аудирование', d: 'Слушай и выбирай', ic: 'ear' },
   write: { t: 'Письмо', d: 'Напиши слово', ic: 'pen' },
-  article: { t: L.ui.genderMode.t, d: L.ui.genderMode.d, ic: 'layers' },
+  get article() { return { t: L.ui.genderMode.t, d: L.ui.genderMode.d, ic: 'layers' }; },
   plural: { t: 'Мн. число', d: 'Формы plural', ic: 'shuffle' },
   gap: { t: 'Пропуски', d: 'Слово в контексте', ic: 'gap' },
   order: { t: 'Собери фразу', d: 'Порядок слов', ic: 'puzzle' },
@@ -147,16 +147,37 @@ const Train = {
     if (!qs.length) return UI.toast('Ошибок нет — так держать!');
     Engine.start({ title: 'Работа над ошибками', questions: shuffle(qs), retry: () => this.mistakes() });
   },
+  // Урок грамматики подстраивается по ходу: выбор варианта → ввод ответа → порядок слов.
+  // Верные ответы поднимают уровень заданий, две ошибки подряд возвращают к выбору варианта.
   grammar(id) {
     const g = C.grammar.find(x => x.id === id);
-    // от простого к сложному: выбор → ввод → порядок слов;
-    // если урок уже пройден хорошо — повторная попытка начинается сразу со сложных заданий
+    const TYPES = ['choice', 'input', 'order'], NAMES = ['выбор варианта', 'ввод ответа', 'порядок слов'];
+    const pools = { choice: [], input: [], order: [] };
+    shuffle(g.exercises).forEach(x => (pools[x.type] || pools.choice).push(x));
     const prev = Store.state.grammar[id];
-    const rank = prev && prev.best >= 80 ? { input: 0, order: 1, choice: 2 } : { choice: 0, input: 1, order: 2 };
-    const ex = shuffle(g.exercises).sort((a, b) => rank[a.type] - rank[b.type]);
-    const qs = ex.map(x => Q.fromExercise(x)).filter(Boolean);
+    let lvl = prev && prev.best >= 80 ? 1 : 0, bad = 0;
+    const take = () => {
+      const k = Math.round(clamp(lvl, 0, 2));
+      const order = TYPES.map((t, i) => [Math.abs(i - k) + (i > k ? 0.1 : 0), t]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+      for (const t of order) if (pools[t].length) return Q.fromExercise(pools[t].shift());
+      return null;
+    };
     Engine.start({
-      title: g.title, questions: qs, xp: 6, retry: () => this.grammar(id),
+      title: g.title, questions: g.exercises.map(() => take), xp: 6, retry: () => this.grammar(id),
+      diffDots: () => Adapt.dots(Math.round(clamp(lvl, 0, 2) * 2)),
+      onAnswer: (q, ok) => {
+        const before = Math.round(lvl);
+        if (ok) {
+          bad = 0; lvl = Math.min(2, lvl + 0.5);
+          if (Math.round(lvl) > before) return { type: 'up', text: `Сложнее ↑ дальше: ${NAMES[Math.round(lvl)]}` };
+        } else {
+          bad++;
+          if (bad >= 2 && lvl > 0) { lvl = 0; bad = 0; return { type: 'down', text: 'Похоже, трудно — вернёмся к выбору вариантов. Загляните в «Правило».' }; }
+          lvl = Math.max(0, lvl - 0.5);
+          if (Math.round(lvl) < before) return { type: 'down', text: `Проще ↓ дальше: ${NAMES[Math.round(lvl)]}` };
+        }
+        return null;
+      },
       onFinish: r => {
         const st = Store.state.grammar[id] || { best: 0, done: false };
         st.best = Math.max(st.best, r.pct); if (r.pct >= 60) st.done = true;
@@ -226,10 +247,20 @@ const Train = {
       }
     });
   },
+  // Спряжение подстраивается: сначала настоящее время и частые лица, потом прошедшие, на высоком уровне — все времена
   verbs(list, title) {
     list = list && list.length ? list : C.verbs.filter(v => LEVELS.indexOf(v.lvl) <= LEVELS.indexOf(Store.state.level));
     if (!list.length) list = C.verbs;
-    const qs = Array.from({ length: 12 }, () => Q.verbQ(pick(list)));
+    const qs = Array.from({ length: 12 }, () => {
+      const v = pick(list);
+      return () => {
+        const lv = Adapt.level(), order = L.tenseOrder;
+        const allowed = order.slice(0, [1, 1, 2, Math.min(3, order.length), order.length][lv]);
+        const t = pick(allowed), T = L.tenses(v).find(x => x.id === t);
+        const p = T && T.single ? null : lv <= 1 ? pick([0, 1, 2]) : rnd(6);
+        return Object.assign(Q.verbQ(v, t, p), { adapt: true });
+      };
+    });
     Engine.start({ title: title || 'Спряжение глаголов', questions: qs, xp: 6, retry: () => this.verbs(list, title) });
   },
   verbAll(v) {

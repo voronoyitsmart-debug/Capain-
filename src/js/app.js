@@ -4,6 +4,9 @@ const App = {
   stack: [], cur: 'home', mem: {}, onLeave: null,
   init() {
     Store.load();
+    Ach.applyTitles();
+    $('#brand-name').textContent = L.name;
+    $('#brand-flag').className = 'flag flag-' + L.code;
     C.init();
     Speech.init();
     this.applyTheme();
@@ -104,4 +107,4 @@ const App = {
     }
   }
 };
-document.addEventListener('DOMContentLoaded', () => App.init());
+// запуск — в boot.js (сначала выбор языка)

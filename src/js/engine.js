@@ -63,7 +63,7 @@ const Engine = {
         : `<span class="count">${s.gen ? s.done.length + 1 : Math.min(s.done.length + 1, s.total) + '/' + s.total}</span>`;
     }
     const d = $('#ses-diff');
-    if (d) d.innerHTML = s.adaptive && Adapt.on() && s.mode === 'learn' ? Adapt.dots() : '';
+    if (d) d.innerHTML = s.diffDots ? s.diffDots() : s.adaptive && Adapt.on() && s.mode === 'learn' ? Adapt.dots() : '';
   },
   next() {
     const s = this.s; if (!s) return;
@@ -78,6 +78,7 @@ const Engine = {
     }
     if (!q) return this.finish();
     if (q.adapt) s.adaptive = true;
+    s.note = null;
     s.cur = q; q._t0 = Date.now();
     this.progress();
     const body = $('#ses-body'), foot = $('#ses-foot');
@@ -315,23 +316,31 @@ const Engine = {
       if (s.mode !== 'exam' && !silent) Sound.bad();
       if (s.requeue && s.mode === 'learn' && !q._re && q.kind !== 'pair') { s.queue.push(Object.assign({}, q, { _re: true })); }
     }
-    // адаптивная сложность: верно — сложнее, ошибка — шаг назад
+    // адаптивная сложность: верно — сложнее, ошибка — шаг назад, «реально трудно» — откат на уровень
     if (q.adapt && s.mode === 'learn' && !q._re) {
       const ch = Adapt.answer(ok, Date.now() - (q._t0 || Date.now()));
-      if (ch) this.diffChanged(ch);
+      if (ch === 'rollback') {
+        this.notify({ type: 'down', text: `Похоже, сейчас трудно — откатываемся: ${Adapt.label()}` });
+        // проблемное слово сразу спросим в самой лёгкой форме, а потом ещё раз — в конце
+        if (q.w && !s.gen) s.queue.unshift(() => Object.assign(Q.deRu(q.w, C.topicWords(q.w.topic), 0), { _re: true, label: 'Повторим попроще' }));
+      } else if (ch === 'up') this.notify({ type: 'up', text: `Сложнее ↑ ${Adapt.label()}` });
+      else if (ch === 'down') this.notify({ type: 'down', text: `Проще ↓ ${Adapt.label()}` });
     }
+    // собственная адаптивность режима (например, уроки грамматики)
+    if (s.onAnswer && q.kind !== 'pair' && !q._re) { const r = s.onAnswer(q, ok); if (r) this.notify(r); }
     if (q.kind !== 'pair') s.done.push({ q, ok, given, why });
     Store.save();
     this.progress();
     if (after) after();
   },
-  diffChanged(ch) {
-    const d = $('#ses-diff'); if (!d) return;
+  // сообщение о смене сложности: значок над вопросом и строка в разборе ответа
+  notify(r) {
     const pill = document.createElement('span');
-    pill.className = 'diff-pill ' + ch;
-    pill.textContent = ch === 'up' ? `Сложнее ↑ ${Adapt.label()}` : `Проще ↓ ${Adapt.label()}`;
+    pill.className = 'diff-pill ' + (r.type === 'up' ? 'up' : 'down');
+    pill.textContent = r.text;
     $('#ses-body').prepend(pill);
-    setTimeout(() => pill.remove(), 2400);
+    setTimeout(() => pill.remove(), 2600);
+    if (this.s) this.s.note = r;
   },
   gain(n) { this.s.xpGained += n; Store.addXP(n); },
 
@@ -342,7 +351,9 @@ const Engine = {
     const sayTxt = q.sayAfter || (q.kind === 'input' || q.kind === 'order' ? q.say : null);
     const lesson = q.lesson && C.grammar.find(g => g.id === q.lesson);
     const canOverride = override && this.s.mode === 'learn';
+    const note = this.s.note; this.s.note = null;
     foot.innerHTML = `<div class="fb-box">
+        ${note ? `<div class="adapt-note ${note.type}">${esc(note.text)}</div>` : ''}
         <div class="fb-head"><span class="fb-ic">${ok ? ICON.check : ICON.x}</span><b>${title}</b>
         ${sayTxt ? `<button class="mini-audio" id="fb-say" aria-label="Послушать">${ICON.sound}</button>` : ''}</div>
         ${html ? `<div class="fb-ans">${html}</div>` : ''}

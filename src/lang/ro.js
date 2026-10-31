@@ -1,10 +1,9 @@
 // Языковой пакет: румынский. Род (m/f/n) вместо артиклей der/die/das, диакритика ă â î ș ț,
 // спряжение по временам prezent / perfect compus / imperfect / conjunctiv и правила для объяснений.
-const L = {
+LANGS.ro = {
   code: 'ro',
   name: 'Română zi de zi',
   storeKey: 'romana.v1',
-  other: [{ flag: 'de', t: 'Deutsch Tag für Tag', d: 'Немецкий язык — отдельный прогресс', href: '../' }],
   tts: 'ro-RO',
   voiceRe: /^ro(-|_|$)/i,
   voicePref: /ioana|andrei|google/i,
@@ -121,6 +120,7 @@ const L = {
       { id: 'conj', label: 'Conjunctiv', single: { p: 2, prefix: 'el/ea', answers: [v.conj], reveal: esc(v.conj), say: v.conj, hint: 'напишите форму с «să»' } }
     ];
   },
+  tenseOrder: ['prez', 'perf', 'imperf', 'conj'],   // от простого к сложному
   pickTense(v) {
     return pick(v.lvl === 'A1' ? ['prez', 'prez', 'perf'] : v.lvl === 'A2' ? ['prez', 'perf', 'perf', 'conj'] : ['prez', 'perf', 'imperf', 'conj']);
   },

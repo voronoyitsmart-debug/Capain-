@@ -1,3 +1,7 @@
+// Языковые пакеты регистрируются в LANGS, выбранный язык — в L (назначается при входе)
+const LANGS = {};
+let L = null;
+
 // Общие утилиты
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));

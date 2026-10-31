@@ -12,18 +12,30 @@ const Adapt = {
   label() { return this.LABELS[this.level()]; },
   // насколько хорошо выучено слово: 0 новое … 4 выучено
   tier(w) { const b = Store.mastery(w.key); return b <= 0 ? 0 : b === 1 ? 1 : b <= 3 ? 2 : b === 4 ? 3 : 4; },
-  // итоговая сложность вопроса по слову: общий уровень ученика + знание этого слова
+  // итоговая сложность вопроса по слову: больше всего решает текущий уровень ученика, меньше — знание слова
   eff(w) {
     if (!this.on()) return clamp(this.tier(w) + 1, 0, 4);
-    return clamp(Math.round((this.st().d + this.tier(w)) / 2 + 0.25), 0, 4);
+    return clamp(Math.round(0.65 * this.st().d + 0.35 * this.tier(w) + 0.15), 0, 4);
   },
   options(eff) { return eff <= 0 ? 3 : eff >= 4 ? 5 : 4; },
-  // учесть ответ; вернуть 'up' | 'down' | null, если уровень сменился
+  // учесть ответ. Верно — сложнее (быстрый ответ — ещё сложнее), ошибка — чуть проще.
+  // Если реально трудно (две ошибки подряд или три из последних пяти) — откат на целый уровень.
+  // Возвращает 'up' | 'down' | 'rollback' | null
   answer(ok, ms) {
     if (!this.on()) return null;
     const a = this.st(), before = this.level();
-    if (ok) { a.ok++; a.bad = 0; a.d += ms && ms < 6000 ? 0.25 : 0.15; }
-    else { a.bad++; a.ok = 0; a.d -= a.bad >= 2 ? 0.75 : 0.4; }
+    a.hist = (a.hist || []).concat([ok ? 1 : 0]).slice(-6);
+    if (ok) { a.ok++; a.bad = 0; a.d += ms && ms < 6000 ? 0.3 : 0.2; }
+    else {
+      a.bad++; a.ok = 0;
+      const recent = a.hist.slice(-5), wrong = recent.filter(x => !x).length;
+      if (a.bad >= 2 || (recent.length >= 4 && wrong >= 3)) {
+        a.d = Math.max(0, Math.min(a.d, before) - 1);
+        a.bad = 0; a.hist = [];
+        return 'rollback';
+      }
+      a.d -= 0.35;
+    }
     a.d = clamp(a.d, 0, 4);
     const after = this.level();
     return after > before ? 'up' : after < before ? 'down' : null;

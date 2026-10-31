@@ -1,4 +1,8 @@
 /* js/util.js */
+// Языковые пакеты регистрируются в LANGS, выбранный язык — в L (назначается при входе)
+const LANGS = {};
+let L = null;
+
 // Общие утилиты
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -71,11 +75,10 @@ const LEVEL_NAMES = { A1: 'Начальный', A2: 'Элементарный', 
 /* lang/de.js */
 // Языковой пакет: немецкий. Всё, что зависит от языка: артикли, умлауты, спряжение,
 // правила для объяснений ошибок и подписи интерфейса.
-const L = {
+LANGS.de = {
   code: 'de',
   name: 'Deutsch Tag für Tag',
   storeKey: 'deutsch.v1',
-  other: [{ flag: 'ro', t: 'Română zi de zi', d: 'Румынский язык — отдельный прогресс', href: 'ro/' }],
   tts: 'de-DE',
   voiceRe: /^de(-|_|$)/i,
   voicePref: /anna|helena|petra|markus|yannick|google/i,
@@ -177,6 +180,7 @@ const L = {
         reveal: esc(v.perf), say: 'er ' + v.perf, hint: 'напишите вспомогательный глагол и Partizip II' } }
     ];
   },
+  tenseOrder: ['praes', 'perf', 'praet'],   // от простого к сложному
   pickTense(v) { return pick(v.lvl === 'A1' ? ['praes', 'praes', 'perf'] : ['praes', 'praet', 'perf']); },
   verbView(v) {
     return `<div class="table-wrap"><table class="conj"><thead><tr><th></th><th>Präsens</th><th>Präteritum</th></tr></thead><tbody>
@@ -329,9 +333,252 @@ const L = {
 };
 function plainVowels(s) { return String(s).replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u'); }
 
+/* lang/ro.js */
+// Языковой пакет: румынский. Род (m/f/n) вместо артиклей der/die/das, диакритика ă â î ș ț,
+// спряжение по временам prezent / perfect compus / imperfect / conjunctiv и правила для объяснений.
+LANGS.ro = {
+  code: 'ro',
+  name: 'Română zi de zi',
+  storeKey: 'romana.v1',
+  tts: 'ro-RO',
+  voiceRe: /^ro(-|_|$)/i,
+  voicePref: /ioana|andrei|google/i,
+  chars: ['ă', 'â', 'î', 'ș', 'ț', 'Ă', 'Â', 'Î', 'Ș', 'Ț'],
+  persons: ['eu', 'tu', 'el/ea', 'noi', 'voi', 'ei/ele'],
+  pron: ['eu', 'tu', 'el', 'noi', 'voi', 'ei'],
+  ui: {
+    inLang: 'по-румынски', adjCap: 'Румынское', langGen: 'румынского',
+    greet(h) {
+      if (h < 5) return ['Noapte bună!', 'Доброй ночи'];
+      if (h < 11) return ['Bună dimineața!', 'Доброе утро'];
+      if (h < 18) return ['Bună ziua!', 'Добрый день'];
+      if (h < 23) return ['Bună seara!', 'Добрый вечер'];
+      return ['Noapte bună!', 'Доброй ночи'];
+    },
+    praise: ['Corect!', 'Bravo!', 'Super!', 'Excelent!', 'Foarte bine!', 'Perfect!'],
+    wrong: ['Nu chiar', 'Greșit'],
+    verdict: pct => pct >= 90 ? 'Excelent!' : pct >= 70 ? 'Foarte bine!' : pct >= 50 ? 'Nu e rău!' : 'Mai exersează!',
+    h: { words: 'Vocabular', grammar: 'Gramatică', tests: 'Teste', more: 'Mai mult', verbs: 'Verbe', reading: 'Lectură', dialogues: 'Dialoguri',
+      phrases: 'Ghid de conversație', stats: 'Statistici', ach: 'Realizări', settings: 'Setări', topicFav: 'Favorite' },
+    testsLead: 'Проверьте себя: тесты по уровням A1–C1 (по шкале CEFR)',
+    placement: 'Test de plasare',
+    genderMode: { t: 'Род: m · f · n', d: 'Мужской, женский, средний' },
+    genderTest: ['Род существительных', 'Мужской, женский или средний (neutru)'],
+    genderQ: 'Какой род?',
+    typeNoun: 'Напишите по-румынски',
+    voiceTest: 'Bună! Te ajut să înveți limba română.',
+    voiceMissing: 'Румынские голоса не найдены. На iPhone: Настройки → Универсальный доступ → Устный контент → Голоса → Румынский (Ioana).',
+    missing: ans => `Без диакритики: правильно <b>${esc(ans)}</b>. Диакритика различает слова (peste — «над», pește — «рыба»).`,
+    translitOk: 'Засчитано',
+    verbTenses: 'Prezent, perfect compus, imperfect, conjunctiv'
+  },
+  // без диакритики: в словах — засчитываем с пометкой, в грамматике и спряжении — ошибка
+  translit: s => s,
+  plain: s => s.replace(/[ăâ]/g, 'a').replace(/î/g, 'i').replace(/[șş]/g, 's').replace(/[țţ]/g, 't'),
+  hasDiacritics: s => /[ăâîșțşţ]/.test(s),
+  missingOk: strict => !strict,
+
+  // ---- существительные ----
+  genders: [
+    { id: 'm', html: 'м. р.<small>un · doi</small>', cls: 'a-m' },
+    { id: 'f', html: 'ж. р.<small>o · două</small>', cls: 'a-f' },
+    { id: 'n', html: 'ср. р.<small>un · două</small>', cls: 'a-n' }
+  ],
+  gender(w) { return w.t === 'n' && ['m', 'f', 'n'].includes(w.g) ? w.g : ''; },
+  lemma(w) {
+    return String(w.de || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+      .replace(/^a (se |își |își |-și )?/, '').replace(/^a-(și|și) /, '').trim();
+  },
+  pluralOnly(w) { return w.t === 'n' && (!w.pl || w.pl === '-') && /мн\./.test(w.ru); },
+  wordHTML(w) {
+    const g = this.gender(w);
+    if (g && !this.pluralOnly(w)) return `<span class="art a-${g}">${g === 'f' ? 'o' : 'un'}</span> ${esc(w.de)}`;
+    if (g) return `<span class="art a-${g}">${esc(w.de)}</span>`;
+    return esc(w.de);
+  },
+  wordClass(w) { const g = this.gender(w); return g ? 'a-' + g : ''; },
+  pluralShort(w) { return w.pl; },
+  canPlural(w) { return w.t === 'n' && w.pl && w.pl !== '-' && !/\s/.test(w.pl) && !/\s/.test(w.de); },
+  pluralOptions(w) {
+    const lem = w.de, correct = w.pl;
+    const stem = lem.replace(/(ea|ă|e|a|u)$/, '');
+    const cands = [stem + 'e', stem + 'i', lem + 'uri', stem + 'uri', lem + 'i', lem + 'e', stem + 'ă', stem + 'ele', stem + 'ii', lem.replace(/ea$/, 'ele'), lem + 'le'];
+    return { correct, wrong: uniq(cands).filter(c => c !== correct && c !== lem && c.length > 1), show: x => esc(x) };
+  },
+  // формы, которые могут встретиться в примере (для упражнения «пропуск»)
+  gapForms(w) {
+    const lem = this.lemma(w);
+    if (w.t === 'n') return [lem, w.def, w.pl !== '-' ? w.pl : ''].filter(Boolean);
+    if (w.t === 'adj' && w.forms) return w.forms.split(/,\s*/);
+    if (w.t === 'v' && typeof C !== 'undefined' && C.verbByInf && C.verbByInf[w.de]) return [lem].concat(C.verbByInf[w.de].prez.map(f => f.split(' ').pop()));
+    return [lem];
+  },
+  typeHint(w) {
+    const lem = this.lemma(w), g = this.gender(w);
+    return `Подсказка: ${g ? (g === 'f' ? 'o ' : 'un ') : ''}${esc(lem.charAt(0))}${'·'.repeat(Math.max(0, lem.length - 1))} (${lem.length} букв)`;
+  },
+  // все допустимые написания ответа
+  variants(de) {
+    const out = new Set([de]);
+    const noPar = de.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    out.add(noPar);
+    if (/^a-și /.test(noPar)) out.add(noPar.replace(/^a-și /, 'a își '));
+    if (/^a își /.test(noPar)) out.add(noPar.replace(/^a își /, 'a-și '));
+    noPar.split(/\s*(?:\/|;)\s*/).filter(Boolean).forEach(p => out.add(p));
+    return Array.from(out).filter(Boolean);
+  },
+  // существительное можно написать и с неопределённым артиклем
+  extraAnswers(w) { const g = this.gender(w); return g && !this.pluralOnly(w) ? [(g === 'f' ? 'o ' : 'un ') + w.de] : []; },
+  soft(answers) {
+    return answers.filter(a => /^a /.test(a)).map(a => ({ a: a.replace(/^a /, ''), note: `Засчитано. Инфинитив пишется с частицей «a»: <b>${esc(a)}</b>` }));
+  },
+  // поиск слова из текста в словаре: снимаем артикль и окончания
+  lookupTries(t) {
+    const out = [];
+    for (const e of ['ului', 'ilor', 'elor', 'urile', 'urilor', 'ul', 'le', 'lui', 'lor', 'uri', 'ei', 'ii', 'a', 'i', 'e']) {
+      if (t.length > e.length + 2 && t.endsWith(e)) { const s = t.slice(0, -e.length); out.push(s, s + 'ă', s + 'e', s + 'u'); }
+    }
+    return out;
+  },
+  isTarget(txt) {
+    return /[ăâîșțĂÂÎȘȚ]|\b(este|sunt|eu|tu|el|ea|noi|voi|nu|și|un|o|la|în|pe|cu|de|am|ai|are|mă|te)\b/i.test(txt) && !/[а-яё]/i.test(txt);
+  },
+
+  // ---- глаголы ----
+  perfForms(v) { return v.perf || ['am', 'ai', 'a', 'am', 'ați', 'au'].map(a => a + ' ' + v.part); },
+  verbForms(v) { return v.prez.concat(v.imperf); },
+  verbSummary(v) { return this.perfForms(v)[0]; },
+  tenses(v) {
+    return [
+      { id: 'prez', label: 'Prezent', forms: v.prez },
+      { id: 'perf', label: 'Perfect compus', forms: this.perfForms(v) },
+      { id: 'imperf', label: 'Imperfect', forms: v.imperf },
+      { id: 'conj', label: 'Conjunctiv', single: { p: 2, prefix: 'el/ea', answers: [v.conj], reveal: esc(v.conj), say: v.conj, hint: 'напишите форму с «să»' } }
+    ];
+  },
+  tenseOrder: ['prez', 'perf', 'imperf', 'conj'],   // от простого к сложному
+  pickTense(v) {
+    return pick(v.lvl === 'A1' ? ['prez', 'prez', 'perf'] : v.lvl === 'A2' ? ['prez', 'perf', 'perf', 'conj'] : ['prez', 'perf', 'imperf', 'conj']);
+  },
+  verbView(v) {
+    const P = this.perfForms(v);
+    return `<div class="table-wrap"><table class="conj"><thead><tr><th></th><th>Prezent</th><th>Perfect compus</th><th>Imperfect</th></tr></thead><tbody>
+      ${this.persons.map((x, i) => `<tr><td class="muted">${x}</td><td data-say="${esc(this.pron[i] + ' ' + v.prez[i])}"><b>${esc(v.prez[i])}</b></td>
+        <td data-say="${esc(this.pron[i] + ' ' + P[i])}">${esc(P[i])}</td><td data-say="${esc(this.pron[i] + ' ' + v.imperf[i])}">${esc(v.imperf[i])}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="kv"><div data-say="${esc(v.conj)}"><span>Conjunctiv · el/ea</span><b>${esc(v.conj)}</b></div>
+      <div data-say="${esc(v.part)}"><span>Participiu</span><b>${esc(v.part)}</b></div>
+      ${v.imp ? `<div data-say="${esc(v.imp)}"><span>Imperativ</span><b>${esc(v.imp)}</b></div>` : ''}</div>`;
+  },
+  verbAll(v) { return [0, 1, 2, 3, 4, 5].map(p => ['prez', p]).concat([['perf', 0], ['perf', 2], ['imperf', 0], ['imperf', 3], ['conj', 2]]); },
+
+  // если вместо начальной формы написана форма с артиклем, мн. число или не тот un/o
+  inputNoun(w, gn) {
+    const g = this.gender(w), lem = w.de;
+    if (w.def && gn === norm(w.def)) return `<div class="why"><div>💡 «${esc(w.def)}» — форма с определённым артиклем. Здесь нужна начальная форма: <b>${esc(lem)}</b>.</div></div>`;
+    if (w.pl && w.pl !== '-' && gn === norm(w.pl)) return `<div class="why"><div>💡 «${esc(w.pl)}» — множественное число. Здесь нужно единственное: <b>${esc(lem)}</b>.</div></div>`;
+    const m = /^(un|o) (.+)$/.exec(gn);
+    if (m && norm(m[2]) === norm(lem) && g && (m[1] === 'o') !== (g === 'f')) {
+      return `<div class="why"><div>Слово верное, но артикль другой: <b class="a-${g}">${g === 'f' ? 'o' : 'un'}</b> ${esc(lem)}.</div></div>` + this.explain.gender(w);
+    }
+    return '';
+  },
+
+  // ---- правила для объяснений ошибок ----
+  explain: {
+    gender(w) {
+      const g = L.gender(w);
+      if (!g) return '';
+      const lem = w.de, pl = w.pl && w.pl !== '-' ? w.pl : '';
+      const name = { m: 'мужского', f: 'женского', n: 'среднего' }[g];
+      const lines = [];
+      const vowelF = /(ă|ea|a|e)$/.test(lem);
+      if (g === 'f' && vowelF) lines.push('Существительные на -ă, -e, -ea, -a почти всегда женского рода: o casă, o carte, o cafea.');
+      else if (g === 'm' && /(ă|a)$/.test(lem)) lines.push(`На -ă/-a обычно женский род, но <b>${esc(lem)}</b> — мужского: это человек мужского пола (tată, papă, popă).`);
+      else if (g === 'm' && /e$/.test(lem)) lines.push(`На -e бывает и мужской род: un ${esc(lem)}${pl ? ` — doi ${esc(pl)}` : ''} (как frate, câine, munte, pește).`);
+      else if (g === 'n') lines.push(`Средний род (neutru) ведёт себя как мужской в ед. ч. и как женский во мн. ч.: un ${esc(lem)}${pl ? ` — două ${esc(pl)}` : ''}.${/uri$/.test(pl) ? ' Мн. ч. на -uri почти всегда означает средний род.' : ''}`);
+      else if (g === 'm') lines.push(`Мужской род: un ${esc(lem)}${pl ? ` — doi ${esc(pl)}` : ''}. Мужского рода почти все слова о мужчинах и животных-самцах, многие деревья и названия месяцев.`);
+      else if (g === 'f') lines.push(`Женский род: o ${esc(lem)}${pl ? ` — două ${esc(pl)}` : ''}.`);
+      lines.push(`Проверка: m — un/doi, f — o/două, n — un/două. <b class="a-${g}">${esc(lem)}</b> — ${name} рода.`);
+      return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+    },
+    plural(w) {
+      const lem = w.de, pl = w.pl, g = L.gender(w);
+      const lines = [`${esc(lem)} → <b>${esc(pl)}</b>`];
+      if (/uri$/.test(pl)) lines.push('Окончание -uri — типично для среднего рода: tren → trenuri, lucru → lucruri.');
+      else if (/ea$/.test(lem) && /ele$/.test(pl)) lines.push('Слова на -ea получают -ele: cafea → cafele, stea → stele.');
+      else if (/i$/.test(pl) && g === 'm') lines.push('Мужской род получает -i: pom → pomi. Перед -i согласные часто меняются: t → ț (student → studenți), d → z (brad → brazi), s → ș, st → ști.');
+      else if (/i$/.test(pl) && g === 'f') lines.push('Женский род на -e и часть слов на -ă получают -i: carte → cărți, bancă → bănci; гласная в корне может меняться (a → ă, oa → o).');
+      else if (/e$/.test(pl) && g === 'f') lines.push('Многие слова женского рода на -ă получают -e: casă → case, fată → fete (с чередованием гласной).');
+      else if (/e$/.test(pl) && g === 'n') lines.push('Средний род получает -e или -uri: scaun → scaune, oraș → orașe.');
+      else lines.push('Особая форма множественного числа — её нужно запомнить.');
+      const stem = s => s.replace(/(uri|ele|e|i|ă|a|u)$/, '');
+      if (stem(pl) !== stem(lem) && !/uri$/.test(pl)) lines.push('Обратите внимание на чередование звуков в корне.');
+      return `<div class="why">${lines.map((x, i) => `<div>${i ? '💡 ' : ''}${x}</div>`).join('')}</div>`;
+    },
+    verb(v, tense, p, given) {
+      const PR = L.persons;
+      const lines = [];
+      const gn = norm(given || '');
+      const T = L.tenses(v).find(t => t.id === tense);
+      if (T && T.forms && gn) {
+        const j = T.forms.findIndex(f => norm(f) === gn);
+        if (j >= 0 && j !== p) lines.push(`«${esc(given)}» — это форма для <b>${PR[j]}</b>, а нужна для <b>${PR[p]}</b>.`);
+        for (const o of L.tenses(v)) if (o.id !== tense && o.forms && o.forms.some(f => norm(f) === gn)) lines.push(`«${esc(given)}» — форма времени ${o.label}, а здесь нужно ${T.label}.`);
+      }
+      const ez = /(ez|esc|ăsc)$/.test(v.prez[0].split(' ').pop());
+      if (tense === 'prez') {
+        if (/^a (fi|avea|vrea|lua|da|sta|bea|ști|putea|veni|face|zice|duce|mânca)$/.test(v.inf)) lines.push(`${esc(v.inf)} — неправильный или частый глагол с особыми формами, их нужно запомнить.`);
+        else if (ez) lines.push(`Глагол с суффиксом -ez/-esc: в ед. ч. и 3-м л. мн. ч. он добавляется (${esc(v.prez[0])}, ${esc(v.prez[1])}, ${esc(v.prez[2])}), а в «noi» и «voi» — нет (${esc(v.prez[3])}, ${esc(v.prez[4])}).`);
+        else lines.push({ I: 'I спряжение (-a): eu cânt, tu cânți, el cântă, noi cântăm, voi cântați, ei cântă.', II: 'II спряжение (-ea): eu văd, tu vezi, el vede, noi vedem, voi vedeți, ei văd.',
+          III: 'III спряжение (-e): eu merg, tu mergi, el merge, noi mergem, voi mergeți, ei merg.', IV: 'IV спряжение (-i/-î): eu dorm, tu dormi, el doarme, noi dormim, voi dormiți, ei dorm.' }[v.group] || '');
+        if (p === 1 || p === 2) lines.push('В формах tu и el/ea корень часто меняется: port → porți → poartă, văd → vezi.');
+      } else if (tense === 'perf') {
+        lines.push(`Perfect compus = am, ai, a, am, ați, au + причастие <b>${esc(v.part)}</b>. Меняется только вспомогательный глагол.`);
+        if (v.perf) lines.push('У возвратных глаголов местоимение сливается со вспомогательным: m-am, te-ai, s-a, ne-am, v-ați, s-au.');
+        lines.push('Причастие: -a → -at (lucrat), -ea → -ut (văzut), -e → -s/-t/-ut (mers, fript, făcut), -i → -it (dormit), -î → -ât (hotărât).');
+      } else if (tense === 'imperf') {
+        lines.push('Imperfect: окончания -am, -ai, -a, -am, -ați, -au. Глаголы на -a: lucram, cântam; остальные: mergeam, vedeam, citeam.');
+      } else if (tense === 'conj') {
+        lines.push(`Conjunctiv в 3-м лице отличается от настоящего времени: у I спряжения окончание -e (să lucreze, să cânte), у остальных -ă (să meargă, să citească). Особые: să fie, să aibă, să vrea, să știe, să ia, să dea.`);
+        if (!/^să /.test(gn) && gn) lines.push('Не забудьте частицу «să».');
+      }
+      return `<div class="why">${lines.filter(Boolean).map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+    },
+    order(q, given) {
+      const toks = q.tokens.map(t => t.replace(/[.,!?;:„“"]/g, ''));
+      const low = toks.map(t => t.toLowerCase());
+      const g = (given || []).map(t => t.replace(/[.,!?;:„“"]/g, ''));
+      const lines = [];
+      const k = g.findIndex((t, i) => t !== toks[i]);
+      if (k >= 0 && g.length) lines.push(`Расхождение с ${k + 1}-го слова: у вас «${esc(g[k] || '…')}», а нужно «${esc(toks[k])}».`);
+      const CL = ['mă', 'te', 'îl', 'ne', 'vă', 'îi', 'le', 'îmi', 'îți', 'își', 'se', 'mi', 'ți', 'și'];
+      const W = ['ce', 'cine', 'unde', 'când', 'cum', 'cât', 'câtă', 'câți', 'câte', 'care', 'încotro', 'de'];
+      if (low.some(t => CL.includes(t) || /^(m|t|l|i|s|mi|ți|ni|vi|li|v|n)-/.test(t) || /-(l|o|i|le|mi|ți)$/.test(t)))
+        lines.push('Безударные местоимения (mă, te, îl, o, îmi, îi, se…) стоят прямо перед глаголом: Îl văd. Mi-a spus. Te sun mâine.');
+      if (low.includes('nu') || low.some(t => /^nu-/.test(t))) lines.push('Отрицание «nu» стоит перед глаголом и перед безударным местоимением: Nu îl văd (Nu-l văd).');
+      if (low.includes('să')) lines.push('После «să» сразу идёт глагол (местоимение — между ними): să vin, să te văd.');
+      if (q.tail === '?') {
+        if (W.includes(low[0])) lines.push('В вопросе вопросительное слово стоит первым, за ним глагол: Unde lucrează Ana?');
+        else lines.push('В вопросе «да/нет» порядок слов обычный — вопрос передаёт интонация: Ana lucrează azi?');
+      }
+      const adj = low.some(t => { const x = typeof C !== 'undefined' && C.lex[t]; return x && x.t === 'adj'; });
+      if (adj) lines.push('Прилагательное обычно стоит после существительного: o casă mare, un om bun.');
+      if (lines.length < 2) lines.push('Базовый порядок: подлежащее — глагол — дополнение (Ana citește o carte). Подлежащее-местоимение часто опускают: Citesc o carte.');
+      return `<div class="why">${lines.map(x => `<div>💡 ${x}</div>`).join('')}</div>`;
+    }
+  },
+  achTitles: {
+    first: 'Primul pas', w10: 'Zece cuvinte', w50: 'Vocabular', w150: 'Șoarece de bibliotecă', w400: 'Lexicon', w1000: 'Maestrul cuvintelor',
+    s3: 'Perseverență', s7: 'O săptămână', s30: 'Voință de fier', xp1k: 'O mie', xp5k: 'Cinci mii', perfect: 'Fără greșeli', perfect10: 'Perfecționist',
+    gram3: 'Fan al gramaticii', gram15: 'Cunoscător', place: 'Test de plasare', tA1: 'A1 promovat', tA2: 'A2 promovat', tB1: 'B1 promovat',
+    tB2: 'B2 promovat', tC1: 'C1 promovat', speed: 'Fulger', read5: 'Cititor pasionat', dial5: 'Vorbăreț', a100: 'O sută de răspunsuri',
+    a1000: 'Harnic', night: 'Bufniță', early: 'Matinal'
+  }
+};
+
 /* js/store.js */
 // Прогресс пользователя: localStorage, всё в try/catch
-const STORE_KEY = L.storeKey;
 const DEFAULT_STATE = () => ({
   v: 1,
   created: Date.now(),
@@ -364,7 +611,7 @@ const Store = {
   state: null,
   load() {
     let s = null;
-    try { s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { s = null; }
+    try { s = JSON.parse(localStorage.getItem(L.storeKey) || 'null'); } catch (e) { s = null; }
     const d = DEFAULT_STATE();
     if (!s || typeof s !== 'object') s = d;
     for (const k of Object.keys(d)) if (s[k] === undefined) s[k] = d[k];
@@ -374,14 +621,14 @@ const Store = {
     return s;
   },
   save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(this.state)); } catch (e) { /* хранилище недоступно */ }
+    try { localStorage.setItem(L.storeKey, JSON.stringify(this.state)); } catch (e) { /* хранилище недоступно */ }
   },
   reset() { this.state = DEFAULT_STATE(); this.save(); },
   export() { return JSON.stringify(this.state); },
   import(json) {
     const s = JSON.parse(json);
     if (!s || typeof s !== 'object' || !s.srs) throw new Error('Это не похоже на файл прогресса');
-    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    localStorage.setItem(L.storeKey, JSON.stringify(s));
     this.load();
   },
   today() {
@@ -708,18 +955,30 @@ const Adapt = {
   label() { return this.LABELS[this.level()]; },
   // насколько хорошо выучено слово: 0 новое … 4 выучено
   tier(w) { const b = Store.mastery(w.key); return b <= 0 ? 0 : b === 1 ? 1 : b <= 3 ? 2 : b === 4 ? 3 : 4; },
-  // итоговая сложность вопроса по слову: общий уровень ученика + знание этого слова
+  // итоговая сложность вопроса по слову: больше всего решает текущий уровень ученика, меньше — знание слова
   eff(w) {
     if (!this.on()) return clamp(this.tier(w) + 1, 0, 4);
-    return clamp(Math.round((this.st().d + this.tier(w)) / 2 + 0.25), 0, 4);
+    return clamp(Math.round(0.65 * this.st().d + 0.35 * this.tier(w) + 0.15), 0, 4);
   },
   options(eff) { return eff <= 0 ? 3 : eff >= 4 ? 5 : 4; },
-  // учесть ответ; вернуть 'up' | 'down' | null, если уровень сменился
+  // учесть ответ. Верно — сложнее (быстрый ответ — ещё сложнее), ошибка — чуть проще.
+  // Если реально трудно (две ошибки подряд или три из последних пяти) — откат на целый уровень.
+  // Возвращает 'up' | 'down' | 'rollback' | null
   answer(ok, ms) {
     if (!this.on()) return null;
     const a = this.st(), before = this.level();
-    if (ok) { a.ok++; a.bad = 0; a.d += ms && ms < 6000 ? 0.25 : 0.15; }
-    else { a.bad++; a.ok = 0; a.d -= a.bad >= 2 ? 0.75 : 0.4; }
+    a.hist = (a.hist || []).concat([ok ? 1 : 0]).slice(-6);
+    if (ok) { a.ok++; a.bad = 0; a.d += ms && ms < 6000 ? 0.3 : 0.2; }
+    else {
+      a.bad++; a.ok = 0;
+      const recent = a.hist.slice(-5), wrong = recent.filter(x => !x).length;
+      if (a.bad >= 2 || (recent.length >= 4 && wrong >= 3)) {
+        a.d = Math.max(0, Math.min(a.d, before) - 1);
+        a.bad = 0; a.hist = [];
+        return 'rollback';
+      }
+      a.d -= 0.35;
+    }
     a.d = clamp(a.d, 0, 4);
     const after = this.level();
     return after > before ? 'up' : after < before ? 'down' : null;
@@ -1219,7 +1478,7 @@ const Engine = {
         : `<span class="count">${s.gen ? s.done.length + 1 : Math.min(s.done.length + 1, s.total) + '/' + s.total}</span>`;
     }
     const d = $('#ses-diff');
-    if (d) d.innerHTML = s.adaptive && Adapt.on() && s.mode === 'learn' ? Adapt.dots() : '';
+    if (d) d.innerHTML = s.diffDots ? s.diffDots() : s.adaptive && Adapt.on() && s.mode === 'learn' ? Adapt.dots() : '';
   },
   next() {
     const s = this.s; if (!s) return;
@@ -1234,6 +1493,7 @@ const Engine = {
     }
     if (!q) return this.finish();
     if (q.adapt) s.adaptive = true;
+    s.note = null;
     s.cur = q; q._t0 = Date.now();
     this.progress();
     const body = $('#ses-body'), foot = $('#ses-foot');
@@ -1471,23 +1731,31 @@ const Engine = {
       if (s.mode !== 'exam' && !silent) Sound.bad();
       if (s.requeue && s.mode === 'learn' && !q._re && q.kind !== 'pair') { s.queue.push(Object.assign({}, q, { _re: true })); }
     }
-    // адаптивная сложность: верно — сложнее, ошибка — шаг назад
+    // адаптивная сложность: верно — сложнее, ошибка — шаг назад, «реально трудно» — откат на уровень
     if (q.adapt && s.mode === 'learn' && !q._re) {
       const ch = Adapt.answer(ok, Date.now() - (q._t0 || Date.now()));
-      if (ch) this.diffChanged(ch);
+      if (ch === 'rollback') {
+        this.notify({ type: 'down', text: `Похоже, сейчас трудно — откатываемся: ${Adapt.label()}` });
+        // проблемное слово сразу спросим в самой лёгкой форме, а потом ещё раз — в конце
+        if (q.w && !s.gen) s.queue.unshift(() => Object.assign(Q.deRu(q.w, C.topicWords(q.w.topic), 0), { _re: true, label: 'Повторим попроще' }));
+      } else if (ch === 'up') this.notify({ type: 'up', text: `Сложнее ↑ ${Adapt.label()}` });
+      else if (ch === 'down') this.notify({ type: 'down', text: `Проще ↓ ${Adapt.label()}` });
     }
+    // собственная адаптивность режима (например, уроки грамматики)
+    if (s.onAnswer && q.kind !== 'pair' && !q._re) { const r = s.onAnswer(q, ok); if (r) this.notify(r); }
     if (q.kind !== 'pair') s.done.push({ q, ok, given, why });
     Store.save();
     this.progress();
     if (after) after();
   },
-  diffChanged(ch) {
-    const d = $('#ses-diff'); if (!d) return;
+  // сообщение о смене сложности: значок над вопросом и строка в разборе ответа
+  notify(r) {
     const pill = document.createElement('span');
-    pill.className = 'diff-pill ' + ch;
-    pill.textContent = ch === 'up' ? `Сложнее ↑ ${Adapt.label()}` : `Проще ↓ ${Adapt.label()}`;
+    pill.className = 'diff-pill ' + (r.type === 'up' ? 'up' : 'down');
+    pill.textContent = r.text;
     $('#ses-body').prepend(pill);
-    setTimeout(() => pill.remove(), 2400);
+    setTimeout(() => pill.remove(), 2600);
+    if (this.s) this.s.note = r;
   },
   gain(n) { this.s.xpGained += n; Store.addXP(n); },
 
@@ -1498,7 +1766,9 @@ const Engine = {
     const sayTxt = q.sayAfter || (q.kind === 'input' || q.kind === 'order' ? q.say : null);
     const lesson = q.lesson && C.grammar.find(g => g.id === q.lesson);
     const canOverride = override && this.s.mode === 'learn';
+    const note = this.s.note; this.s.note = null;
     foot.innerHTML = `<div class="fb-box">
+        ${note ? `<div class="adapt-note ${note.type}">${esc(note.text)}</div>` : ''}
         <div class="fb-head"><span class="fb-ic">${ok ? ICON.check : ICON.x}</span><b>${title}</b>
         ${sayTxt ? `<button class="mini-audio" id="fb-say" aria-label="Послушать">${ICON.sound}</button>` : ''}</div>
         ${html ? `<div class="fb-ans">${html}</div>` : ''}
@@ -1635,9 +1905,9 @@ const ACH = [
   { id: 'night', t: 'Nachteule', d: 'Заниматься после 23:00', ic: '🦉', f: () => new Date().getHours() >= 23 },
   { id: 'early', t: 'Frühaufsteher', d: 'Заниматься до 7:00', ic: '🌅', f: () => new Date().getHours() < 7 }
 ];
-// у каждого языка свои названия достижений
-if (L.achTitles) ACH.forEach(a => { if (L.achTitles[a.id]) a.t = L.achTitles[a.id]; });
 const Ach = {
+  // у каждого языка свои названия достижений
+  applyTitles() { if (L.achTitles) ACH.forEach(a => { if (L.achTitles[a.id]) a.t = L.achTitles[a.id]; }); },
   _known: null,
   known() { if (this._known == null) this._known = Object.values(Store.state.srs).filter(r => r.b >= 2).length; return this._known; },
   check() {
@@ -1663,7 +1933,7 @@ const MODES = {
   quiz: { t: 'Выбор перевода', d: 'DE ↔ RU', ic: 'target' },
   listen: { t: 'Аудирование', d: 'Слушай и выбирай', ic: 'ear' },
   write: { t: 'Письмо', d: 'Напиши слово', ic: 'pen' },
-  article: { t: L.ui.genderMode.t, d: L.ui.genderMode.d, ic: 'layers' },
+  get article() { return { t: L.ui.genderMode.t, d: L.ui.genderMode.d, ic: 'layers' }; },
   plural: { t: 'Мн. число', d: 'Формы plural', ic: 'shuffle' },
   gap: { t: 'Пропуски', d: 'Слово в контексте', ic: 'gap' },
   order: { t: 'Собери фразу', d: 'Порядок слов', ic: 'puzzle' },
@@ -1806,16 +2076,37 @@ const Train = {
     if (!qs.length) return UI.toast('Ошибок нет — так держать!');
     Engine.start({ title: 'Работа над ошибками', questions: shuffle(qs), retry: () => this.mistakes() });
   },
+  // Урок грамматики подстраивается по ходу: выбор варианта → ввод ответа → порядок слов.
+  // Верные ответы поднимают уровень заданий, две ошибки подряд возвращают к выбору варианта.
   grammar(id) {
     const g = C.grammar.find(x => x.id === id);
-    // от простого к сложному: выбор → ввод → порядок слов;
-    // если урок уже пройден хорошо — повторная попытка начинается сразу со сложных заданий
+    const TYPES = ['choice', 'input', 'order'], NAMES = ['выбор варианта', 'ввод ответа', 'порядок слов'];
+    const pools = { choice: [], input: [], order: [] };
+    shuffle(g.exercises).forEach(x => (pools[x.type] || pools.choice).push(x));
     const prev = Store.state.grammar[id];
-    const rank = prev && prev.best >= 80 ? { input: 0, order: 1, choice: 2 } : { choice: 0, input: 1, order: 2 };
-    const ex = shuffle(g.exercises).sort((a, b) => rank[a.type] - rank[b.type]);
-    const qs = ex.map(x => Q.fromExercise(x)).filter(Boolean);
+    let lvl = prev && prev.best >= 80 ? 1 : 0, bad = 0;
+    const take = () => {
+      const k = Math.round(clamp(lvl, 0, 2));
+      const order = TYPES.map((t, i) => [Math.abs(i - k) + (i > k ? 0.1 : 0), t]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+      for (const t of order) if (pools[t].length) return Q.fromExercise(pools[t].shift());
+      return null;
+    };
     Engine.start({
-      title: g.title, questions: qs, xp: 6, retry: () => this.grammar(id),
+      title: g.title, questions: g.exercises.map(() => take), xp: 6, retry: () => this.grammar(id),
+      diffDots: () => Adapt.dots(Math.round(clamp(lvl, 0, 2) * 2)),
+      onAnswer: (q, ok) => {
+        const before = Math.round(lvl);
+        if (ok) {
+          bad = 0; lvl = Math.min(2, lvl + 0.5);
+          if (Math.round(lvl) > before) return { type: 'up', text: `Сложнее ↑ дальше: ${NAMES[Math.round(lvl)]}` };
+        } else {
+          bad++;
+          if (bad >= 2 && lvl > 0) { lvl = 0; bad = 0; return { type: 'down', text: 'Похоже, трудно — вернёмся к выбору вариантов. Загляните в «Правило».' }; }
+          lvl = Math.max(0, lvl - 0.5);
+          if (Math.round(lvl) < before) return { type: 'down', text: `Проще ↓ дальше: ${NAMES[Math.round(lvl)]}` };
+        }
+        return null;
+      },
       onFinish: r => {
         const st = Store.state.grammar[id] || { best: 0, done: false };
         st.best = Math.max(st.best, r.pct); if (r.pct >= 60) st.done = true;
@@ -1885,10 +2176,20 @@ const Train = {
       }
     });
   },
+  // Спряжение подстраивается: сначала настоящее время и частые лица, потом прошедшие, на высоком уровне — все времена
   verbs(list, title) {
     list = list && list.length ? list : C.verbs.filter(v => LEVELS.indexOf(v.lvl) <= LEVELS.indexOf(Store.state.level));
     if (!list.length) list = C.verbs;
-    const qs = Array.from({ length: 12 }, () => Q.verbQ(pick(list)));
+    const qs = Array.from({ length: 12 }, () => {
+      const v = pick(list);
+      return () => {
+        const lv = Adapt.level(), order = L.tenseOrder;
+        const allowed = order.slice(0, [1, 1, 2, Math.min(3, order.length), order.length][lv]);
+        const t = pick(allowed), T = L.tenses(v).find(x => x.id === t);
+        const p = T && T.single ? null : lv <= 1 ? pick([0, 1, 2]) : rnd(6);
+        return Object.assign(Q.verbQ(v, t, p), { adapt: true });
+      };
+    });
     Engine.start({ title: title || 'Спряжение глаголов', questions: qs, xp: 6, retry: () => this.verbs(list, title) });
   },
   verbAll(v) {
@@ -2219,7 +2520,8 @@ const Screens = {
         ${item('verbs', 'verb', 'Глаголы', `${C.verbs.length} таблиц спряжения`)}
         ${item('dict', 'search', 'Словарь', 'Поиск по всем словам')}
       </div>
-      ${L.other && L.other.length ? `<h2 class="sec">Другие языки</h2><div class="list">${L.other.map(o => `<a class="li" href="${o.href}"><span class="li-ic"><span class="flag flag-${o.flag}" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="li-b"><b>${esc(o.t)}</b><small>${esc(o.d)}</small></span></a>`).join('')}</div>` : ''}
+      <h2 class="sec">Язык</h2><div class="list">${Object.keys(LANGS).filter(c => c !== L.code).map(c => `<a class="li" href="./?lang=${c}"><span class="li-ic"><span class="flag flag-${Boot.info[c].flag}" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="li-b"><b>Перейти на ${Boot.info[c].ru.toLowerCase()}</b><small>${Boot.info[c].native} · отдельный прогресс</small></span></a>`).join('')}
+        <a class="li" href="./"><span class="li-ic">${ICON.globe}</span><span class="li-b"><b>Экран выбора языка</b><small>Сейчас: ${Boot.info[L.code].ru.toLowerCase()}</small></span></a></div>
       <h2 class="sec">Прогресс</h2><div class="list">
         ${item('stats', 'chart', 'Статистика', 'Активность, точность, слова по уровням')}
         ${item('achievements', 'trophy', 'Достижения', `${achN} из ${ACH.length} получено`)}
@@ -2519,6 +2821,9 @@ const App = {
   stack: [], cur: 'home', mem: {}, onLeave: null,
   init() {
     Store.load();
+    Ach.applyTitles();
+    $('#brand-name').textContent = L.name;
+    $('#brand-flag').className = 'flag flag-' + L.code;
     C.init();
     Speech.init();
     this.applyTheme();
@@ -2619,4 +2924,68 @@ const App = {
     }
   }
 };
-document.addEventListener('DOMContentLoaded', () => App.init());
+// запуск — в boot.js (сначала выбор языка)
+
+/* js/boot.js */
+// Запуск: экран выбора языка, затем загрузка данных выбранного языка и приложения.
+// Смена языка — перезагрузка страницы (?lang=…): данные языков никогда не смешиваются.
+const Boot = {
+  info: {
+    de: { flag: 'de', native: 'Deutsch', ru: 'Немецкий' },
+    ro: { flag: 'ro', native: 'Română', ru: 'Румынский' }
+  },
+  // краткая сводка прогресса по языку прямо из сохранённых данных
+  stats(code) {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(LANGS[code].storeKey) || 'null'); } catch (e) { s = null; }
+    if (!s || !s.days) return null;
+    let d = new Date(), streak = 0;
+    const has = x => s.days[dayKey(x)] && s.days[dayKey(x)].xp > 0;
+    if (!has(d)) d = new Date(Date.now() - DAY);
+    while (has(d)) { streak++; d = new Date(d.getTime() - DAY); }
+    const known = Object.values(s.srs || {}).filter(r => r.b >= 2).length;
+    return { xp: s.xp || 0, level: s.level || 'A1', streak, known };
+  },
+  start() {
+    const want = new URLSearchParams(location.search).get('lang');
+    if (want && LANGS[want]) return this.enter(want);
+    this.showChooser();
+  },
+  showChooser() {
+    $('#app').hidden = true;
+    const el = document.createElement('div');
+    el.id = 'chooser';
+    el.className = 'chooser';
+    el.innerHTML = `<div class="ch-in">
+      <div class="ch-logo" aria-hidden="true"><i></i><i></i><i></i></div>
+      <h1 class="display">Capain</h1>
+      <p class="lead">Какой язык учим сегодня?</p>
+      <div class="ch-list">${Object.keys(LANGS).map(code => {
+        const i = this.info[code], st = this.stats(code);
+        return `<button class="ch-card" data-lang="${code}">
+          <span class="flag flag-${i.flag}" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="ch-b"><b>${i.native}</b><small>${i.ru}${st ? ` · уровень ${st.level}` : ''}</small>
+            <span class="ch-st">${st ? `<span>${ICON.flame}${st.streak}</span><span>${ICON.words}${st.known}</span><span>${ICON.bolt}${st.xp} XP</span>` : '<span>Начать с нуля</span>'}</span></span>
+          <span class="cta-go">${ICON.play}</span></button>`;
+      }).join('')}</div>
+      <p class="muted small">Прогресс по каждому языку хранится отдельно. Сменить язык можно в любой момент — нажмите на флаг вверху.</p>
+    </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) this.enter(b.dataset.lang); });
+  },
+  enter(code) {
+    L = LANGS[code];
+    document.documentElement.lang = 'ru';
+    const ch = $('#chooser');
+    if (ch) ch.innerHTML = `<div class="ch-in"><p class="lead">Загружаем ${this.info[code].ru.toLowerCase()}…</p></div>`;
+    const done = () => { if (ch) ch.remove(); $('#app').hidden = false; App.init(); };
+    if (window.DE && window.DE.topics && window.DE.topics.length) return done();   // данные уже в странице (однофайловая версия)
+    const sc = document.createElement('script');
+    sc.src = `data-${code}.js?v=${window.CAPAIN_VER || ''}`;
+    sc.onload = done;
+    sc.onerror = () => { if (ch) ch.innerHTML = '<div class="ch-in"><p class="lead">Не удалось загрузить данные. Проверьте интернет и откройте приложение ещё раз.</p></div>'; };
+    document.head.appendChild(sc);
+  },
+  switchTo(code) { location.href = './?lang=' + code; }
+};
+document.addEventListener('DOMContentLoaded', () => Boot.start());

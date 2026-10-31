@@ -1,5 +1,4 @@
 // Прогресс пользователя: localStorage, всё в try/catch
-const STORE_KEY = L.storeKey;
 const DEFAULT_STATE = () => ({
   v: 1,
   created: Date.now(),
@@ -32,7 +31,7 @@ const Store = {
   state: null,
   load() {
     let s = null;
-    try { s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { s = null; }
+    try { s = JSON.parse(localStorage.getItem(L.storeKey) || 'null'); } catch (e) { s = null; }
     const d = DEFAULT_STATE();
     if (!s || typeof s !== 'object') s = d;
     for (const k of Object.keys(d)) if (s[k] === undefined) s[k] = d[k];
@@ -42,14 +41,14 @@ const Store = {
     return s;
   },
   save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(this.state)); } catch (e) { /* хранилище недоступно */ }
+    try { localStorage.setItem(L.storeKey, JSON.stringify(this.state)); } catch (e) { /* хранилище недоступно */ }
   },
   reset() { this.state = DEFAULT_STATE(); this.save(); },
   export() { return JSON.stringify(this.state); },
   import(json) {
     const s = JSON.parse(json);
     if (!s || typeof s !== 'object' || !s.srs) throw new Error('Это не похоже на файл прогресса');
-    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    localStorage.setItem(L.storeKey, JSON.stringify(s));
     this.load();
   },
   today() {

@@ -1,10 +1,9 @@
 // Языковой пакет: немецкий. Всё, что зависит от языка: артикли, умлауты, спряжение,
 // правила для объяснений ошибок и подписи интерфейса.
-const L = {
+LANGS.de = {
   code: 'de',
   name: 'Deutsch Tag für Tag',
   storeKey: 'deutsch.v1',
-  other: [{ flag: 'ro', t: 'Română zi de zi', d: 'Румынский язык — отдельный прогресс', href: 'ro/' }],
   tts: 'de-DE',
   voiceRe: /^de(-|_|$)/i,
   voicePref: /anna|helena|petra|markus|yannick|google/i,
@@ -106,6 +105,7 @@ const L = {
         reveal: esc(v.perf), say: 'er ' + v.perf, hint: 'напишите вспомогательный глагол и Partizip II' } }
     ];
   },
+  tenseOrder: ['praes', 'perf', 'praet'],   // от простого к сложному
   pickTense(v) { return pick(v.lvl === 'A1' ? ['praes', 'praes', 'perf'] : ['praes', 'praet', 'perf']); },
   verbView(v) {
     return `<div class="table-wrap"><table class="conj"><thead><tr><th></th><th>Präsens</th><th>Präteritum</th></tr></thead><tbody>
