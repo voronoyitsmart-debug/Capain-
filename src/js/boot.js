@@ -57,6 +57,20 @@ const Boot = {
     sc.onerror = () => { if (ch) ch.innerHTML = '<div class="ch-in"><p class="lead">Не удалось загрузить данные. Проверьте интернет и откройте приложение ещё раз.</p></div>'; };
     document.head.appendChild(sc);
   },
-  switchTo(code) { location.href = './?lang=' + code; }
+  switchTo(code) { location.href = './?lang=' + code; },
+  // Автообновление: при возвращении в приложение проверяем, не вышла ли новая версия.
+  // Если вышла и сейчас не идёт тренировка — тихо перезагружаемся на том же языке.
+  async checkUpdate() {
+    if (!window.CAPAIN_VER || !navigator.onLine || (typeof Engine !== 'undefined' && Engine.s)) return;
+    try {
+      const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const m = /CAPAIN_VER = '([a-z0-9]+)'/.exec(await r.text());
+      if (!m || m[1] === window.CAPAIN_VER || (typeof Engine !== 'undefined' && Engine.s)) return;
+      location.replace(L ? './?lang=' + L.code : './');
+    } catch (e) { /* нет сети — обновимся в следующий раз */ }
+  }
 };
-document.addEventListener('DOMContentLoaded', () => Boot.start());
+document.addEventListener('DOMContentLoaded', () => { Boot.start(); setTimeout(() => Boot.checkUpdate(), 3000); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Boot.checkUpdate(); });
+setInterval(() => { if (document.visibilityState === 'visible') Boot.checkUpdate(); }, 30 * 60 * 1000);

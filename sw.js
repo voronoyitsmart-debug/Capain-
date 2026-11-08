@@ -2,9 +2,9 @@
 // Несколько приложений живут на одном сайте (немецкий в корне, румынский в /ro/),
 // поэтому каждое трогает только свои кэши и не обслуживает чужие папки.
 const PREFIX = 'capain';
-const CACHE = PREFIX + '-6ba4dff41a';
+const CACHE = PREFIX + '-05f4da196c';
 const FONTS = PREFIX + '-fonts';
-const ASSETS = ["./","index.html","app.css?v=6ba4dff41a","app.js?v=6ba4dff41a","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png","data-de.js?v=6ba4dff41a","data-ro.js?v=6ba4dff41a"];
+const ASSETS = ["./","index.html","app.css?v=05f4da196c","app.js?v=05f4da196c","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png","data-de.js?v=05f4da196c","data-ro.js?v=05f4da196c"];
 const EXCLUDE = ["ro/"];
 const LEGACY = ["deutsch","romana"];   // кэши прежних отдельных приложений
 self.addEventListener('install', e => {
@@ -27,6 +27,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
+  if (url.searchParams.has('check')) return;   // проверка новой версии — всегда из сети
   const scope = new URL(self.registration.scope).pathname;
   if (!url.pathname.startsWith(scope) || EXCLUDE.some(p => url.pathname.startsWith(scope + p))) return;
   // страница: сначала сеть (чтобы быстро получать обновления), без сети — кэш

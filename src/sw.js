@@ -27,6 +27,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
+  if (url.searchParams.has('check')) return;   // проверка новой версии — всегда из сети
   const scope = new URL(self.registration.scope).pathname;
   if (!url.pathname.startsWith(scope) || EXCLUDE.some(p => url.pathname.startsWith(scope + p))) return;
   // страница: сначала сеть (чтобы быстро получать обновления), без сети — кэш
