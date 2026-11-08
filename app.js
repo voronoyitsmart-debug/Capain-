@@ -2146,33 +2146,31 @@ const Train = {
     r.done.forEach(d => { const c = d.q.label; cats[c] = cats[c] || { ok: 0, n: 0 }; cats[c].n++; if (d.ok) cats[c].ok++; });
     return `<div class="cats">${Object.entries(cats).map(([c, v]) => `<div class="cat"><span>${c}</span><div class="bar"><i style="width:${v.ok / v.n * 100}%"></i></div><b>${v.ok}/${v.n}</b></div>`).join('')}</div>`;
   },
+  // Тест на уровень: всегда вопросы всех уровней — по 5 на A1, A2, B1, B2 и C1, от простого к сложному.
+  // Уверенный уровень — самый высокий, до которого все уровни сданы минимум на 3 из 5.
   placement() {
-    const PER = 8, NEED = 6;
-    let li = 0, inStage = 0, ok = 0, reached = -1;
-    const used = new Set();
-    const res = {};
+    const PER = 5, NEED = 3;
+    const qs = [];
+    LEVELS.forEach(l => sample(C.tests.filter(t => t.lvl === l), PER).forEach(t => {
+      const q = Q.fromTest(t);
+      q.label = `${q.label} · уровень ${l}`;
+      qs.push(q);
+    }));
     Engine.start({
-      title: 'Тест на уровень', mode: 'exam', requeue: false, xp: 4, totalHint: PER * LEVELS.length,
-      gen: () => {
-        const s = Engine.s;
-        if (inStage > 0) { const last = s.done[s.done.length - 1]; if (last && last.ok) ok++; }
-        if (inStage === PER) {
-          res[LEVELS[li]] = ok;
-          if (ok >= NEED) { reached = li; li++; inStage = 0; ok = 0; if (li >= LEVELS.length) return null; }
-          else return null;
-        }
-        const pool = C.tests.filter(t => t.lvl === LEVELS[li] && !used.has(t.key));
-        if (!pool.length) return null;
-        const t = pick(pool); used.add(t.key); inStage++;
-        return Q.fromTest(t);
-      },
+      title: 'Тест на уровень', mode: 'exam', requeue: false, xp: 4, questions: qs,
       onFinish: r => {
-        const lvl = reached < 0 ? 'A1' : LEVELS[Math.min(reached + (reached < 4 ? 1 : 0), 4)];
+        const res = {}, cnt = {};
+        LEVELS.forEach(l => { res[l] = 0; cnt[l] = 0; });
+        r.done.forEach(d => { const l = d.q.lvl; if (!l) return; cnt[l]++; if (d.ok) res[l]++; });
+        let reached = -1;
+        for (let i = 0; i < LEVELS.length; i++) { const l = LEVELS[i]; if (cnt[l] && res[l] >= Math.min(NEED, cnt[l])) reached = i; else break; }
+        const lvl = reached < 0 ? 'A1' : LEVELS[Math.min(reached + 1, LEVELS.length - 1)];
         const solid = reached < 0 ? 'ниже A1' : LEVELS[reached];
         Store.state.placement = { level: lvl, solid, date: Date.now(), res };
-        Store.state.level = lvl; Store.save();
+        Store.state.level = lvl; App.mem = {}; Store.save();
         return { headline: `Уверенно: <b>${solid}</b>. Рекомендуем заниматься на уровне <b>${lvl}</b>.`,
-          html: `<div class="cats">${Object.entries(res).map(([l, v]) => `<div class="cat"><span>${l}</span><div class="bar"><i style="width:${v / PER * 100}%"></i></div><b>${v}/${PER}</b></div>`).join('')}</div>` };
+          html: `<div class="cats">${LEVELS.filter(l => cnt[l]).map(l => `<div class="cat"><span>${l}</span><div class="bar"><i style="width:${res[l] / cnt[l] * 100}%"></i></div><b>${res[l]}/${cnt[l]}</b></div>`).join('')}</div>
+            <p class="muted small">Уровень засчитывается от ${NEED} из ${PER} верных ответов, если сданы и все уровни ниже.</p>` };
       }
     });
   },
@@ -2300,7 +2298,7 @@ const Screens = {
         ${last ? `<button class="li" data-go="topic" data-id="${last.id}"><span class="li-ic emoji">${last.emoji}</span><span class="li-b"><b>${esc(last.title)}</b><small>${C.topicProgress(last.id).known} из ${last.words.length} слов</small>${bar(C.topicProgress(last.id).pct)}</span></button>` : ''}
         ${nextLesson ? `<button class="li" data-go="lesson" data-id="${nextLesson.id}"><span class="li-ic">${ICON.grammar}</span><span class="li-b"><b>${esc(nextLesson.title)}</b><small>Грамматика · ${nextLesson.level}</small></span>${lvlChip(nextLesson.level)}</button>` : ''}
         ${mist ? `<button class="li" data-run="mistakes"><span class="li-ic warn">${ICON.redo}</span><span class="li-b"><b>Работа над ошибками</b><small>${mist} ${plural(mist, 'ошибка', 'ошибки', 'ошибок')} ждут исправления</small></span></button>` : ''}
-        ${!s.placement ? `<button class="li" data-run="placement"><span class="li-ic">${ICON.target}</span><span class="li-b"><b>Определить свой уровень</b><small>Адаптивный тест, 10–30 вопросов</small></span></button>` : ''}
+        ${!s.placement ? `<button class="li" data-run="placement"><span class="li-ic">${ICON.target}</span><span class="li-b"><b>Определить свой уровень</b><small>25 вопросов: по 5 на каждый уровень A1–C1</small></span></button>` : ''}
         <button class="li" data-go="reading"><span class="li-ic">${ICON.book}</span><span class="li-b"><b>Чтение</b><small>${DE.reading.length} текстов с вопросами</small></span></button>
         <button class="li" data-go="dialogues"><span class="li-ic">${ICON.chat}</span><span class="li-b"><b>Диалоги</b><small>${DE.dialogues.length} ситуаций с озвучкой</small></span></button>
       </div>`;
@@ -2483,7 +2481,7 @@ const Screens = {
       const mist = Object.keys(s.mistakes).length;
       return `<h1 class="display page-h">${L.ui.h.tests}</h1><p class="lead">${L.ui.testsLead}</p>
       <button class="cta" data-run="placement"><div class="cta-t"><span class="eyebrow">${L.ui.placement}</span><b>Тест на определение уровня</b>
-        <span>${s.placement ? `Последний результат: уровень ${s.placement.solid}, рекомендован ${s.placement.level}` : 'Адаптивный: от A1 до C1, пока получается'}</span></div><span class="cta-go">${ICON.target}</span></button>
+        <span>${s.placement ? `Последний результат: уровень ${s.placement.solid}, рекомендован ${s.placement.level}` : '25 вопросов: по 5 на каждый уровень от A1 до C1'}</span></div><span class="cta-go">${ICON.target}</span></button>
       <h2 class="sec">По уровням</h2>
       <div class="lvl-grid">${LEVELS.map(l => {
         const t = s.tests[l]; const n = C.tests.filter(x => x.lvl === l).length;

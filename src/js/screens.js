@@ -68,7 +68,7 @@ const Screens = {
         ${last ? `<button class="li" data-go="topic" data-id="${last.id}"><span class="li-ic emoji">${last.emoji}</span><span class="li-b"><b>${esc(last.title)}</b><small>${C.topicProgress(last.id).known} из ${last.words.length} слов</small>${bar(C.topicProgress(last.id).pct)}</span></button>` : ''}
         ${nextLesson ? `<button class="li" data-go="lesson" data-id="${nextLesson.id}"><span class="li-ic">${ICON.grammar}</span><span class="li-b"><b>${esc(nextLesson.title)}</b><small>Грамматика · ${nextLesson.level}</small></span>${lvlChip(nextLesson.level)}</button>` : ''}
         ${mist ? `<button class="li" data-run="mistakes"><span class="li-ic warn">${ICON.redo}</span><span class="li-b"><b>Работа над ошибками</b><small>${mist} ${plural(mist, 'ошибка', 'ошибки', 'ошибок')} ждут исправления</small></span></button>` : ''}
-        ${!s.placement ? `<button class="li" data-run="placement"><span class="li-ic">${ICON.target}</span><span class="li-b"><b>Определить свой уровень</b><small>Адаптивный тест, 10–30 вопросов</small></span></button>` : ''}
+        ${!s.placement ? `<button class="li" data-run="placement"><span class="li-ic">${ICON.target}</span><span class="li-b"><b>Определить свой уровень</b><small>25 вопросов: по 5 на каждый уровень A1–C1</small></span></button>` : ''}
         <button class="li" data-go="reading"><span class="li-ic">${ICON.book}</span><span class="li-b"><b>Чтение</b><small>${DE.reading.length} текстов с вопросами</small></span></button>
         <button class="li" data-go="dialogues"><span class="li-ic">${ICON.chat}</span><span class="li-b"><b>Диалоги</b><small>${DE.dialogues.length} ситуаций с озвучкой</small></span></button>
       </div>`;
@@ -251,7 +251,7 @@ const Screens = {
       const mist = Object.keys(s.mistakes).length;
       return `<h1 class="display page-h">${L.ui.h.tests}</h1><p class="lead">${L.ui.testsLead}</p>
       <button class="cta" data-run="placement"><div class="cta-t"><span class="eyebrow">${L.ui.placement}</span><b>Тест на определение уровня</b>
-        <span>${s.placement ? `Последний результат: уровень ${s.placement.solid}, рекомендован ${s.placement.level}` : 'Адаптивный: от A1 до C1, пока получается'}</span></div><span class="cta-go">${ICON.target}</span></button>
+        <span>${s.placement ? `Последний результат: уровень ${s.placement.solid}, рекомендован ${s.placement.level}` : '25 вопросов: по 5 на каждый уровень от A1 до C1'}</span></div><span class="cta-go">${ICON.target}</span></button>
       <h2 class="sec">По уровням</h2>
       <div class="lvl-grid">${LEVELS.map(l => {
         const t = s.tests[l]; const n = C.tests.filter(x => x.lvl === l).length;

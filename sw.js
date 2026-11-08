@@ -2,9 +2,9 @@
 // Несколько приложений живут на одном сайте (немецкий в корне, румынский в /ro/),
 // поэтому каждое трогает только свои кэши и не обслуживает чужие папки.
 const PREFIX = 'capain';
-const CACHE = PREFIX + '-521f7e5b70';
+const CACHE = PREFIX + '-6ba4dff41a';
 const FONTS = PREFIX + '-fonts';
-const ASSETS = ["./","index.html","app.css?v=521f7e5b70","app.js?v=521f7e5b70","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png","data-de.js?v=521f7e5b70","data-ro.js?v=521f7e5b70"];
+const ASSETS = ["./","index.html","app.css?v=6ba4dff41a","app.js?v=6ba4dff41a","manifest.webmanifest","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/favicon.png","data-de.js?v=6ba4dff41a","data-ro.js?v=6ba4dff41a"];
 const EXCLUDE = ["ro/"];
 const LEGACY = ["deutsch","romana"];   // кэши прежних отдельных приложений
 self.addEventListener('install', e => {
