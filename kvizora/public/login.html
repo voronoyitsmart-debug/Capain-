@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Вхід — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+</head>
+<body>
+<header><div class="wrap"><h1><span id="appName">Kvizora</span><small id="appSub">Вхід для учнів і вчителів</small></h1>
+  <div class="langtog"><button id="lang-uk">УКР</button><button id="lang-en">EN</button></div></div></header>
+<main>
+  <div class="card auth">
+    <div id="staffTest" class="hidden">
+      <h2 id="stTitle">Ви увійшли як учитель</h2>
+      <p class="muted" id="stText">Тест проходять учні зі своїх акаунтів. Щоб перевірити тест як учень, адміністратор може створити вам навчальний акаунт учня.</p>
+      <div class="row"><a class="btn" href="/app" id="stBack">← До кабінету</a><button class="btn" id="stOut" type="button">Вийти</button></div>
+    </div>
+    <form id="form" autocomplete="on">
+      <h2 id="title">Увійти</h2>
+      <p class="muted" id="testNote" style="margin:0 0 4px;font-size:14px" hidden>Щоб пройти тест, увійдіть у свій акаунт.</p>
+      <label for="login" id="loginLab">Логін (учень) або e-mail (учитель)</label>
+      <input id="login" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="120" required>
+      <label for="password" id="pwLab">Пароль</label><input id="password" type="password" autocomplete="current-password" maxlength="200" required>
+      <button class="btn solid wide" id="go" type="submit">Увійти</button>
+      <div class="err" id="err" role="alert"></div>
+    </form>
+    <form id="codeForm" class="row" style="margin:14px 0 4px;padding-top:12px;border-top:1px solid var(--line)">
+      <label for="code" style="margin:0;flex-basis:100%" id="codeLab">Є код тесту, який можна пройти без акаунта?</label>
+      <input id="code" class="grow" maxlength="16" autocomplete="off" autocapitalize="characters" placeholder="K7M2QX" style="text-transform:uppercase;max-width:200px">
+      <button class="btn" type="submit" id="codeGo">Відкрити</button>
+    </form>
+    <p class="muted" style="font-size:13px;margin:6px 0 0" id="noAcc">Немає акаунта або забули пароль? Акаунти створює адміністратор школи — зверніться до нього.</p>
+    <p class="muted" style="font-size:12px;margin:10px 0 0" id="d6">Дані учнів у Kvizora зберігаються на сервері Kvizora за дорученням вашого закладу освіти і використовуються лише для тестів. За інформування учнів і батьків відповідає заклад освіти як володілець даних. <a href="/legal/privacy">Політика конфіденційності</a></p>
+    <p class="muted" style="font-size:13px;margin:6px 0 0"><a href="/parent" id="parentLink">👪 Я з батьків: вхід за кодом від школи</a></p>
+    <p class="muted" style="font-size:13px;margin:6px 0 0"><a href="/help" id="helpLink">📘 Туторіали: як усе працює</a></p>
+  </div>
+</main>
+<script>
+(function () {
+  'use strict';
+  var MODE = '__MODE__';
+  var T = {
+    uk: { app: 'Kvizora', sub: 'Вхід для учнів і вчителів', title: 'Увійти', login: 'Логін (учень) або e-mail (учитель)', pw: 'Пароль', go: 'Увійти', wait: 'Зачекайте…',
+      test_note: 'Щоб пройти тест, увійдіть у свій акаунт.', no_acc: 'Немає акаунта або забули пароль? Акаунти створює адміністратор школи — зверніться до нього.',
+      help: '📘 Туторіали: як усе працює', parent: '👪 Я з батьків: вхід за кодом від школи', st_title: 'Ви увійшли як учитель', st_text: 'Тест проходять учні зі своїх акаунтів. Щоб перевірити тест як учень, адміністратор може створити вам навчальний акаунт учня.',
+      st_back: '← До кабінету', st_out: 'Вийти', code_lab: 'Є код тесту, який можна пройти без акаунта?', code_go: 'Відкрити',
+      e_login: 'Невірний логін або пароль.', e_locked: 'Забагато невдалих спроб. Акаунт заблоковано на 15 хвилин (адміністратор може розблокувати).',
+      e_off: 'Акаунт вимкнено. Зверніться до адміністратора.', d6: 'Дані учнів у Kvizora зберігаються на сервері Kvizora за дорученням вашого закладу освіти і використовуються лише для тестів. За інформування учнів і батьків відповідає заклад освіти як володілець даних. ', priv: 'Політика конфіденційності', e_rate: 'Забагато спроб. Зачекайте хвилину.', net: 'Немає зв’язку із сервером.' },
+    en: { app: 'Kvizora', sub: 'Log in for students and teachers', title: 'Log in', login: 'Login (student) or e-mail (teacher)', pw: 'Password', go: 'Log in', wait: 'Please wait…',
+      test_note: 'Log in to your account to take the test.', no_acc: 'No account or forgot the password? The school administrator creates accounts — ask them.',
+      help: '📘 Tutorials: how it all works', parent: '👪 I’m a parent: sign in with the school’s code', st_title: 'You are logged in as a teacher', st_text: 'Students take tests from their own accounts. To try a test as a student, the administrator can make you a practice student account.',
+      st_back: '← Back to my tests', st_out: 'Log out', code_lab: 'Have a test code that works without an account?', code_go: 'Open',
+      e_login: 'Wrong login or password.', e_locked: 'Too many failed attempts. The account is locked for 15 minutes (the administrator can unlock it).',
+      e_off: 'This account is turned off. Ask the administrator.', d6: 'Student data in Kvizora is stored on the Kvizora server on behalf of your school and used only for tests. The school, as data controller, is responsible for informing students and parents. ', priv: 'Privacy Policy', e_rate: 'Too many attempts. Wait a minute.', net: 'Cannot reach the server.' }
+  };
+  var LANG = (function () { try { return localStorage.getItem('revtest-lang') === 'en' ? 'en' : 'uk'; } catch (e) { return 'uk'; } })();
+  var next = new URLSearchParams(location.search).get('next') || '';
+  function $(id) { return document.getElementById(id); }
+  function t(k) { return (T[LANG] && T[LANG][k]) || T.uk[k] || k; }
+  function errText(e) {
+    var m = String(e && e.message || e), c = /\[#([a-z_]+)\]/.exec(m);
+    if (c && T[LANG]['e_' + c[1]]) return T[LANG]['e_' + c[1]];
+    var i = m.indexOf('USER:'); if (i >= 0) return m.slice(i + 5).replace(/\s*\[#[a-z_]+\]\s*$/, '').trim();
+    return t('net');
+  }
+  function paint() {
+    document.documentElement.lang = LANG;
+    $('lang-uk').classList.toggle('on', LANG === 'uk'); $('lang-en').classList.toggle('on', LANG === 'en');
+    $('appName').textContent = t('app'); $('appSub').textContent = t('sub'); $('title').textContent = t('title');
+    $('loginLab').textContent = t('login'); $('pwLab').textContent = t('pw'); $('go').textContent = t('go');
+    $('testNote').textContent = t('test_note'); $('testNote').hidden = next.indexOf('/t/') !== 0;
+    $('noAcc').textContent = t('no_acc'); $('codeLab').textContent = t('code_lab'); $('codeGo').textContent = t('code_go'); $('helpLink').textContent = t('help'); $('parentLink').textContent = t('parent');
+    $('d6').firstChild.textContent = t('d6'); $('d6').lastChild.textContent = t('priv');
+    $('stTitle').textContent = t('st_title'); $('stText').textContent = t('st_text'); $('stBack').textContent = t('st_back'); $('stOut').textContent = t('st_out');
+  }
+  function setLang(l) { LANG = l; try { localStorage.setItem('revtest-lang', l); } catch (e) {} paint(); }
+  $('lang-uk').onclick = function () { setLang('uk'); }; $('lang-en').onclick = function () { setLang('en'); };
+  if (MODE === 'staff-test') { $('form').classList.add('hidden'); $('codeForm').classList.add('hidden'); $('noAcc').classList.add('hidden'); $('staffTest').classList.remove('hidden'); }
+  $('stOut').onclick = function () { window.api('/api/auth/logout').then(function () { location.href = '/login?next=' + encodeURIComponent(location.pathname); }); };
+  $('codeForm').addEventListener('submit', function (e) {
+    e.preventDefault(); var c = $('code').value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c) location.href = '/t/' + c;
+  });
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault(); $('err').textContent = '';
+    var b = $('go'); b.disabled = true; b.textContent = t('wait');
+    window.api('/api/auth/login', { login: $('login').value.trim(), password: $('password').value, next: next })
+      .then(function (r) { location.href = r.next || '/'; })
+      .catch(function (err) { b.disabled = false; paint(); $('err').textContent = errText(err); $('password').value = ''; $('password').focus(); });
+  });
+  paint();
+  if (MODE !== 'staff-test') $('login').focus();
+})();
+</script>
+</body>
+</html>

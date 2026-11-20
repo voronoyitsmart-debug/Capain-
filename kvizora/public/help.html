@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Довідка — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .tabs-h { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+  .tabs-h button { flex: none; font: inherit; font-weight: 600; font-size: 14px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); border-radius: 99px; padding: 7px 14px; cursor: pointer; }
+  .tabs-h button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .find { display: flex; gap: 8px; margin-bottom: 14px; }
+  .find input { padding: 9px 12px; }
+  .group-h { display: none; }
+  .lesson { padding: 16px 18px; margin-bottom: 10px; }
+  .lesson h2 { font-size: 17px; margin: 0 0 6px; }
+  .lesson ol, .lesson ul { margin: 0; padding-left: 20px; }
+  .lesson li { margin: 3px 0; }
+  .lesson .tip, .lesson .warn { margin: 8px 0 0; padding: 7px 10px; border-radius: 9px; font-size: 13.5px; }
+  .lesson .tip { background: var(--accent-soft); }
+  .lesson .warn { background: var(--bad-soft); }
+  .lesson code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; font-size: 13px; }
+  .lesson .from { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .ui { font-weight: 700; }
+  .lesson:target, .lesson.flash { border-color: var(--accent); }
+  #nothing { display: none; }
+  header a.btn { text-decoration: none; }
+  main { max-width: 760px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>❓ Довідка<small id="introRole">Коротко про кожну вкладку.</small></h1>
+  <a class="btn head" id="backBtn" href="/app">← До кабінету</a>
+</div></header>
+<main>
+  <div class="tabs-h" id="tabs" role="tablist" aria-label="Вкладки"></div>
+  <div class="find"><input id="q" type="search" placeholder="Пошук…" aria-label="Пошук у довідці"></div>
+  <div id="lessons">
+    <div class="group-h" data-tab="tests">Тести</div>
+    <section class="card lesson" id="subjects" data-role="admin teacher" data-k="предмет бібліотека готові тести додати">
+      <h2>Предмет і бібліотека тестів</h2>
+      <ol>
+        <li>Оберіть картку предмета — відкриється його бібліотека.</li>
+        <li>У кожному предметі вже є готові тести. Видалили випадково — <span class="ui">📚 Додати готові тести</span>.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="editor" data-role="admin teacher" data-k="новий тест редактор порожній розділ запитання зберегти опублікувати видалити">
+      <h2>Новий тест</h2>
+      <ol>
+        <li><span class="ui">+ Порожній тест</span> → назва й розділи.</li>
+        <li>Додавайте запитання кнопками з «+» під розділом.</li>
+        <li><span class="ui">💾 Зберегти</span> — чернетка; <span class="ui">Зберегти й опублікувати</span> — одразу для учнів.</li>
+      </ol>
+      <p class="tip">💡 Видалити тест — <span class="ui">🗑 Видалити</span>; результати учнів лишаються.</p>
+    </section>
+
+    <section class="card lesson" id="qtypes" data-role="admin teacher" data-k="типи запитань вибір число коротка відкрите відповідність пари виправ помилку формула рівняння">
+      <h2>Типи запитань</h2>
+      <ul>
+        <li><b>Вибір варіанта</b> — варіанти з нового рядка, нижче номер правильного.</li>
+        <li><b>Числова</b> — число й допуск (9,8 ± 0,2). <b>Коротка</b> — правильні варіанти з нового рядка.</li>
+        <li><b>Відповідність</b> — пари «ліве → праве», кожна пара 1 бал.</li>
+        <li><b>Виправ помилку</b>, <b>Формула</b> (хімія), <b>Відкрите</b> — останнє ви оцінюєте самі.</li>
+      </ul>
+    </section>
+
+    <section class="card lesson" id="formulas" data-role="admin teacher" data-k="формули latex картинка малюнок мова переклад автопереклад укр en">
+      <h2>Формули, картинки, мови</h2>
+      <ol>
+        <li>Формула — у знаках долара: <code>$x^2+1$</code>; хімія — <code>$\ce{H2SO4}$</code>.</li>
+        <li>Малюнок — посилання <code>https://…</code> у полі «Малюнок».</li>
+        <li>Двомовний тест: позначте УКР / EN; <span class="ui">🌐 Перекласти відсутнє</span> допише другу мову.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="photo" data-role="admin teacher" data-k="фото ші gemini штучний інтелект кілька фото сторінки">
+      <h2>Тест із фото</h2>
+      <ol>
+        <li><span class="ui">✨ Новий тест із фото</span> → <span class="ui">➕ Додати фото</span> (можна кілька разів, до 10).</li>
+        <li>Зайве — ✕ на мініатюрі. Потім <span class="ui">✨ Створити тест</span>.</li>
+        <li>Перевірте відповіді в редакторі й збережіть.</li>
+      </ol>
+      <p class="tip">💡 Усі фото стають одним тестом, у порядку додавання.</p>
+    </section>
+
+    <section class="card lesson" id="classes" data-role="admin teacher" data-k="класи клас хто може пройти кожний бажаючий вибрані без акаунта">
+      <h2>Хто може пройти тест</h2>
+      <ol>
+        <li><span class="ui">👥 Лише вибрані класи</span> — тільки позначені класи.</li>
+        <li><span class="ui">🌍 Кожний бажаючий</span> — будь-хто за кодом, навіть без акаунта.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="schedule" data-role="admin teacher" data-k="розклад опублікувати чернетка час ліміт почати зараз зупинити перемішати бал">
+      <h2>Відкрити тест і розклад</h2>
+      <ol>
+        <li><span class="ui">Розклад</span>: коли відкрити й закрити, ліміт хвилин.</li>
+        <li><span class="ui">▶ Почати зараз</span> / <span class="ui">■ Зупинити зараз</span> — вручну.</li>
+        <li>Там же: перемішування, показ балу, розбір помилок після закриття.</li>
+      </ol>
+      <p class="tip">💡 Учень не натиснув «Надіслати»? Коли вийде час, збережені відповіді оцінюються самі.</p>
+    </section>
+
+    <section class="card lesson" id="security" data-role="admin teacher" data-k="безпека захист списування пристрій ip повторна спроба фейкове ім'я f12 повноекранний">
+      <h2>🛡️ Безпека</h2>
+      <ol>
+        <li><span class="ui">Розклад</span> → розділ «🛡️ Безпека» → галочки для цього тесту.</li>
+        <li><b>Пристрій та IP</b>: видно, якщо учень писав під вигаданим, а потім справжнім іменем.</li>
+        <li>Блок F12 і копіювання, водяний знак, повноекранний режим — за потреби.</li>
+      </ol>
+      <p class="tip">💡 Відповіді ніколи не потрапляють у браузер учня; учня завжди попереджають про запис пристрою.</p>
+    </section>
+
+    <section class="card lesson" id="share" data-role="admin teacher" data-k="код лінк посилання qr проектор роздати гість">
+      <h2>Роздати тест</h2>
+      <ol>
+        <li>Відкритий тест сам з’являється в учнів класу.</li>
+        <li><span class="ui">📺 Код на екран</span> — код і QR для проектора; <span class="ui">Копіювати лінк</span> — для месенджера.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="results" data-role="admin teacher" data-k="результати бали попередження ручна оцінка видалити спробу csv excel">
+      <h2>Результати</h2>
+      <ol>
+        <li><span class="ui">Результати</span> → клік на учня — усі відповіді. ⚑ — попередження.</li>
+        <li><span class="ui">✓</span> / <span class="ui">✗</span> / <span class="ui">Авто</span> — змінити оцінку відповіді.</li>
+        <li><span class="ui">🗑 Видалити спробу</span> — учень зможе пройти знову. <span class="ui">⬇ CSV</span> — у Excel.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="review" data-role="admin teacher" data-k="розбір помилок показати учням пояснення">
+      <h2>Розбір помилок</h2>
+      <ol>
+        <li><span class="ui">Розклад</span> → <span class="ui">🔍 Після закриття тесту показати учням розбір</span>.</li>
+        <li><span class="ui">✨ Пояснення до відповідей (ШІ)</span> у результатах — перевірте перед показом.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="bank" data-role="admin teacher" data-k="банк школи поділитися колеги скопіювати">
+      <h2>🏫 Банк школи</h2>
+      <ol>
+        <li>«⋯» біля тесту → <span class="ui">🏫 Поділитися з колегами школи</span>.</li>
+        <li>Колеги того ж предмета: <span class="ui">🏫 Банк школи</span> → <span class="ui">Скопіювати собі</span> — чернетка в папці «Від колеги: …».</li>
+      </ol>
+      <p class="tip">💡 Результати учнів не передаються; інші школи банк не бачать.</p>
+    </section>
+
+    <section class="card lesson" id="faq" data-role="admin teacher" data-k="помилка проблема учень не бачить не відкрито пароль">
+      <h2>Якщо учень не бачить тест</h2>
+      <ul>
+        <li>Тест не відкрито → «▶ Почати зараз».</li>
+        <li>Не той клас → додайте клас у «Хто може пройти тест».</li>
+        <li>Забув пароль → адміністратор «Скинути пароль».</li>
+      </ul>
+    </section>
+
+    <section class="card lesson" id="student" data-role="admin teacher student" data-k="учень пройти тест вхід мої тести надіслати продовжити">
+      <h2>Пройти тест</h2>
+      <ol>
+        <li>Увійдіть → «Мої тести» → <span class="ui">Почати</span>.</li>
+        <li>Відповідайте й тисніть <span class="ui">Далі →</span> (назад не можна), наприкінці <span class="ui">Надіслати</span>.</li>
+        <li>Сторінка закрилася? Увійдіть знову → <span class="ui">Продовжити</span>.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="review-st" data-role="student" data-k="розбір помилок правильна відповідь">
+      <h2>Розбір помилок</h2>
+      <ol>
+        <li>Коли вчитель дозволить, біля тесту з’явиться <span class="ui">🔍 Розбір помилок</span>: ваша відповідь, правильна й пояснення.</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="learn">Навчання</div>
+    <section class="card lesson" id="homework" data-role="admin teacher" data-k="домашнє завдання дз задати клас термін">
+      <h2>Задати домашнє завдання</h2>
+      <ol>
+        <li><span class="ui">Навчання</span> → <span class="ui">＋ Нове завдання</span>: клас, текст, термін, за бажанням «Критерії оцінювання».</li>
+        <li>Учні бачать його у своїй вкладці «Навчання».</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="homework-check" data-role="admin teacher" data-k="перевірити дз оцінити роботу коментар">
+      <h2>Перевірити й оцінити</h2>
+      <ol>
+        <li>Відкрийте завдання → список робіт учнів.</li>
+        <li>Поставте оцінку 1–12 і коментар — оцінка йде в журнал.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="announce" data-role="admin teacher" data-k="оголошення класу повідомлення">
+      <h2>📢 Оголошення</h2>
+      <ol>
+        <li><span class="ui">📢 Оголошення</span> → <span class="ui">Нове оголошення</span>: короткий текст для класу (без фото).</li>
+        <li>Учні бачать його в «Навчанні», батьки — на своїй сторінці.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="progress" data-role="admin teacher" data-k="успішність учнів прогрес середня">
+      <h2>Успішність</h2>
+      <ol>
+        <li><span class="ui">📈 Успішність</span>: середні оцінки й здані/нездані роботи — для класу й кожного учня.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="homework-st" data-role="student" data-k="домашнє завдання дз здати">
+      <h2>Домашні завдання</h2>
+      <ol>
+        <li>Вкладка «Навчання»: завдання, «Найближчі терміни» й оголошення класу.</li>
+        <li>Напишіть відповідь і здайте до терміну. Оцінка й коментар учителя з’являться тут.</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="journal">Журнал</div>
+    <section class="card lesson" id="grades" data-role="admin teacher" data-k="оцінки журнал 12 бальна дати група друк">
+      <h2>Журнал оцінок</h2>
+      <ol>
+        <li>Оберіть предмет, клас (і групу). У клітинках — бали за тести.</li>
+        <li>Впишіть 1–12, «н» (відсутній) або «нп» (з поважної причини) — зберігається одразу. Стовпець «Пропуски» рахує обидва.</li>
+        <li><span class="ui">📅 За датами</span> — як паперовий журнал; під датою можна вписати тему уроку. <span class="ui">＋ Дата</span> — новий день.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="final" data-role="admin teacher" data-k="підсумкові тематична семестр річна">
+      <h2>🏁 Підсумкові</h2>
+      <ol>
+        <li>Тематичні (<span class="ui">＋ Тематична</span>), І і ІІ семестр, річна — ставите ви.</li>
+        <li>Сіра цифра — лише підказка (середня за період), вона не зберігається.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="excel" data-role="admin teacher" data-k="excel мрія експорт перенести офіційний журнал">
+      <h2>⬇️ Excel для «Мрії»</h2>
+      <ol>
+        <li><span class="ui">⬇️ Excel</span> — журнал класу файлом: дати, теми, оцінки, пропуски, підсумкові.</li>
+        <li>Перенесіть оцінки в «Мрію» чи інший офіційний журнал школи.</li>
+      </ol>
+      <p class="tip">💡 Кожне вивантаження записується в журнал дій.</p>
+    </section>
+
+    <section class="card lesson" id="report" data-role="admin teacher" data-k="звіт учня теми незрозумілі успішність">
+      <h2>Звіт про учня</h2>
+      <ol>
+        <li>Клік на ім’я → <span class="ui">📊 звіт</span>: успіхи з предметів і теми, які ще незрозумілі.</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="marks">Оцінки</div>
+    <section class="card lesson" id="grades-st" data-role="student" data-k="оцінки бали журнал">
+      <h2>Мої оцінки</h2>
+      <ol>
+        <li>Тут оцінки за тести й домашні завдання з усіх предметів.</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="books">Підручники</div>
+    <section class="card lesson" id="books" data-role="admin teacher" data-k="підручник книга pdf тема тест з книги">
+      <h2>Тест з підручника</h2>
+      <ol>
+        <li><span class="ui">＋ Додати підручник</span> → PDF або фото сторінок, предмет, клас.</li>
+        <li>Перевірте теми (<span class="ui">🤖 Знайти теми (ШІ)</span> або <span class="ui">＋ Тема</span>) → <span class="ui">💾 Зберегти теми</span>.</li>
+        <li>Галочки біля тем → <span class="ui">✨ Створити тест</span> → перевірте в редакторі.</li>
+      </ol>
+      <p class="tip">💡 Сам PDF на сервер не йде — лише текст вибраних сторінок.</p>
+    </section>
+
+    <div class="group-h" data-tab="settings">Налаштування</div>
+    <section class="card lesson" id="account" data-role="admin teacher" data-k="акаунт вхід пароль вийти тимчасовий">
+      <h2>Вхід і пароль</h2>
+      <ol>
+        <li>Перший вхід — тимчасовий пароль від адміністратора, потім свій (від 8 символів).</li>
+        <li><span class="ui">Змінити пароль</span>, <span class="ui">Вийти</span>.</li>
+      </ol>
+      <p class="tip">💡 5 помилок поспіль — блок на 15 хвилин.</p>
+    </section>
+
+    <section class="card lesson" id="aikey" data-role="admin teacher" data-k="ключ ші gemini api key">
+      <h2>Ключ ШІ</h2>
+      <ol>
+        <li>Ключ з <code>aistudio.google.com/apikey</code> → <span class="ui">Ключ ШІ</span> → <span class="ui">Зберегти ключ</span>.</li>
+      </ol>
+      <p class="tip">💡 Не потрібен, якщо адміністратор уже додав спільний ключ.</p>
+    </section>
+
+    <section class="card lesson" id="phone-t" data-role="admin teacher" data-k="телефон ярлик екран додаток android iphone">
+      <h2>Kvizora на телефоні</h2>
+      <ol>
+        <li>Android: <span class="ui">📲 Додати Kvizora на екран</span> або ⋮ → «Додати на головний екран».</li>
+        <li>iPhone: «Поділитися» → «На екран “Додому”».</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="profile">Профіль</div>
+    <section class="card lesson" id="account-st" data-role="student" data-k="вхід пароль логін забув">
+      <h2>Вхід і пароль</h2>
+      <ol>
+        <li>Логін і пароль — з картки від школи. Забули — скаже адміністратор.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="parents-st" data-role="student" data-k="батьки доступ батьків код">
+      <h2>👪 Доступ батьків</h2>
+      <ol>
+        <li>У «👤 Профіль» видно, чи мають батьки доступ і до якої дати діє їхній код.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="phone" data-role="student" data-k="телефон ярлик екран додаток android iphone">
+      <h2>Kvizora на телефоні</h2>
+      <ol>
+        <li>Android: <span class="ui">📲 Додати Kvizora на екран</span> або ⋮ → «Додати на головний екран».</li>
+        <li>iPhone: «Поділитися» → «На екран “Додому”».</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="admin">Адмін</div>
+    <section class="card lesson" id="admin" data-role="admin" data-k="адмін-панель адміністратор школа">
+      <h2>Адмін-панель</h2>
+      <ol>
+        <li>Угорі оберіть <span class="ui">🏫 Школа</span>. Вкладки: Школи, Учні, Класи, Учителі, Журнал дій.</li>
+        <li>Класи → «Предмети»: зніміть галочку, щоб приховати предмет від класу.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="schools" data-role="admin" data-k="школи школа кілька">
+      <h2>Школи</h2>
+      <ol>
+        <li><span class="ui">Додати школу</span>; видалити можна лише порожню.</li>
+      </ol>
+    </section>
+
+    <section class="card lesson" id="students-admin" data-role="admin" data-k="учні додати акаунти паролі друк скинути група">
+      <h2>Акаунти учнів</h2>
+      <ol>
+        <li><span class="ui">➕ Додати учнів</span>: клас і імена по рядку → <span class="ui">🖨 Друкувати</span> картки.</li>
+        <li>У списку: група, <span class="ui">Скинути пароль</span>, <span class="ui">Вимкнути</span>, <span class="ui">Роботи</span>.</li>
+      </ol>
+      <p class="tip">💡 Паролі видно лише одразу після створення.</p>
+    </section>
+
+    <section class="card lesson" id="parents-admin" data-role="admin" data-k="батьки доступ батьків код відкликати">
+      <h2>👪 Доступ батьків</h2>
+      <ol>
+        <li>«Дані й право» → <span class="ui">👪 Доступ батьків</span> → увімкнути (після того, як батьків поінформовано).</li>
+        <li>«Учні» → <span class="ui">👪 Код батькам</span> → роздрукуйте лист: код показується один раз і діє рік.</li>
+        <li><span class="ui">Відкликати код</span> або вимкнення доступу закривають вхід одразу.</li>
+      </ol>
+      <p class="warn">⚠️ Видавайте код лише законному представнику учня після перевірки особи.</p>
+    </section>
+
+    <section class="card lesson" id="teachers-admin" data-role="admin" data-k="учителі додати вчителя роль тимчасовий пароль">
+      <h2>Акаунти вчителів</h2>
+      <ol>
+        <li>Ім’я, e-mail, школа, роль → <span class="ui">Створити</span> → дайте тимчасовий пароль.</li>
+        <li><span class="ui">Вимкнути</span> — тести лишаються; <span class="ui">Видалити</span> — разом із тестами.</li>
+      </ol>
+    </section>
+
+    <div class="group-h" data-tab="parent">Батькам</div>
+    <section class="card lesson" id="parent-login" data-role="parent" data-k="батьки вхід код">
+      <h2>Вхід для батьків</h2>
+      <ol>
+        <li>На сторінці входу — <span class="ui">👪 Я з батьків: вхід за кодом від школи</span>.</li>
+        <li>Введіть код із 16 символів від школи → <span class="ui">Увійти</span>.</li>
+      </ol>
+      <p class="tip">💡 Код діє як пароль — не передавайте його. Втратили — повідомте школу, код відкличуть.</p>
+    </section>
+
+    <section class="card lesson" id="parent-view" data-role="parent" data-k="батьки оцінки домашні оголошення повторити">
+      <h2>Що бачать батьки</h2>
+      <ol>
+        <li><span class="ui">⭐ Оцінки</span> і пропуски, <span class="ui">🏠 Домашні</span>, <span class="ui">📢 Оголошення</span>, <span class="ui">📊 Що повторити</span>.</li>
+        <li>Лише перегляд одного учня. Сесія закінчується через 2 години.</li>
+      </ol>
+    </section>
+
+    <div class="card" id="nothing"><p class="muted" style="margin:0">Нічого не знайдено.</p></div>
+  </div>
+</main>
+<script>
+(function () {
+  'use strict';
+  // lessons are grouped under the same tabs as the app; the server leaves only this person's lessons and tabs
+  var box = document.getElementById('lessons'), bar = document.getElementById('tabs'), q = document.getElementById('q');
+  var groups = [], cur = null;
+  Array.prototype.slice.call(box.children).forEach(function (n) {
+    if (n.classList.contains('group-h')) { groups.push({ key: n.dataset.tab, label: n.textContent, lessons: [] }); return; }
+    if (n.classList.contains('lesson') && groups.length) { n.dataset.tab = groups[groups.length - 1].key; groups[groups.length - 1].lessons.push(n); }
+  });
+  groups = groups.filter(function (g) { return g.lessons.length; });
+  var all = Array.prototype.slice.call(box.querySelectorAll('.lesson'));
+  groups.forEach(function (g) {
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = g.label; b.dataset.tab = g.key; b.setAttribute('role', 'tab');
+    b.addEventListener('click', function () { q.value = ''; open(g.key); try { history.replaceState(null, '', '?tab=' + g.key + from()); } catch (e) {} });
+    bar.appendChild(b);
+  });
+  if (groups.length < 2) bar.style.display = 'none';
+  function from() { var m = /[?&]from=([a-z]+)/.exec(location.search); return m ? '&from=' + m[1] : ''; }
+  function label(key) { var g = groups.filter(function (x) { return x.key === key; })[0]; return g ? g.label : ''; }
+  function open(key) {
+    cur = key;
+    bar.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === key); });
+    all.forEach(function (l) { l.classList.toggle('hidden', l.dataset.tab !== key); var f = l.querySelector('.from'); if (f) f.remove(); });
+    document.getElementById('nothing').style.display = 'none';
+  }
+  q.addEventListener('input', function () {
+    var v = q.value.trim().toLowerCase(), shown = 0;
+    if (!v) return open(cur);
+    bar.querySelectorAll('button').forEach(function (b) { b.classList.remove('on'); });
+    all.forEach(function (l) {
+      var hit = (l.textContent + ' ' + (l.dataset.k || '')).toLowerCase().indexOf(v) >= 0;
+      l.classList.toggle('hidden', !hit); if (hit) shown++;
+      var f = l.querySelector('.from');
+      if (hit && !f && groups.length > 1) { f = document.createElement('div'); f.className = 'from'; f.textContent = label(l.dataset.tab); l.insertBefore(f, l.firstChild); }
+      if (!hit && f) f.remove();
+    });
+    document.getElementById('nothing').style.display = shown ? 'none' : 'block';
+  });
+  // ?tab=journal opens that tab; #lesson-id (old links) opens the lesson's tab and points at it
+  var want = /[?&]tab=([a-z-]+)/.exec(location.search), id = location.hash.slice(1), target = id && document.getElementById(id);
+  if (target && target.dataset.tab) { open(target.dataset.tab); target.classList.add('flash'); setTimeout(function () { target.scrollIntoView({ block: 'start' }); }, 0); }
+  else open(want && groups.some(function (g) { return g.key === want[1]; }) ? want[1] : (groups[0] && groups[0].key));
+  var fm = /[?&]from=([a-z]+)/.exec(location.search);
+  if (fm) document.getElementById('backBtn').href = '/app/' + fm[1];
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "kvizora",
+  "version": "2.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Kvizora — онлайн-тести для шкіл: один локальний сервер для всіх предметів",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node test/api.test.js",
+    "test:e2e": "node test/e2e.test.js",
+    "check-ui": "node tools/build-ui.js",
+    "test:functions": "node test/functions.test.js",
+    "test:books": "node test/books.test.js",
+    "test:math": "node test/math.e2e.test.js",
+    "reset-password": "node --env-file-if-exists=.env tools/reset-password.js",
+    "test:learn": "node test/learn.test.js",
+    "test:learn-e2e": "node test/learn.e2e.test.js",
+    "test:compete": "node test/compete.test.js",
+    "test:compete-e2e": "node test/compete.e2e.test.js"
+  },
+  "dependencies": {
+    "cloudflared": "^0.7.3",
+    "express": "4.22.3",
+    "katex": "0.18.11",
+    "qrcode-generator": "1.4.4",
+    "terser": "5.39.0"
+  }
+}

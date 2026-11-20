@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/mhchem.min.js" onload="window.__mhchem=true"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="window.__katexReady=true; if(window.__mathPending){window.__mathPending();}"></script>
+<style>
+  :root {
+    --bg: #f4f2ef; --card: #ffffff; --ink: #1d1b1a; --muted: #6b6560; --line: #e3ded8;
+    --brand: #0f4f66; --accent: #0f6d8c; --accent-soft: #e3f1f6;
+    --ok: #1d7a46; --ok-soft: #e2f3e8; --bad: #b3121f; --bad-soft: #fbe5e6; --warn: #a15c00; --warn-soft: #fbefdc;
+    --ai: #6b3fa0; --ai-soft: #efe7f8; --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151413; --card: #1f1d1c; --ink: #f1eeea; --muted: #a49d96; --line: #34302d;
+      --brand: #123e4f; --accent: #59b7d6; --accent-soft: #17323c; --ok: #4fc283; --ok-soft: #173325;
+      --bad: #ef6b74; --bad-soft: #3a1c1f; --warn: #e3a64a; --warn-soft: #3a2a12; --ai: #b794e0; --ai-soft: #2a2140; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: linear-gradient(120deg, var(--brand) 0%, #0a3b4d 55%, var(--ai) 140%); color: #fff; padding: 18px 16px; position: sticky; top: 0; z-index: 30; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+  header .wrap { max-width: 1000px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; flex: 1; min-width: 160px; cursor: pointer; }
+  header small { display: block; font-weight: 400; opacity: .8; font-size: 13px; }
+  main { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  button, .btn, .test-row, .stat { transition: border-color .15s, background .15s, box-shadow .15s, transform .05s; }
+  .test-row:hover { box-shadow: 0 2px 10px rgba(0,0,0,.07); }
+  button:active { transform: translateY(1px); }
+  .card h2 { margin: 0 0 12px; font-size: 16px; }
+  input[type=text], input[type=password], input[type=number], input[type=datetime-local], textarea, select {
+    font: inherit; color: var(--ink); background: var(--bg); border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  textarea { resize: vertical; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  label.lab { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
+  button { font: inherit; cursor: pointer; border-radius: 10px; }
+  .btn { border: 1.5px solid var(--line); background: var(--card); color: var(--ink); padding: 9px 14px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.solid { background: linear-gradient(135deg, var(--accent), #0a5a74); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .btn.ai { background: var(--ai); border-color: var(--ai); color: #fff; font-weight: 700; }
+  .btn.ghost-head { border-color: rgba(255,255,255,.4); background: transparent; color: #fff; }
+  .btn.sm { padding: 5px 10px; font-size: 13px; }
+  .btn.danger { border-color: var(--bad); color: var(--bad); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .err { color: var(--bad); font-size: 14px; min-height: 20px; margin-top: 8px; }
+  .ok-msg { color: var(--ok); font-size: 14px; min-height: 20px; margin-top: 8px; }
+  .gate { max-width: 380px; margin: 40px auto; }
+  .gate form { display: flex; gap: 8px; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+
+  /* library */
+  .lib-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .folder-h { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin: 20px 0 8px; }
+  .test-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); margin-bottom: 10px; flex-wrap: wrap; }
+  .test-row .tt { flex: 1; min-width: 180px; }
+  .test-row .tt b { font-size: 16px; }
+  .test-row .meta { font-size: 13px; color: var(--muted); }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-transform: uppercase; letter-spacing: .3px; margin-left: 6px; }
+  .badge.ai { background: var(--ai-soft); color: var(--ai); }
+  .badge.open { background: var(--ok-soft); color: var(--ok); }
+  .badge.closed { background: var(--bad-soft); color: var(--bad); }
+  .badge.scheduled { background: var(--warn-soft); color: var(--warn); }
+  .badge.draft { background: var(--line); color: var(--muted); }
+  .badge.waiting { background: var(--accent-soft); color: var(--accent); }
+
+  /* editor */
+  .sec { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-top: 14px; background: var(--card); }
+  .qitem { border: 1px dashed var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .qitem.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .solve-prev { margin-top: 6px; padding: 8px 10px; background: var(--accent-soft); border-radius: 8px; overflow-x: auto; }
+  .solve-key { margin-top: 6px; font-size: 14px; }
+  .solve-key.err { color: var(--warn); }
+  .solve-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .solve-row > div { flex: 1; min-width: 160px; }
+  .toolbar-ed { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .toolbar-ed label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .toolbar-ed details { flex-basis: 100%; }
+  .st-line { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .st-line .sm { width: 22px; flex: 0 0 auto; text-align: center; font-weight: 700; }
+  .st-line.ok .sm, .st-line.extra .sm { color: var(--ok); }
+  .st-line.lost .sm, .st-line.wrong .sm, .st-line.bad .sm { color: var(--bad); }
+  .st-line.note .sm, .st-line.skip .sm { color: var(--muted); }
+  .st-line .why { font-size: 12px; color: var(--muted); }
+  .q-preview { margin-top: 8px; padding: 8px 10px; background: var(--accent-soft); border-radius: 8px; font-size: 15px; min-height: 8px; overflow-x: auto; }
+  .qhead { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .qhead select { width: auto; padding: 5px 8px; }
+  .qhead .qn { font-weight: 700; color: var(--muted); }
+  .qhead .sp { flex: 1; }
+  .warnbox { background: var(--warn-soft); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .warnbox b { color: var(--warn); }
+  .warnbox ul { margin: 6px 0 0; padding-left: 20px; }
+  .opt-correct { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 14px; }
+  .sticky-save { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 12px 0; margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* schedule */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .check input { width: auto; }
+
+  /* results (reused) */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--card); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: var(--radius); padding: 14px; }
+  .stats .stat:nth-child(1) { border-top-color: var(--ok); }
+  .stats .stat:nth-child(2) { border-top-color: var(--warn); }
+  .stats .stat:nth-child(3) { border-top-color: var(--accent); }
+  .stats .stat:nth-child(4) { border-top-color: var(--bad); }
+  .stat .v { font-size: 26px; font-weight: 800; } .stat .l { color: var(--muted); font-size: 13px; }
+  .tools { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .tools input { flex: 1; min-width: 160px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr.row2:hover td, tr.row2.open td { background: var(--accent-soft); cursor: pointer; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; min-width: 46px; text-align: center; border-radius: 99px; padding: 2px 10px; font-weight: 700; }
+  .hi { background: var(--ok-soft); color: var(--ok); } .mid { background: var(--accent-soft); color: var(--accent); } .lo { background: var(--bad-soft); color: var(--bad); }
+  .st { font-size: 12px; padding: 2px 8px; border-radius: 99px; } .st.prog { background: var(--warn-soft); color: var(--warn); } .st.done { background: var(--ok-soft); color: var(--ok); } .st.late { background: var(--bad-soft); color: var(--bad); }
+  .flag { margin-left: 8px; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--warn-soft); color: var(--warn); }
+  .flag.high { background: var(--bad-soft); color: var(--bad); }
+  .detail td { background: var(--bg); padding: 0; } .detail .inner { padding: 16px; }
+  .flags-box { margin-bottom: 14px; padding: 12px 14px; border-radius: 10px; background: var(--warn-soft); } .flags-box.high { background: var(--bad-soft); }
+  .flags-box ul { margin: 6px 0 0; padding-left: 20px; } .log { margin-top: 10px; font-size: 13px; color: var(--muted); max-height: 160px; overflow: auto; }
+  .ans { display: grid; grid-template-columns: 24px 1fr; gap: 4px 8px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+  .mark.ok { color: var(--ok); font-weight: 800; } .mark.no { color: var(--bad); font-weight: 800; }
+  .given.no { color: var(--bad); } .model { color: var(--muted); font-size: 13px; }
+  .ov { display: inline-flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+  .ov button { border: 1.5px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 3px 10px; font-size: 13px; }
+  .ov button.on.ok { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); } .ov button.on.no { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); } .ov button.on.auto { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink); max-width: 460px; width: calc(100% - 32px); padding: 22px; }
+  dialog::backdrop { background: rgba(0,0,0,.5); }
+  .spin { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; vertical-align: -3px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .lpair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 640px) { .lpair { grid-template-columns: 1fr; } }
+  .lcell { position: relative; }
+  .lcell .ltag { position: absolute; top: -8px; left: 10px; font-size: 10px; font-weight: 800; letter-spacing: .4px; background: var(--card); color: var(--accent); padding: 0 4px; border-radius: 4px; z-index: 1; }
+  .lcell.off { opacity: .45; }
+  .lcell.empty textarea, .lcell.empty input { border-style: dashed; }
+  .lcell + .lcell, .lpair .lcell { margin-top: 4px; }
+  .langbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+  .langbar label { display: flex; gap: 6px; align-items: center; font-weight: 600; }
+  .langbar input { width: auto; }
+  .badge.lang { background: var(--accent-soft); color: var(--accent); }
+  .badge.miss { background: var(--warn-soft); color: var(--warn); }
+  .langtog { display: inline-flex; border: 1.5px solid rgba(255,255,255,.5); border-radius: 99px; overflow: hidden; }
+  .langtog button { font: inherit; font-weight: 700; font-size: 13px; border: 0; background: transparent; color: #fff; padding: 6px 12px; cursor: pointer; }
+  .langtog button.on { background: #fff; color: var(--brand); }
+  .pairs { display: grid; gap: 8px; }
+  .pair { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 12px 10px 8px; }
+  .pair .arr { color: var(--muted); font-weight: 700; }
+  @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } .pair .arr { display: none; } }
+  .q-imgrow { margin-top: 8px; }
+  .img-prev { display: block; max-width: 100%; max-height: 200px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+  .m-item { font-size: 14px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1 id="homeBtn"><span id="homeTitle">Tests</span><small id="homeSub">Teacher view</small></h1>
+  <div class="langtog" id="langTog"><button data-l="uk" id="lang-uk">УКР</button><button data-l="en" id="lang-en">EN</button></div>
+  <button class="btn ghost-head hidden" id="classesBtn">Classes</button>
+  <button class="btn ghost-head hidden" id="aiKeyBtn">AI key</button>
+  <a class="btn ghost-head hidden" id="sheetLink" target="_blank" rel="noopener">Spreadsheet</a>
+</div></header>
+
+<main>
+  <!-- gate -->
+  <div class="card gate" id="gate">
+    <h2 id="gateTitle">Teacher PIN</h2>
+    <form id="pinForm"><input type="password" id="pin" autocomplete="current-password" placeholder="Enter PIN"><button class="btn solid" type="submit" id="gateOpen">Open</button></form>
+    <div class="err" id="pinErr"></div>
+  </div>
+
+  <!-- library -->
+  <div id="library" class="hidden">
+    <div class="lib-actions">
+      <button class="btn ai" id="newAiBtn">✨ New test from a photo</button>
+      <button class="btn" id="newBlankBtn">+ Blank test</button>
+      <button class="btn hidden" id="addSamplesBtn">📚 Sample tests</button>
+    </div>
+    <div id="libList"></div>
+    <div class="muted" id="libEmpty" style="text-align:center;padding:30px"></div>
+  </div>
+
+  <!-- editor -->
+  <div id="editor" class="hidden"></div>
+
+  <!-- results -->
+  <div id="results" class="hidden"></div>
+</main>
+
+<input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+
+<dialog id="scheduleDlg"></dialog>
+<dialog id="aiKeyDlg">
+  <h2 style="margin-top:0" id="aiKeyTitle">Gemini API key</h2>
+  <p class="muted" style="font-size:14px" id="aiKeyIntro">Needed only to create tests from photos. Get a free key at aistudio.google.com/apikey and paste it here. It is stored in your own script.</p>
+  <input type="text" id="aiKeyInput" placeholder="AIza…">
+  <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="aiKeyCancel">Close</button><button class="btn solid" id="aiKeySave">Save key</button></div>
+  <div class="ok-msg" id="aiKeyMsg"></div>
+</dialog>
+<dialog id="aiDlg">
+  <h2 id="aiTitle" style="margin-top:0">New test from a photo</h2>
+  <p class="muted" id="aiIntro" style="font-size:14px;margin-top:0">Take or choose a clear photo of the worksheet page (up to 6). You can add instructions for the AI.</p>
+  <label class="lab" id="aiNoteLab">Extra instructions for the AI (optional)</label>
+  <textarea id="aiNote" rows="2" placeholder="e.g. make only multiple-choice; keep answers in Ukrainian"></textarea>
+  <div class="langbar" id="aiLangs"><span id="aiLangsLab">Languages:</span><label><input type="checkbox" id="aiLangUk" checked> УКР</label><label><input type="checkbox" id="aiLangEn" checked> EN</label></div>
+  <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="aiCancel">Cancel</button><button class="btn ai" id="aiChoose">Choose photos</button></div>
+</dialog>
+<dialog id="aiBusyDlg"><div style="text-align:center;padding:10px"><div class="spin"></div><p id="aiBusyText">Reading the photo and building the test…<br><span class="muted" style="font-size:13px">This can take 10–30 seconds.</span></p></div></dialog>
+<dialog id="classesDlg">
+  <h2 style="margin-top:0" id="classesTitle">Your classes</h2>
+  <p class="muted" style="font-size:14px;margin-top:0" id="classesIntro">Add the classes you teach. When you make a test you can pick one from this list, and students choose their class from it too.</p>
+  <div id="classesList"></div>
+  <div class="row" style="margin-top:10px"><input type="text" id="newClass" placeholder="e.g. 9B" style="flex:1"><button class="btn solid" id="addClassBtn">Add</button></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="classesClose">Done</button></div>
+  <div class="ok-msg" id="classesMsg"></div>
+</dialog>
+
+<script>
+// ==== MATHKIT BEGIN — the same block is in Code.gs, Student.html and Teacher.html (tools/sync-mathkit.js copies it; do not edit the copies) ====
+/**
+ * MathKit: reads what a student types in maths ("2x+5=17", "x² − 5x + 6 = 0", "√(x+3) = x − 3", "x = ±3",
+ * "(x+1)/2 = 3", "|x − 2| = 5", "2^x = 8"), draws it as LaTeX, evaluates it and finds the roots of an equation.
+ * No eval(): a small parser of its own. Plain ES5, so it runs in Apps Script, on the Node server and in old phone browsers.
+ *   MK.parseExpr(s)        → tree (throws Error with .mk = reason code)
+ *   MK.parseLine(s)        → { kind: 'eqs', parts: [[side tree, side tree, …], …] } | { kind: 'note' }   (a step line)
+ *   MK.tex(tree), MK.lineTex(s) → LaTeX for the preview
+ *   MK.evalStr(s, env)     → number (NaN when it makes no sense)
+ *   MK.key(eqs, vars, accept) → the solution of an equation or a system { vars, sols, none, all, err }
+ *   MK.checkLine(s, key)   → 'ok' | 'extra' | 'lost' | 'wrong' | 'bad' | 'skip' | 'note'   (one step of a student's working)
+ *   MK.sameSols(a, b)      → do two solution lists match
+ */
+var MK = (function () {
+  'use strict';
+  var FUNS = ['arcsin', 'arccos', 'arctan', 'arctg', 'sqrt', 'cbrt', 'root', 'sin', 'cos', 'tan', 'cot', 'ctg', 'abs', 'log', 'exp', 'tg', 'ln', 'lg'];
+  var SUP = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁻': '-', '⁺': '+' };
+  var SUB = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9' };
+  var TOL = 1e-7;
+  function fail(code) { var e = new Error('MK:' + code); e.mk = code; return e; }
+
+  /** Tidy what was typed: LaTeX from the teacher, Unicode signs, decimal commas, Cyrillic х/у, superscripts. */
+  function prep(s) {
+    s = String(s == null ? '' : s).replace(/\$/g, ' ');
+    var prev;
+    do {   // LaTeX, innermost first
+      prev = s;
+      s = s.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '(($1)/($2))')
+           .replace(/\\sqrt\s*\[\s*3\s*\]\s*\{([^{}]*)\}/g, '∛($1)')
+           .replace(/\\sqrt\s*\{([^{}]*)\}/g, '√($1)')
+           .replace(/\^\s*\{([^{}]*)\}/g, '^($1)')
+           .replace(/_\s*\{([^{}]*)\}/g, '_($1)')
+           .replace(/\\left\s*\||\\right\s*\|/g, '|')
+           .replace(/\\text\s*\{([^{}]*)\}/g, '$1');
+    } while (s !== prev);
+    s = s.replace(/\\left|\\right|\\,|\\;|\\!|\\quad/g, ' ').replace(/\\cdot|\\times|\\ast/g, '*').replace(/\\div/g, '/')
+         .replace(/\\pm/g, '±').replace(/\\mp/g, '∓').replace(/\\pi/g, 'π').replace(/\\sqrt/g, '√')
+         .replace(/\\(leq?|le)\b/g, '≤').replace(/\\(geq?|ge)\b/g, '≥').replace(/\\neq?\b/g, '≠')
+         .replace(/\\(sin|cos|tan|tg|cot|ctg|log|ln|lg|exp|arcsin|arccos|arctan|arctg)\b/g, '$1')
+         .replace(/\\/g, ' ').replace(/\{/g, '(').replace(/\}/g, ')');
+    s = s.replace(/[−–—]/g, '-').replace(/[×·⋅∙•*]/g, '*').replace(/[÷:]/g, '/').replace(/[（]/g, '(').replace(/[）]/g, ')')
+         .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, function (m) { return '^(' + m.split('').map(function (c) { return SUP[c]; }).join('') + ')'; })
+         .replace(/[₀₁₂₃₄₅₆₇₈₉]+/g, function (m) { return '_' + m.split('').map(function (c) { return SUB[c]; }).join(''); })
+         .replace(/(\d)\s*,\s*(?=\d)/g, function (m, d) { return /\s/.test(m) ? m : d + '.'; })
+         .replace(/\*\*/g, '^').replace(/(^|[^a-zа-яіїєґ])х/gi, '$1x').replace(/(^|[^a-zа-яіїєґ])у/gi, '$1y')
+         .replace(/[Хх](?![а-яіїєґ])/g, 'x').replace(/[Уу](?![а-яіїєґ])/g, 'y');
+    return s.toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  // ---------- tokens ----------
+  function tokens(s) {
+    var out = [], i = 0, m;
+    while (i < s.length) {
+      var c = s[i];
+      if (c === ' ') { i++; continue; }
+      if ((m = /^(\d+\.?\d*|\.\d+)/.exec(s.slice(i)))) { out.push({ t: 'n', v: parseFloat(m[1]), s: m[1].replace(/\.$/, '') }); i += m[1].length; continue; }
+      if ((m = /^[a-z]+/.exec(s.slice(i)))) {
+        var w = m[0]; i += w.length;
+        while (w) {
+          var f = null;
+          for (var k = 0; k < FUNS.length; k++) if (w.indexOf(FUNS[k]) === 0) { f = FUNS[k]; break; }
+          if (f) { out.push({ t: 'f', v: f }); w = w.slice(f.length); }
+          else if (w.indexOf('pi') === 0) { out.push({ t: 'c', v: 'pi' }); w = w.slice(2); }
+          else { out.push({ t: 'v', v: w[0] }); w = w.slice(1); }
+        }
+        continue;
+      }
+      if ('+-*/^()|=_√∛π±∓,;'.indexOf(c) >= 0) { out.push({ t: c === 'π' ? 'c' : 'o', v: c === 'π' ? 'pi' : c }); i++; continue; }
+      if ('<>≤≥≠'.indexOf(c) >= 0) throw fail('ineq');
+      if (/[а-яіїєґ]/i.test(c)) throw fail('word');
+      throw fail('char');
+    }
+    return out;
+  }
+
+  // ---------- parser (precedence: + − < × ÷ and implicit × < unary − < ^) ----------
+  function Parser(toks) { this.k = toks; this.i = 0; this.abs = 0; }
+  Parser.prototype.peek = function () { return this.k[this.i]; };
+  Parser.prototype.is = function (v) { var t = this.k[this.i]; return !!t && t.t === 'o' && t.v === v; };
+  Parser.prototype.next = function () { return this.k[this.i++]; };
+  Parser.prototype.expr = function () {
+    var a = this.term();
+    while (this.is('+') || this.is('-')) { var op = this.next().v; a = { t: op, a: a, b: this.term() }; }
+    return a;
+  };
+  Parser.prototype.startsAtom = function () {
+    var t = this.peek(); if (!t) return false;
+    if (t.t === 'n' || t.t === 'v' || t.t === 'c' || t.t === 'f') return true;
+    if (t.t === 'o' && (t.v === '(' || t.v === '√' || t.v === '∛')) return true;
+    if (t.t === 'o' && t.v === '|' && this.abs === 0) return true;   // "2|x|": an opening bar
+    return false;
+  };
+  Parser.prototype.term = function () {
+    var a = this.unary();
+    for (;;) {
+      if (this.is('*') || this.is('/')) { var op = this.next().v; a = { t: op, a: a, b: this.unary() }; }
+      else if (this.startsAtom()) {
+        var t = this.peek();
+        if (t.t === 'n' && (a.t === 'n' || (a.t === '^' && a.b.t === 'n'))) throw fail('two_numbers');   // "2 3", "x^2 3"
+        a = { t: '*', a: a, b: this.power(), imp: true };
+      } else break;
+    }
+    return a;
+  };
+  Parser.prototype.unary = function () {
+    if (this.is('-')) { this.next(); return { t: 'neg', a: this.unary() }; }
+    if (this.is('+')) { this.next(); return this.unary(); }
+    return this.power();
+  };
+  Parser.prototype.power = function () {
+    var a = this.atom();
+    if (this.is('^')) { this.next(); return { t: '^', a: a, b: this.unary() }; }
+    return a;
+  };
+  Parser.prototype.group = function () {   // ( expr )
+    this.next(); var a = this.expr();
+    if (!this.is(')')) throw fail('paren');
+    this.next(); a.par = true; return a;
+  };
+  Parser.prototype.atom = function () {
+    var t = this.peek();
+    if (!t) throw fail('end');
+    if (t.t === 'n') {
+      this.next();
+      var nx = this.peek(); if (nx && nx.t === 'n') throw fail('two_numbers');
+      return { t: 'n', v: t.v, s: t.s };
+    }
+    if (t.t === 'c') { this.next(); return { t: 'c', v: t.v }; }
+    if (t.t === 'v') {
+      this.next();
+      if (this.is('_')) { this.next(); var ix = this.next(); if (!ix || (ix.t !== 'n' && ix.t !== 'v')) throw fail('sub'); }   // x₁ is x
+      var d = this.peek(); if (d && d.t === 'n') throw fail('var_digit');   // "x2": write x^2 or 2x
+      return { t: 'v', v: t.v };
+    }
+    if (t.t === 'o' && t.v === '(') return this.group();
+    if (t.t === 'o' && t.v === '|') {
+      this.next(); this.abs++; var a = this.expr(); this.abs--;
+      if (!this.is('|')) throw fail('abs'); this.next();
+      return { t: 'f', f: 'abs', a: a };
+    }
+    if (t.t === 'o' && (t.v === '√' || t.v === '∛')) {
+      this.next();
+      var arg = this.is('(') ? this.group() : this.atom();
+      return { t: 'f', f: t.v === '√' ? 'sqrt' : 'cbrt', a: arg };
+    }
+    if (t.t === 'f') {
+      this.next(); var f = t.v, base = null;
+      if (f === 'tg') f = 'tan'; if (f === 'ctg') f = 'cot'; if (f === 'arctg') f = 'arctan';
+      if (f === 'log' && this.is('_')) { this.next(); base = this.is('(') ? this.group() : this.atom(); }
+      var pw = null;
+      if ((f === 'sin' || f === 'cos' || f === 'tan' || f === 'cot') && this.is('^')) { this.next(); pw = this.atom(); }   // sin^2 x
+      var x = this.is('(') ? this.group() : this.power();
+      var node = { t: 'f', f: f, a: x };
+      if (base) node.base = base;
+      return pw ? { t: '^', a: node, b: pw } : node;
+    }
+    throw fail('syntax');
+  };
+
+  function parseExpr(s) {
+    var p = new Parser(tokens(prep(s)));
+    if (!p.k.length) throw fail('empty');
+    var a = p.expr();
+    if (p.i < p.k.length) { var t = p.peek(); throw fail(t.v === ')' ? 'paren' : t.v === '=' ? 'eq' : 'syntax'); }
+    return a;
+  }
+
+  /** A step line → parts of an "or" (x = 2 або x = 3; x = ±3), each part a chain of equal sides (a = b = c). */
+  var WORD_OR = /(^|[^a-zа-яіїєґ])(або|чи|or)(?=$|[^a-zа-яіїєґ])/gi;   // \b does not work with Cyrillic
+  function parseLine(s) {
+    // "… = 0 | :2" — a note of what was done to both sides; not part of the equation
+    var raw = String(s == null ? '' : s).trim().replace(/\s\|\s*[:·*×\/÷]\s*[^|=]+$/, '').trim();
+    if (!raw || /^(#|\/\/)/.test(raw)) return { kind: 'note' };
+    // words (a comment like "Перевірка:" or "Відповідь") make it a note, except "або"/"or"/"і"
+    var words = raw.replace(/\\[a-z]+/gi, ' ').replace(WORD_OR, '$1 ').replace(/(^|[^a-zа-яіїєґ])(і|й|та|and)(?=$|[^a-zа-яіїєґ])/gi, '$1 ').match(/[a-zа-яіїєґ]{2,}/gi) || [];
+    var notes = words.filter(function (w) { return /[а-яіїєґ]/i.test(w) || ['the', 'so', 'then', 'check', 'answer', 'roots', 'root', 'no'].indexOf(w.toLowerCase()) >= 0; });
+    if (notes.length) return { kind: 'note' };
+    var body = raw.replace(WORD_OR, '$1\u0001').replace(/∨|;/g, '\u0001');
+    var chunks = body.split('\u0001');
+    var parts0 = [];
+    chunks.forEach(function (c) {
+      // "x = 2, x = 3": a comma between equations also means "or"
+      var cs = c.split(/,(?!\d)/);
+      if (cs.length > 1 && cs.every(function (z) { return z.indexOf('=') >= 0; })) parts0 = parts0.concat(cs); else parts0.push(c);
+    });
+    var parts = [];
+    parts0.forEach(function (c) {
+      c = c.trim(); if (!c) return;
+      var list = [c];
+      for (var n = 0; n < 2; n++) {   // up to two ± in one part
+        var next = [];
+        list.forEach(function (z) {
+          var i = z.search(/[±∓]/);
+          if (i < 0) next.push(z);
+          else { var a = z[i] === '±' ? '+' : '-', b = z[i] === '±' ? '-' : '+'; next.push(z.slice(0, i) + a + z.slice(i + 1)); next.push(z.slice(0, i) + b + z.slice(i + 1)); }
+        });
+        list = next;
+      }
+      parts = parts.concat(list);
+    });
+    if (!parts.length) return { kind: 'note' };
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+      var sides = parts[i].split('=');
+      if (sides.length < 2) return { kind: 'expr', tree: parseExpr(parts[i]) };
+      out.push(sides.map(function (x) { if (!x.trim()) throw fail('side'); return parseExpr(x); }));
+    }
+    return { kind: 'eqs', parts: out };
+  }
+
+  // ---------- LaTeX ----------
+  function num(s) { return String(s).replace(/\./g, '{,}'); }
+  function tex(a) {
+    var w = function (x, need) { var s = tex(x); return need ? '\\left(' + s + '\\right)' : s; };
+    var lowAdd = function (x) { return x.t === '+' || x.t === '-'; };
+    switch (a.t) {
+      case 'n': return num(a.s != null ? a.s : a.v);
+      case 'c': return '\\pi';
+      case 'v': return a.v;
+      case '+': return tex(a.a) + ' + ' + w(a.b, a.b.par && lowAdd(a.b));
+      case '-': return tex(a.a) + ' - ' + w(a.b, lowAdd(a.b) || a.b.t === 'neg');
+      case 'neg': return '-' + w(a.a, lowAdd(a.a) || a.a.t === 'neg');
+      case '*':
+        var l = w(a.a, lowAdd(a.a) || a.a.t === 'neg'), r = w(a.b, lowAdd(a.b) || a.b.t === 'neg');
+        var implicit = a.imp && !(a.b.t === 'n' || (a.b.t === '^' && a.b.a.t === 'n'));
+        return l + (implicit ? ' ' : ' \\cdot ') + r;
+      case '/': return '\\frac{' + tex(a.a) + '}{' + tex(a.b) + '}';
+      case '^': return '{' + w(a.a, a.a.t !== 'n' && a.a.t !== 'v' && a.a.t !== 'c' && !(a.a.t === 'f' && a.a.f === 'abs')) + '}^{' + tex(a.b) + '}';
+      case 'f':
+        if (a.f === 'sqrt') return '\\sqrt{' + tex(a.a) + '}';
+        if (a.f === 'cbrt') return '\\sqrt[3]{' + tex(a.a) + '}';
+        if (a.f === 'abs') return '\\left|' + tex(a.a) + '\\right|';
+        var name = { sin: '\\sin', cos: '\\cos', tan: '\\operatorname{tg}', cot: '\\operatorname{ctg}', log: '\\log', ln: '\\ln', lg: '\\lg', exp: '\\exp',
+          arcsin: '\\arcsin', arccos: '\\arccos', arctan: '\\operatorname{arctg}', root: '\\operatorname{root}' }[a.f] || a.f;
+        return name + (a.base ? '_{' + tex(a.base) + '}' : '') + '\\left(' + tex(a.a) + '\\right)';
+    }
+    return '?';
+  }
+  function lineTex(s) {
+    var L = parseLine(s);
+    if (L.kind === 'note') return null;
+    if (L.kind === 'expr') return tex(L.tree);
+    return L.parts.map(function (p) { return p.map(tex).join(' = '); }).join('\\quad\\text{або}\\quad ');
+  }
+
+  // ---------- numbers ----------
+  function powr(b, e) {
+    var v = Math.pow(b, e);
+    if (isNaN(v) && b < 0) {   // (-8)^(1/3) = -2: an odd root of a negative number
+      for (var q = 3; q <= 15; q += 2) { var p = Math.round(e * q); if (Math.abs(p / q - e) < 1e-12 && p % 2 !== 0) return -Math.pow(-b, e); if (Math.abs(p / q - e) < 1e-12) return Math.pow(-b, e); }
+    }
+    return v;
+  }
+  function ev(a, env) {
+    switch (a.t) {
+      case 'n': return a.v;
+      case 'c': return Math.PI;
+      case 'v': return Object.prototype.hasOwnProperty.call(env, a.v) ? env[a.v] : (a.v === 'e' ? Math.E : NaN);
+      case '+': return ev(a.a, env) + ev(a.b, env);
+      case '-': return ev(a.a, env) - ev(a.b, env);
+      case 'neg': return -ev(a.a, env);
+      case '*': return ev(a.a, env) * ev(a.b, env);
+      case '/': var d = ev(a.b, env); return d === 0 ? NaN : ev(a.a, env) / d;
+      case '^': return powr(ev(a.a, env), ev(a.b, env));
+      case 'f':
+        var x = ev(a.a, env);
+        switch (a.f) {
+          case 'sqrt': return x < 0 ? NaN : Math.sqrt(x);
+          case 'cbrt': return x < 0 ? -Math.pow(-x, 1 / 3) : Math.pow(x, 1 / 3);
+          case 'abs': return Math.abs(x);
+          case 'sin': return Math.sin(env.__deg ? x * Math.PI / 180 : x);
+          case 'cos': return Math.cos(env.__deg ? x * Math.PI / 180 : x);
+          case 'tan': var c = Math.cos(env.__deg ? x * Math.PI / 180 : x); return Math.abs(c) < 1e-15 ? NaN : Math.sin(env.__deg ? x * Math.PI / 180 : x) / c;
+          case 'cot': var sn = Math.sin(env.__deg ? x * Math.PI / 180 : x); return Math.abs(sn) < 1e-15 ? NaN : Math.cos(env.__deg ? x * Math.PI / 180 : x) / sn;
+          case 'arcsin': return Math.asin(x) * (env.__deg ? 180 / Math.PI : 1);
+          case 'arccos': return Math.acos(x) * (env.__deg ? 180 / Math.PI : 1);
+          case 'arctan': return Math.atan(x) * (env.__deg ? 180 / Math.PI : 1);
+          case 'ln': return x <= 0 ? NaN : Math.log(x);
+          case 'lg': return x <= 0 ? NaN : Math.log(x) / Math.LN10;
+          case 'log':
+            if (x <= 0) return NaN;
+            if (!a.base) return Math.log(x) / Math.LN10;
+            var b = ev(a.base, env); return (b <= 0 || b === 1) ? NaN : Math.log(x) / Math.log(b);
+          case 'exp': return Math.exp(x);
+        }
+    }
+    return NaN;
+  }
+  function varsOf(a, out) {
+    out = out || {};
+    if (!a) return out;
+    if (a.t === 'v' && a.v !== 'e') out[a.v] = 1;
+    if (a.a) varsOf(a.a, out); if (a.b) varsOf(a.b, out); if (a.base) varsOf(a.base, out);
+    return out;
+  }
+  function evalStr(s, env) { try { return ev(parseExpr(s), env || {}); } catch (e) { return NaN; } }
+  function close(a, b) { return Math.abs(a - b) <= 1e-6 * (1 + Math.abs(a) + Math.abs(b)); }
+  /** Snap a root to a simple fraction when it is one (2.9999999999 → 3, 0.333333333 → 1/3). */
+  function snap(r) {
+    for (var q = 1; q <= 240; q++) { var p = Math.round(r * q); if (Math.abs(p / q - r) <= 1e-9 * (1 + Math.abs(r))) return p / q; }
+    return r;
+  }
+  function fmt(r) {
+    for (var q = 1; q <= 240; q++) {
+      var p = Math.round(r * q);
+      if (Math.abs(p / q - r) <= 1e-9 * (1 + Math.abs(r))) return q === 1 ? String(p) : p + '/' + q;
+    }
+    return String(Math.round(r * 1e6) / 1e6);
+  }
+
+  // ---------- roots of one equation in one variable ----------
+  var MEMO = {}, MEMO_N = 0;
+  function memo(key, fn) {
+    if (Object.prototype.hasOwnProperty.call(MEMO, key)) return MEMO[key];
+    if (MEMO_N > 4000) { MEMO = {}; MEMO_N = 0; }
+    MEMO_N++; return (MEMO[key] = fn());
+  }
+  var GRID = null;
+  function grid() {
+    if (GRID) return GRID;
+    var g = [], k;
+    for (k = -2000; k <= 2000; k++) g.push(k / 20);                       // −100…100 every 0.05 (exact: k/20)
+    for (k = -1000; k <= 1000; k++) if (Math.abs(k * 10) > 100) g.push(k * 10);   // −10 000…10 000 every 10
+    g.sort(function (a, b) { return a - b; });
+    return (GRID = g);
+  }
+  /** Roots of A = B in variable v: { all: true } for an identity, else { roots: [...] }. */
+  function rootsPair(A, B, v) {
+    return memo('r|' + v + '|' + JSON.stringify(A) + '=' + JSON.stringify(B), function () {
+      var env = {};
+      var f = function (x) { env[v] = x; var a = ev(A, env), b = ev(B, env); return { d: a - b, s: 1 + Math.abs(a) + Math.abs(b) }; };
+      var G = grid(), F = [], fin = 0, zero = 0, i;
+      for (i = 0; i < G.length; i++) {
+        var r = f(G[i]); F.push(r);
+        if (isFinite(r.d)) { fin++; if (Math.abs(r.d) <= TOL * r.s) zero++; }
+      }
+      if (fin > 20 && zero >= fin * 0.98) return { all: true, roots: [] };
+      var roots = [], cand = 0;
+      var add = function (x) {
+        x = snap(x);
+        for (var j = 0; j < roots.length; j++) if (Math.abs(roots[j] - x) <= 1e-7 * (1 + Math.abs(x))) return;
+        roots.push(x);
+      };
+      for (i = 0; i < G.length; i++) {
+        var cur = F[i];
+        if (!isFinite(cur.d)) continue;
+        if (Math.abs(cur.d) <= TOL * cur.s) { add(G[i]); continue; }
+        var nx = F[i + 1];
+        if (nx && isFinite(nx.d) && Math.abs(nx.d) > TOL * nx.s && (cur.d < 0) !== (nx.d < 0)) {   // sign change: bisect
+          var lo = G[i], hi = G[i + 1], flo = cur.d;
+          for (var it = 0; it < 90; it++) {
+            var mid = (lo + hi) / 2, fm = f(mid);
+            if (!isFinite(fm.d)) break;
+            if ((fm.d < 0) === (flo < 0)) { lo = mid; flo = fm.d; } else hi = mid;
+          }
+          var m2 = (lo + hi) / 2, fr = f(m2);
+          if (isFinite(fr.d) && Math.abs(fr.d) <= 1e-6 * fr.s) add(m2);   // not a pole
+          continue;
+        }
+        // touching zero without crossing ((x − 2)² = 0): a local minimum of |f|
+        var pv = F[i - 1];
+        if (pv && nx && isFinite(pv.d) && isFinite(nx.d) && Math.abs(cur.d) < Math.abs(pv.d) && Math.abs(cur.d) <= Math.abs(nx.d) &&
+            (pv.d < 0) === (cur.d < 0) && (nx.d < 0) === (cur.d < 0) && cand < 60) {
+          cand++;
+          var a = G[i - 1], b = G[i + 1], gr = (Math.sqrt(5) - 1) / 2;
+          var c = b - gr * (b - a), d = a + gr * (b - a);
+          for (var k2 = 0; k2 < 120; k2++) {
+            var fc = Math.abs(f(c).d), fd = Math.abs(f(d).d);
+            if (!(fc > fd)) { b = d; d = c; c = b - gr * (b - a); } else { a = c; c = d; d = a + gr * (b - a); }
+          }
+          var xm = (a + b) / 2, fx = f(xm);
+          if (isFinite(fx.d) && Math.abs(fx.d) <= TOL * fx.s) add(xm);
+        }
+      }
+      roots.sort(function (p, q) { return p - q; });
+      return { roots: roots };
+    });
+  }
+  function holds(L, env) {   // does a parsed step line hold at this point (any part; all links of its chain)
+    return L.parts.some(function (p) {
+      for (var i = 0; i + 1 < p.length; i++) {
+        var a = ev(p[i], env), b = ev(p[i + 1], env);
+        if (!isFinite(a) || !isFinite(b) || Math.abs(a - b) > TOL * 10 * (1 + Math.abs(a) + Math.abs(b))) return false;
+      }
+      return true;
+    });
+  }
+  /** Roots of a step line in one variable: union over the "or" parts, intersection along a chain. */
+  function lineRoots(L, v) {
+    var all = false, roots = [];
+    L.parts.forEach(function (p) {
+      var cur = null;   // null = everything so far
+      for (var i = 0; i + 1 < p.length; i++) {
+        var r = rootsPair(p[i], p[i + 1], v);
+        if (r.all) continue;
+        cur = cur === null ? r.roots.slice() : cur.filter(function (x) { return r.roots.some(function (y) { return close(x, y); }); });
+      }
+      if (cur === null) all = true;
+      else cur.forEach(function (x) { if (!roots.some(function (y) { return close(x, y); })) roots.push(x); });
+    });
+    return { all: all, roots: roots };
+  }
+
+  // ---------- systems of linear equations ----------
+  function linSolve(eqs, vars) {
+    var n = vars.length, rows = [];
+    var at = function (A, B, pt) { var env = {}; vars.forEach(function (v, i) { env[v] = pt[i]; }); return ev(A, env) - ev(B, env); };
+    for (var e = 0; e < eqs.length; e++) {
+      var A = eqs[e][0], B = eqs[e][1], zero = [], i;
+      for (i = 0; i < n; i++) zero.push(0);
+      var f0 = at(A, B, zero), co = [];
+      if (!isFinite(f0)) return null;
+      for (i = 0; i < n; i++) { var u = zero.slice(); u[i] = 1; co.push(at(A, B, u) - f0); }
+      for (var t = 0; t < 3; t++) {   // affine? (check at a few odd points)
+        var pt = [], sum = f0;
+        for (i = 0; i < n; i++) { pt.push(1.37 * (t + 1) - 2.11 * i + 0.5 * t * i); sum += co[i] * pt[i]; }
+        var fv = at(A, B, pt);
+        if (!isFinite(fv) || Math.abs(fv - sum) > 1e-7 * (1 + Math.abs(fv))) return null;
+      }
+      rows.push(co.concat([-f0]));
+    }
+    // Gaussian elimination
+    var r = 0, piv = [];
+    for (var c = 0; c < n && r < rows.length; c++) {
+      var best = r;
+      for (var k = r + 1; k < rows.length; k++) if (Math.abs(rows[k][c]) > Math.abs(rows[best][c])) best = k;
+      if (Math.abs(rows[best][c]) < 1e-12) continue;
+      var tmp = rows[r]; rows[r] = rows[best]; rows[best] = tmp;
+      for (k = 0; k < rows.length; k++) if (k !== r) { var fct = rows[k][c] / rows[r][c]; for (var j = c; j <= n; j++) rows[k][j] -= fct * rows[r][j]; }
+      piv.push(c); r++;
+    }
+    for (k = r; k < rows.length; k++) if (Math.abs(rows[k][n]) > 1e-9) return { none: true };
+    if (r < n) return { inf: true };
+    var sol = []; for (k = 0; k < n; k++) sol[piv[k]] = snap(rows[k][n] / rows[k][piv[k]]);
+    return { sol: sol };
+  }
+
+  // ---------- the key of a "solve" question ----------
+  var NONE_RE = /^(немає( коренів| розв'?’?ʼ?язків)?|коренів немає|розв'?’?ʼ?язків немає|no (real )?(roots|solutions?)|none|∅|\{\s*\})$/i;
+  var ALL_RE = /^(будь-?яке( число)?|x\s*[—-]?\s*будь-?яке( число)?|безліч( розв'?’?ʼ?язків| коренів)?|all( real)?( numbers)?|any( number)?|r|ℝ|\(-?∞;\s*\+?∞\))$/i;
+  function parseEqs(eqs) {
+    return eqs.map(function (s) {
+      var sides = String(s).split('=');
+      if (sides.length !== 2) throw fail(sides.length < 2 ? 'no_eq' : 'many_eq');
+      return [parseExpr(sides[0]), parseExpr(sides[1])];
+    });
+  }
+  /** One value typed by the student or the teacher for a root ("6", "-3/4", "√2", "x = 1 + √3"). */
+  function value(s) {
+    s = String(s == null ? '' : s).trim().replace(/^[a-zа-яіїєґ]\s*(_?[0-9₀-₉]+)?\s*=\s*/i, '');
+    if (!s) return NaN;
+    var t;
+    try { t = parseExpr(s); } catch (e) { return NaN; }
+    var vs = varsOf(t); for (var k in vs) return NaN;
+    return ev(t, {});
+  }
+  /** "x = 2; y = 3" or "2; 3" → values in the order of vars. */
+  function tuple(s, vars) {
+    var parts = String(s).split(/[;]|\bі\b|\band\b/), out = [], named = {};
+    parts.forEach(function (p) {
+      var m = /^\s*([a-zа-яіїєґ])\s*=\s*(.+)$/i.exec(prep(p));
+      if (m) named[m[1]] = value(m[2]); else if (p.trim()) out.push(value(p));
+    });
+    return vars.map(function (v, i) { return Object.prototype.hasOwnProperty.call(named, v) ? named[v] : out[i]; });
+  }
+  /**
+   * The solution of an equation (one string) or a system (several): { vars, sols: [[x], …] | [[x, y], …], none, all, err }.
+   * accept: the teacher's own answer (overrides the computed one): ["2", "3"] for roots, ["x=1; y=2"] for a system,
+   * ["немає"] / ["будь-яке"] for none / every number.
+   */
+  function key(eqs, vars, accept) {
+    eqs = (Array.isArray(eqs) ? eqs : [eqs]).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    var out = { vars: [], sols: [], none: false, all: false, err: '' };
+    if (!eqs.length) { out.err = 'no_eq'; return out; }
+    var P;
+    try { P = parseEqs(eqs); } catch (e) { out.err = e.mk || 'syntax'; return out; }
+    var found = {};
+    P.forEach(function (p) { varsOf(p[0], found); varsOf(p[1], found); });
+    var vs = (Array.isArray(vars) && vars.length ? vars : Object.keys(found).sort()).map(function (v) { return String(v).toLowerCase().trim(); }).filter(function (v) { return /^[a-z]$/.test(v); });
+    if (!vs.length) { out.err = 'no_var'; return out; }
+    out.vars = vs;
+    var acc = (accept || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    if (acc.length) {
+      if (acc.length === 1 && NONE_RE.test(acc[0].replace(/[.!]$/, ''))) { out.none = true; return out; }
+      if (acc.length === 1 && ALL_RE.test(acc[0].replace(/[.!]$/, ''))) { out.all = true; return out; }
+      acc.forEach(function (a) {
+        var t = vs.length === 1 ? [value(a)] : tuple(a, vs);
+        if (t.some(function (x) { return !isFinite(x); })) out.err = 'bad_accept'; else out.sols.push(t);
+      });
+      return out;
+    }
+    if (vs.length === 1 && P.length === 1) {
+      var r = rootsPair(P[0][0], P[0][1], vs[0]);
+      if (r.all) out.all = true; else if (!r.roots.length) out.none = true;
+      else out.sols = r.roots.map(function (x) { return [x]; });
+      return out;
+    }
+    var ls = linSolve(P, vs);
+    if (!ls) { out.err = 'need_answer'; return out; }   // not linear: the teacher gives the answer
+    if (ls.none) out.none = true; else if (ls.inf) out.err = 'need_answer'; else out.sols = [ls.sol];
+    return out;
+  }
+  function sameSols(a, b) {
+    var has = function (X, s) { return X.some(function (t) { return t.length === s.length && t.every(function (x, i) { return close(x, s[i]); }); }); };
+    return a.every(function (s) { return has(b, s); }) && b.every(function (s) { return has(a, s); });
+  }
+  /**
+   * One line of the student's working, against the key.
+   * ok: the same solutions; extra: every solution kept but new roots appeared (e.g. after squaring — check them);
+   * lost: a solution no longer satisfies the line; wrong: neither; bad: cannot be read; skip: other letters (a substitution t = x²);
+   * note: a comment or a line without "=".
+   */
+  function checkLine(s, K) {
+    var L;
+    try { L = parseLine(s); } catch (e) { return 'bad'; }
+    if (L.kind !== 'eqs') return 'note';
+    var lv = {};
+    L.parts.forEach(function (p) { p.forEach(function (t) { varsOf(t, lv); }); });
+    var names = Object.keys(lv);
+    if (!names.length) {   // only numbers: a calculation like "4 + 2 = 6" — fine if true
+      return holds(L, {}) ? 'note' : 'wrong';
+    }
+    if (names.some(function (v) { return K.vars.indexOf(v) < 0; })) return 'skip';
+    var envOf = function (sol) { var env = {}; K.vars.forEach(function (v, i) { env[v] = sol[i]; }); return env; };
+    var lost = K.sols.some(function (sol) { return !holds(L, envOf(sol)); });
+    if (K.vars.length > 1) return lost ? 'lost' : 'ok';
+    var v = K.vars[0], R = lineRoots(L, v);
+    if (K.all) return R.all ? 'ok' : 'lost';
+    if (R.all) return 'note';   // an identity, e.g. "x² − 5x + 6 = (x − 2)(x − 3)": a true statement, not a step
+    var extra = R.roots.filter(function (x) { return !K.sols.some(function (s) { return close(s[0], x); }); });
+    if (lost) return extra.length || K.sols.every(function (sol) { return !holds(L, envOf(sol)); }) ? 'wrong' : 'lost';
+    return extra.length ? 'extra' : 'ok';
+  }
+  return { prep: prep, parseExpr: parseExpr, parseLine: parseLine, tex: tex, lineTex: lineTex, ev: ev, evalStr: evalStr, value: value,
+    varsOf: varsOf, key: key, checkLine: checkLine, sameSols: sameSols, fmt: fmt, tuple: tuple, NONE_RE: NONE_RE, ALL_RE: ALL_RE,
+    rootsPair: rootsPair };
+})();
+// ==== MATHKIT END ====
+</script>
+<script>
+var BOOT_TEST = '<?= testId ?>';
+(function () {
+  'use strict';
+  var PIN = null, LIB = null, EDIT = null, RES = null, RESOPEN = null, OFFSET = 0;
+  try { PIN = sessionStorage.getItem('revtest-pin'); } catch (e) {}
+  var LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  function $(id) { return document.getElementById(id); }
+  function el(t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function now() { return Date.now() + OFFSET; }
+  function userMsg(err) {
+    var m = (err && err.message) ? err.message : String(err); var i = m.indexOf('USER:'); if (i < 0) return null;
+    m = m.slice(i + 5).trim(); var c = /\s*\[#([a-z_]+)\]\s*$/.exec(m);
+    if (c) { m = m.slice(0, c.index); if (typeof TR !== 'undefined' && TR[LANG] && TR[LANG]['e_' + c[1]]) return TR[LANG]['e_' + c[1]]; }
+    return m;
+  }
+  function errCode(err) { var m = (err && err.message) ? err.message : String(err); var c = /\[#([a-z_]+)\]/.exec(m); return c ? c[1] : ''; }
+  /** A two-language text ({ uk, en }) in the teacher's interface language, falling back to the other one. */
+  function tx(v) { if (v == null) return ''; if (typeof v === 'string') return v; return v[LANG] || v[LANG === 'uk' ? 'en' : 'uk'] || ''; }
+  function SUBJ() { return (LIB && LIB.subject) || { mode: 'switch', qtypes: ['mc', 'num', 'short', 'open'], formulas: true, name: { uk: 'Тести', en: 'Tests' } }; }
+  /** Languages the subject offers (switch mode). Ukrainian language: ['uk'] only. */
+  function SLANGS() { var s = SUBJ().langs; return (s && s.length) ? s.slice() : ['uk', 'en']; }
+  /** The test's languages that the subject offers (all of them if none match). */
+  function editLangs(langs) { var on = SLANGS().filter(function (l) { return !langs || langs.indexOf(l) >= 0; }); return on.length ? on : SLANGS(); }
+  /** A one-language subject: no language choice anywhere, no translation. */
+  function ONE_LANG() { return SUBJ().mode !== 'translate' && SLANGS().length === 1; }
+  function call(fn, args) { return new Promise(function (res, rej) { google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(null, args || []); }); }
+  function esc(s) { return String(s == null ? '' : s); }
+  function fmtTime(ms) { if (!ms) return '—'; var d = new Date(ms); return d.toLocaleDateString([], { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function toLocalInput(ms) { if (!ms) return ''; var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+  function fromLocalInput(v) { if (!v) return null; var ms = new Date(v).getTime(); return isNaN(ms) ? null : ms; }
+
+  // ---------- language (UK default, EN toggle) ----------
+  var TR = {
+    uk: {
+      tv_title: 'Тести', tv_sub: 'Кабінет учителя', classes_btn: 'Класи', aikey_btn: 'Ключ ШІ', spreadsheet: 'Таблиця', refresh: 'Оновити',
+      pin_title: 'PIN учителя', pin_ph: 'Введіть PIN', open: 'Увійти', wrong_pin: 'Невірний PIN.',
+      new_ai: '✨ Новий тест із фото', new_blank: '+ Порожній тест', no_tests: 'Тестів ще немає. Створіть із фото або порожній.',
+      made_by_ai: '✨ Створено ШІ', no_class: 'Без класу', submitted_n: 'надіслали: {n}', started_n: 'почали: {n}', closes_at: 'закриється {when}', min_limit: '{n} хв',
+      badge_open: 'ВІДКРИТО', badge_closed: 'ЗАКРИТО', badge_scheduled: 'ЗА РОЗКЛАДОМ', badge_draft: 'ЧЕРНЕТКА', badge_ready: 'ГОТОВО', badge_ai: 'ШІ',
+      btn_results: 'Результати', btn_edit: 'Редагувати', btn_schedule: 'Розклад', btn_copylink: 'Копіювати лінк', copied: 'Скопійовано!', btn_delete: '🗑 Видалити',
+      confirm_delete_test: 'Видалити «{title}»?\n\nУже збережені оцінки залишаться в таблиці.',
+      your_classes: 'Ваші класи', classes_intro: 'Додайте класи, у яких викладаєте. Під час створення тесту обираєте клас зі списку, і учень теж обирає свій клас.',
+      no_classes: 'Класів ще немає. Додайте перший нижче.', remove: 'Видалити', add: 'Додати', done: 'Готово', saved: 'Збережено.', class_ph: 'напр. 9Б',
+      aikey_title: 'Ключ Gemini API', aikey_intro: 'Потрібен лише для тестів із фото. Безкоштовний ключ: aistudio.google.com/apikey. Зберігається у вашому скрипті.',
+      close: 'Закрити', save_key: 'Зберегти ключ', aikey_have: 'Ключ уже збережено. Вставте новий, щоб замінити.', aikey_paste_first: 'Спершу вставте ключ.',
+      ai_title: 'Новий тест із фото', ai_intro: 'Сфотографуйте або оберіть чітке фото сторінки (до 6). Можна додати вказівки для ШІ.',
+      ai_note_lab: 'Додаткові вказівки для ШІ (необов’язково)', ai_note_ph: 'напр. лише з варіантами; відповіді українською', ai_choose: 'Обрати фото', cancel: 'Скасувати',
+      ai_need_key: 'Спершу додайте ключ Gemini, потім знову натисніть «Новий тест із фото».', ai_fail: 'Не вдалося створити тест:',
+      ai_busy1: 'Читаю фото та складаю тест…', ai_busy2: 'Це може зайняти 10–30 секунд.',
+      back: '← Назад', leave_editor: 'Вийти з редактора? Незбережені зміни зникнуть.', test_title_lab: 'Назва тесту', class_choose_lab: 'Клас (оберіть зі списку або введіть новий)',
+      ai_made_note: '✨ Створено ШІ з вашого фото — перевірте кожне питання та правильні відповіді перед публікацією.', warnings_title: 'Перевірте це перед публікацією:',
+      add_section: '+ Додати розділ', save: '💾 Зберегти', save_publish: 'Зберегти й опублікувати', saving: 'Зберігаю…',
+      section_title_ph: 'Назва розділу (напр. Крок 1)', section_instr_ph: 'Інструкція (напр. Оберіть a, b або c)', del_section: '✕ Розділ', confirm_del_section: 'Видалити весь розділ?',
+      qtype_solve: 'Рівняння (розв’язання по кроках)', solve_eq_lab: 'Рівняння (одне в рядку; кілька рядків — система)', solve_eq_ph: 'напр. x^2 - 5x + 6 = 0', solve_vars_lab: 'Невідомі (необов’язково)', solve_vars_ph: 'авто, напр. x або x, y', solve_acc_lab: 'Ваша відповідь (необов’язково, інакше рахує програма)', solve_acc_ph: 'кожен корінь з нового рядка; система: x=1; y=2; «немає» — коренів немає', solve_steps_lab: 'Кроки розв’язання', steps_off: 'Без кроків — лише відповідь', steps_show: 'Учень пише кроки (оцінюється лише відповідь)', steps_grade: 'Кроки теж оцінюються (+1 бал)', solve_roots: 'Корені: {r}', solve_none: 'коренів немає', solve_all: 'будь-яке число', solve_bad: 'Не вдається прочитати рівняння', solve_need: 'Вкажіть відповідь самі (нелінійна система або безліч розв’язків)', solve_badacc: 'Відповідь не читається як число', solve_computing: 'Рахую…', tools_lab: 'Інструменти для учнів:', tool_calc: '🧮 Калькулятор', tool_graph: '📈 Графіки', tool_ruler: '📏 Лінійка', tool_protractor: '📐 Транспортир', tool_formulas: '📘 Формули', sheet_lab: 'Свій довідник формул (замість стандартного; формула в рядку, $…$ для LaTeX)', sheet_ph: 'Залиште порожнім — буде стандартний довідник', res_tools: 'Відкривав інструменти: {t}', st_ok: 'вірно', st_extra: 'сторонні корені — треба перевірити', st_lost: 'втрачено корінь', st_wrong: 'помилка', st_bad: 'не читається', st_note: 'коментар', st_skip: 'заміна змінної', solve_given: 'Відповідь: ', solve_key: 'Правильно: ', solve_steps_res: 'Кроки: {s}', solve_work_ok: 'розв’язання вірне', solve_work_no: 'є помилки', no_steps: 'кроків немає', 
+      qtype_mc: 'Вибір варіанта', qtype_num: 'Числова відповідь', qtype_short: 'Коротка відповідь', qtype_open: 'Відкрите (без оцінки)', qtype_fix: 'Виправ помилку', qtype_chem: 'Формула / рівняння',
+      chem_accept_lab: 'Правильні формули / рівняння (по одному в рядку, напр. H2SO4 або 2H2 + O2 = 2H2O). Регістр важливий (CO ≠ Co); пробіли, порядок речовин, «=» чи «->» і кирилиця замість латиниці (Н2О) — ні.',
+      q_text_ph: 'Текст питання. Формули у $…$, напр. $\\frac{3}{4}$ або $2x+5=17$',
+      mc_options_lab: 'Варіанти (по одному в рядку)', mc_correct_lab: 'Номер правильного варіанта (1, 2, 3…): ',
+      num_accept_lab: 'Правильні відповіді — число, по одному в рядку (напр. 30, або 3/4 і 0.75)', num_tol_lab: 'Допуск ± (0 = точно): ',
+      short_accept_lab: 'Прийнятні відповіді (по одному в рядку)', open_note: 'Відкрите питання — учні пишуть вільно, без оцінки.',
+      schedule_t: 'Розклад — {title}', st_published: 'опубліковано', st_draft: 'чернетка', status_pre: 'Статус: ',
+      sch_start: 'Початок', sch_start_manual: 'Коли натисну «Почати»', sch_start_time: 'У вказаний час', sch_open_lab: 'Час відкриття',
+      sch_end: 'Завершення', sch_end_manual: 'Коли натисну «Стоп»', sch_end_hours: 'Через N годин', sch_end_time: 'У вказаний час',
+      sch_hours_lab: 'Скільки годин доступний', sch_close_lab: 'Час закриття', sch_min_lab: 'Ліміт на учня (хвилин, 0 = без ліміту)',
+      sch_shuffleQ: 'Перемішувати порядок питань', sch_shuffleO: 'Перемішувати порядок варіантів', sch_monitor: 'Фіксувати вихід зі сторінки та копіювання (учні попереджені)', sch_score: 'Показувати учневі бал після здачі',
+      start_now: '▶ Почати зараз', stop_now: '■ Зупинити зараз', btn_save: 'Зберегти', del_test_btn: '🗑 Видалити цей тест', confirm_del_test2: 'Видалити «{title}»? Збережені оцінки залишаться в таблиці.',
+      all_tests: '← Усі тести', copy_student_link: 'Копіювати лінк для учнів', stat_submitted: 'Надіслали', stat_inprogress: 'У процесі', stat_average: 'Середнє', of_n: ' (з {n})', stat_flagged: 'Позначені',
+      search_ph: 'Пошук за іменем або класом', th_name: 'Ім’я', th_class: 'Клас', th_status: 'Статус', th_score: 'Бал', th_time: 'Час', no_attempts: 'Спроб ще немає. Поділіться лінком для учнів.',
+      st_inprogress: 'У процесі', st_submitted: 'Надіслано', st_late: 'Із запізненням',
+      activity_title: '⚑ Активність під час тесту', copied_text_label: 'Що копіював:', not_submitted_yet: 'Почав, але ще не здав.',
+      no_answer: '(немає відповіді)', not_changed: '(не змінено)', key_label: 'Ключ: ', ov_auto: 'Авто', del_attempt: '🗑 Видалити спробу (учень зможе пройти знову)', confirm_del_attempt: 'Видалити спробу учня {name}?',
+      untitled: 'Тест без назви', q_word: 'питань',
+      add_samples: '📚 Додати готові тести', samples_added: 'Додано готових тестів: {n}.', samples_none: 'Усі готові тести вже є в бібліотеці.',
+      lang_uk: 'Українська', lang_en: 'English', tag_uk: 'УКР', tag_en: 'EN', tag_uk_tr: 'УКР · переклад',
+      langs_lab: 'Мови тесту для учнів:', langs_need_one: 'Має бути увімкнена хоча б одна мова.',
+      allow_tr: 'Дозволити учням відкривати переклад питань українською', tr_on_badge: '+ переклад', missing_n: 'без перекладу: {n}',
+      auto_tr: '🌐 Перекласти відсутнє', auto_tr_busy: 'Перекладаю…', auto_tr_done: 'Перекладено текстів: {n}. Перевірте й збережіть.', auto_tr_none: 'Усі тексти вже перекладено.',
+      ai_langs_lab: 'Мови:', mc_options_lab2: 'Варіанти — по одному в рядку, однаковий порядок в обох мовах',
+      accept_both: ' — можна обома мовами', q_text_ph_plain: 'Текст питання', q_text_ph_tr: 'Переклад питання українською (учень бачить його лише якщо ви дозволили)',
+      qtype_match: 'Відповідність (пари)', pairs_lab: 'Пари: ліворуч — поняття або номер на малюнку, праворуч — правильна відповідь. Учні бачать праву колонку перемішаною; 1 бал за кожну пару.',
+      add_pair: '+ Пара', pair_l_ph: 'напр. 1 або Ядро', pair_r_ph: 'правильна відповідь', correct_label: 'Правильно: ',
+      img_lab: 'Малюнок (необов’язково): посилання https://… на зображення', img_bad: 'Потрібне посилання, що починається з https://',
+      note_ph: 'Підказка (необов’язково)', instr_tr_ph: 'Переклад інструкції', res_langs: 'Мова тесту: {l}', res_tr: 'Переклад відкривав: {n}×',
+      e_pin: 'Невірний PIN.', e_empty: 'Додайте хоча б одне питання.', e_close_before_open: 'Час закриття має бути пізніше за час відкриття.',
+      e_no_key: 'Спершу додайте ключ Gemini (кнопка «Ключ ШІ»).', e_ai_unreadable: 'Не вдалося прочитати відповідь ШІ. Спробуйте ще раз або інше фото.',
+      e_ai_empty: 'На фото не знайдено питань. Спробуйте чіткіше фото.', e_bad_photo: 'Не вдалося прочитати фото. Спробуйте інше.', e_not_found: 'Тест не знайдено.'
+    },
+    en: {
+      tv_title: 'Tests', tv_sub: 'Teacher view', classes_btn: 'Classes', aikey_btn: 'AI key', spreadsheet: 'Spreadsheet', refresh: 'Refresh',
+      pin_title: 'Teacher PIN', pin_ph: 'Enter PIN', open: 'Open', wrong_pin: 'Wrong PIN.',
+      new_ai: '✨ New test from a photo', new_blank: '+ Blank test', no_tests: 'No tests yet. Create one from a photo or a blank test.',
+      made_by_ai: '✨ Made by AI', no_class: 'No class', submitted_n: '{n} submitted', started_n: '{n} started', closes_at: 'closes {when}', min_limit: '{n} min',
+      badge_open: 'OPEN NOW', badge_closed: 'CLOSED', badge_scheduled: 'SCHEDULED', badge_draft: 'DRAFT', badge_ready: 'READY', badge_ai: 'AI',
+      btn_results: 'Results', btn_edit: 'Edit', btn_schedule: 'Schedule', btn_copylink: 'Copy link', copied: 'Copied!', btn_delete: '🗑 Delete',
+      confirm_delete_test: 'Delete "{title}"?\n\nStudent marks already saved stay in the spreadsheet.',
+      your_classes: 'Your classes', classes_intro: 'Add the classes you teach. When you make a test you can pick one from this list, and students choose their class from it too.',
+      no_classes: 'No classes yet. Add your first one below.', remove: 'Remove', add: 'Add', done: 'Done', saved: 'Saved.', class_ph: 'e.g. 9B',
+      aikey_title: 'Gemini API key', aikey_intro: 'Needed only to create tests from photos. Get a free key at aistudio.google.com/apikey and paste it here. It is stored in your own script.',
+      close: 'Close', save_key: 'Save key', aikey_have: 'A key is already saved. Paste a new one to replace it.', aikey_paste_first: 'Paste a key first.',
+      ai_title: 'New test from a photo', ai_intro: 'Take or choose a clear photo of the worksheet page (up to 6). You can add instructions for the AI.',
+      ai_note_lab: 'Extra instructions for the AI (optional)', ai_note_ph: 'e.g. make only multiple-choice; keep answers in Ukrainian', ai_choose: 'Choose photos', cancel: 'Cancel',
+      ai_need_key: 'Add your Gemini key first, then try "New test from a photo" again.', ai_fail: 'Could not create the test:',
+      ai_busy1: 'Reading the photo and building the test…', ai_busy2: 'This can take 10–30 seconds.',
+      back: '← Back', leave_editor: 'Leave the editor? Unsaved changes are lost.', test_title_lab: 'Test title', class_choose_lab: 'Class (choose from your list or type a new one)',
+      ai_made_note: '✨ Made by AI from your photo — please check every question and the correct answers below before publishing.', warnings_title: 'Please check these before publishing:',
+      add_section: '+ Add section', save: '💾 Save', save_publish: 'Save & publish', saving: 'Saving…',
+      section_title_ph: 'Section title (e.g. Step 1)', section_instr_ph: 'Instructions (e.g. Choose a, b or c)', del_section: '✕ Section', confirm_del_section: 'Delete this whole section?',
+      qtype_solve: 'Equation (step-by-step working)', solve_eq_lab: 'Equation (one per line; several lines — a system)', solve_eq_ph: 'e.g. x^2 - 5x + 6 = 0', solve_vars_lab: 'Unknowns (optional)', solve_vars_ph: 'auto, e.g. x or x, y', solve_acc_lab: 'Your answer (optional; otherwise the app works it out)', solve_acc_ph: 'one root per line; a system: x=1; y=2; “none” — no roots', solve_steps_lab: 'Working', steps_off: 'No steps — only the answer', steps_show: 'Student writes steps (only the answer is marked)', steps_grade: 'Steps are marked too (+1 point)', solve_roots: 'Roots: {r}', solve_none: 'no roots', solve_all: 'any number', solve_bad: 'Cannot read the equation', solve_need: 'Give the answer yourself (non-linear system or infinitely many solutions)', solve_badacc: 'The answer cannot be read as a number', solve_computing: 'Working it out…', tools_lab: 'Tools for students:', tool_calc: '🧮 Calculator', tool_graph: '📈 Graphs', tool_ruler: '📏 Ruler', tool_protractor: '📐 Protractor', tool_formulas: '📘 Formulas', sheet_lab: 'Your own formula sheet (replaces the standard one; one formula per line, $…$ for LaTeX)', sheet_ph: 'Leave empty to use the standard sheet', res_tools: 'Opened tools: {t}', st_ok: 'correct', st_extra: 'extra roots — need checking', st_lost: 'a root was lost', st_wrong: 'mistake', st_bad: 'cannot be read', st_note: 'comment', st_skip: 'substitution', solve_given: 'Answer: ', solve_key: 'Correct: ', solve_steps_res: 'Steps: {s}', solve_work_ok: 'working correct', solve_work_no: 'has mistakes', no_steps: 'no steps', 
+      qtype_mc: 'Multiple choice', qtype_num: 'Number answer', qtype_short: 'Short text answer', qtype_open: 'Open (show working — not scored)', qtype_fix: 'Correct the mistake', qtype_chem: 'Formula / equation',
+      chem_accept_lab: 'Correct formula(s) / equation(s), one per line (e.g. H2SO4 or 2H2 + O2 = 2H2O). Letter case matters (CO ≠ Co); spaces, the order of substances, "=" or "->" and Cyrillic look-alike letters (Н2О) do not.',
+      q_text_ph: 'Question text. Write formulas in $…$, e.g. $\\frac{3}{4}$ or $2x+5=17$',
+      mc_options_lab: 'Options (one per line)', mc_correct_lab: 'Correct option number (1, 2, 3…): ',
+      num_accept_lab: 'Correct answer(s) — a number, one per line (e.g. 30, or 3/4 and 0.75)', num_tol_lab: 'Allowed ± tolerance (0 = exact): ',
+      short_accept_lab: 'Accepted answers (one per line)', open_note: 'Open question — students write freely, it is not scored.',
+      schedule_t: 'Schedule — {title}', st_published: 'published', st_draft: 'draft', status_pre: 'Status: ',
+      sch_start: 'Start', sch_start_manual: 'I press Start', sch_start_time: 'At a set time', sch_open_lab: 'Opening time',
+      sch_end: 'End', sch_end_manual: 'I press Stop', sch_end_hours: 'After N hours', sch_end_time: 'At a set time',
+      sch_hours_lab: 'Hours available', sch_close_lab: 'Closing time', sch_min_lab: 'Time limit per student (minutes, 0 = none)',
+      sch_shuffleQ: 'Shuffle the order of questions', sch_shuffleO: 'Shuffle the order of options', sch_monitor: 'Record leaving the page & copying (students are told)', sch_score: 'Show the score to the student after submitting',
+      start_now: '▶ Start now', stop_now: '■ Stop now', btn_save: 'Save', del_test_btn: '🗑 Delete this test', confirm_del_test2: 'Delete "{title}"? Student marks already saved stay in the sheet.',
+      all_tests: '← All tests', copy_student_link: 'Copy student link', stat_submitted: 'Submitted', stat_inprogress: 'In progress', stat_average: 'Average', of_n: ' (of {n})', stat_flagged: 'Flagged',
+      search_ph: 'Search name or class', th_name: 'Name', th_class: 'Class', th_status: 'Status', th_score: 'Score', th_time: 'Time', no_attempts: 'No attempts yet. Share the student link.',
+      st_inprogress: 'In progress', st_submitted: 'Submitted', st_late: 'Late',
+      activity_title: '⚑ Activity during the test', copied_text_label: 'Text they copied:', not_submitted_yet: 'Started but not submitted yet.',
+      no_answer: '(no answer)', not_changed: '(not changed)', key_label: 'Key: ', ov_auto: 'Auto', del_attempt: '🗑 Delete this attempt (lets this student retake)', confirm_del_attempt: "Delete {name}'s attempt?",
+      untitled: 'Untitled test', q_word: 'questions',
+      add_samples: '📚 Add sample tests', samples_added: 'Sample tests added: {n}.', samples_none: 'All sample tests are already in your library.',
+      lang_uk: 'Українська', lang_en: 'English', tag_uk: 'УКР', tag_en: 'EN', tag_uk_tr: 'УКР · translation',
+      langs_lab: 'Languages students can use:', langs_need_one: 'Keep at least one language on.',
+      allow_tr: 'Allow students to open a Ukrainian translation of the questions', tr_on_badge: '+ translation', missing_n: '{n} untranslated',
+      auto_tr: '🌐 Translate missing', auto_tr_busy: 'Translating…', auto_tr_done: 'Translated {n} text(s). Please check and save.', auto_tr_none: 'Everything is translated already.',
+      ai_langs_lab: 'Languages:', mc_options_lab2: 'Options — one per line, same order in both languages',
+      accept_both: ' — either language is fine', q_text_ph_plain: 'Question text', q_text_ph_tr: 'Ukrainian translation of the question (students see it only if you allow it)',
+      qtype_match: 'Matching (pairs)', pairs_lab: 'Pairs: left — a term or a number on the picture, right — its correct answer. Students see the right column shuffled; 1 point per pair.',
+      add_pair: '+ Pair', pair_l_ph: 'e.g. 1 or Nucleus', pair_r_ph: 'correct answer', correct_label: 'Correct: ',
+      img_lab: 'Picture (optional): an https://… image link', img_bad: 'Use a link that starts with https://',
+      note_ph: 'Hint (optional)', instr_tr_ph: 'Translation of the instructions', res_langs: 'Test language: {l}', res_tr: 'Opened the translation: {n}×'
+    }
+  };
+  var LANG = (function () { try { var l = localStorage.getItem('revtest-lang'); return (l === 'en' || l === 'uk') ? l : 'uk'; } catch (e) { return 'uk'; } })();
+  function L(key, vars) { var s = (TR[LANG] && TR[LANG][key] != null) ? TR[LANG][key] : (TR.en[key] != null ? TR.en[key] : key); if (vars) Object.keys(vars).forEach(function (k) { s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]); }); return s; }
+  function qCountLabel(n) { if (LANG === 'uk') return n + ' ' + L('q_word'); return n + ' question' + (n === 1 ? '' : 's'); }
+  var CURVIEW = function () {};
+  function applyLang() {
+    $('lang-uk').classList.toggle('on', LANG === 'uk');
+    $('lang-en').classList.toggle('on', LANG === 'en');
+    $('homeTitle').textContent = LIB && LIB.subject ? tx(LIB.subject.name) : L('tv_title'); $('homeSub').textContent = L('tv_sub');
+    $('addSamplesBtn').textContent = L('add_samples'); $('aiLangsLab').textContent = L('ai_langs_lab');
+    $('classesBtn').textContent = L('classes_btn'); $('aiKeyBtn').textContent = L('aikey_btn');
+    $('sheetLink').textContent = L('spreadsheet');
+    $('gateTitle').textContent = L('pin_title'); $('pin').placeholder = L('pin_ph'); $('gateOpen').textContent = L('open');
+    $('newAiBtn').textContent = L('new_ai'); $('newBlankBtn').textContent = L('new_blank');
+    $('classesTitle').textContent = L('your_classes'); $('classesIntro').textContent = L('classes_intro');
+    $('newClass').placeholder = L('class_ph'); $('addClassBtn').textContent = L('add'); $('classesClose').textContent = L('done');
+    $('aiTitle').textContent = L('ai_title'); $('aiIntro').textContent = L('ai_intro'); $('aiNoteLab').textContent = L('ai_note_lab'); $('aiNote').placeholder = L('ai_note_ph'); $('aiCancel').textContent = L('cancel'); $('aiChoose').textContent = L('ai_choose');
+    // aikey dialog
+    $('aiKeyTitle').textContent = L('aikey_title'); $('aiKeyIntro').textContent = L('aikey_intro'); $('aiKeyCancel').textContent = L('close'); $('aiKeySave').textContent = L('save_key');
+    // ai busy
+    $('aiBusyText').innerHTML = L('ai_busy1') + '<br><span class="muted" style="font-size:13px">' + L('ai_busy2') + '</span>';
+    try { document.documentElement.lang = LANG; } catch (e) {}
+  }
+  function setLang(l) { if (l === LANG) return; LANG = l; try { localStorage.setItem('revtest-lang', l); } catch (e) {} applyLang(); CURVIEW(); }
+  $('lang-uk').addEventListener('click', function () { setLang('uk'); });
+  $('lang-en').addEventListener('click', function () { setLang('en'); });
+
+  var VIEWS = ['gate', 'library', 'editor', 'results'];
+  function show(v) { VIEWS.forEach(function (x) { $(x).classList.toggle('hidden', x !== v); }); window.scrollTo(0, 0);
+    var authed = v !== 'gate'; $('aiKeyBtn').classList.toggle('hidden', !authed); $('classesBtn').classList.toggle('hidden', !authed); if (v !== 'results') $('sheetLink').classList.add('hidden'); }
+
+  // ---------- gate ----------
+  $('pinForm').addEventListener('submit', function (e) { e.preventDefault(); PIN = $('pin').value; boot(true); });
+  $('homeBtn').addEventListener('click', function () { if (PIN && LIB !== false) loadLibrary(); });
+
+  function boot(fromGate) {
+    if (!PIN) return show('gate');
+    loadLibrary(fromGate);
+  }
+  function handleErr(err, fromGate) {
+    var msg = userMsg(err) || String(err);
+    if (errCode(err) === 'pin' || /wrong pin/i.test(msg)) { try { sessionStorage.removeItem('revtest-pin'); } catch (e) {} show('gate'); $('pinErr').textContent = fromGate ? L('wrong_pin') : ''; return true; }
+    return false;
+  }
+
+  // ---------- library ----------
+  function loadLibrary(fromGate) {
+    call('listTests', [PIN]).then(function (res) {
+      LIB = res; OFFSET = res.serverNow - Date.now(); applyLang();
+      try { sessionStorage.setItem('revtest-pin', PIN); } catch (e) {}
+      CURVIEW = renderLibrary;
+      renderLibrary();
+      show('library');
+      $('sheetLink').classList.add('hidden');
+      if (BOOT_TEST) { var b = BOOT_TEST; BOOT_TEST = ''; openResults(b); }
+    }).catch(function (err) { if (!handleErr(err, fromGate)) alert('Could not load: ' + (userMsg(err) || err)); });
+  }
+  function stateBadge(t) {
+    var map = { open: L('badge_open'), closed: L('badge_closed'), scheduled: L('badge_scheduled'), draft: L('badge_draft'), waiting: L('badge_ready') };
+    return el('span', 'badge ' + t.state, map[t.state] || t.state);
+  }
+  function renderLibrary() {
+    var list = $('libList'); list.textContent = '';
+    var tests = LIB.tests.slice();
+    $('libEmpty').textContent = tests.length ? '' : L('no_tests');
+    $('addSamplesBtn').classList.toggle('hidden', !LIB.samples);
+    tests.sort(function (a, b) { if ((a.source === 'ai') !== (b.source === 'ai')) return a.source === 'ai' ? -1 : 1; return (b.updated || 0) - (a.updated || 0); });
+    var folders = {}, AI = '\u0000ai';
+    tests.forEach(function (t) { var f = t.source === 'ai' && !t.folder ? AI : (t.folder || '￿noclass'); (folders[f] = folders[f] || []).push(t); });
+    var order = Object.keys(folders).sort(function (a, b) { if (a === AI) return -1; if (b === AI) return 1; return a.localeCompare(b); });
+    order.forEach(function (f) {
+      var label = f === AI ? L('made_by_ai') : f === '￿noclass' ? L('no_class') : f;
+      list.appendChild(el('div', 'folder-h', label));
+      folders[f].forEach(function (t) { list.appendChild(testRow(t)); });
+    });
+  }
+  function testRow(t) {
+    var row = el('div', 'test-row');
+    var tt = el('div', 'tt');
+    var titleLine = el('div');
+    titleLine.appendChild(el('b', null, tx(t.titles) || t.title));
+    if (t.source === 'ai') titleLine.appendChild(el('span', 'badge ai', L('badge_ai')));
+    titleLine.appendChild(stateBadge(t));
+    if (SUBJ().mode === 'translate') { if (t.allowTranslate) titleLine.appendChild(el('span', 'badge lang', 'EN ' + L('tr_on_badge'))); }
+    else if (t.langs) titleLine.appendChild(el('span', 'badge lang', t.langs.map(function (l) { return L('tag_' + l); }).join(' · ')));
+    if (t.missing) titleLine.appendChild(el('span', 'badge miss', L('missing_n', { n: t.missing })));
+    tt.appendChild(titleLine);
+    var meta = qCountLabel(t.questions);
+    if (t.minutes) meta += ' · ⏱ ' + L('min_limit', { n: t.minutes });
+    if (t.submitted) meta += ' · ' + L('submitted_n', { n: t.submitted });
+    else if (t.attempts) meta += ' · ' + L('started_n', { n: t.attempts });
+    if (t.state === 'open' && t.closesAt) meta += ' · ' + L('closes_at', { when: fmtTime(t.closesAt) });
+    tt.appendChild(el('div', 'meta', meta));
+    row.appendChild(tt);
+    var acts = el('div', 'row');
+    if (t.state === 'open' || t.state === 'closed' || t.submitted || t.attempts) acts.appendChild(mkBtn(L('btn_results'), 'btn sm', function () { openResults(t.id); }));
+    acts.appendChild(mkBtn(L('btn_edit'), 'btn sm', function () { openEditor(t.id); }));
+    acts.appendChild(mkBtn(L('btn_schedule'), 'btn sm', function () { openSchedule(t.id); }));
+    if (t.state === 'open') acts.appendChild(mkBtn(L('btn_copylink'), 'btn sm', function (e) { copyLink(t.id, e.target); }));
+    acts.appendChild(mkBtn(L('btn_delete'), 'btn sm danger', function () {
+      if (confirm(L('confirm_delete_test', { title: tx(t.titles) || t.title }))) {
+        call('deleteTest', [PIN, t.id]).then(loadLibrary).catch(function (err) { if (!handleErr(err)) alert(userMsg(err) || err); });
+      }
+    }));
+    row.appendChild(acts);
+    return row;
+  }
+  function mkBtn(text, cls, fn) { var b = el('button', cls, text); b.addEventListener('click', fn); return b; }
+  function studentLink(id) { var base = (LIB && LIB.appUrl) || ''; return base + (base.indexOf('?') >= 0 ? '&' : '?') + 't=' + encodeURIComponent(id); }
+  function copyLink(id, btn) {
+    var link = studentLink(id);
+    var done = function () { var o = btn.textContent; btn.textContent = L('copied'); setTimeout(function () { btn.textContent = o; }, 1500); };
+    try { navigator.clipboard.writeText(link).then(done, function () { prompt('Copy the student link:', link); }); }
+    catch (e) { prompt('Copy the student link:', link); }
+  }
+
+  // ---------- classes ----------
+  $('classesBtn').addEventListener('click', function () { $('classesMsg').textContent = ''; renderClasses(); $('classesDlg').showModal(); });
+  $('classesClose').addEventListener('click', function () { $('classesDlg').close(); });
+  $('addClassBtn').addEventListener('click', addClass);
+  $('newClass').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addClass(); } });
+  function renderClasses() {
+    var box = $('classesList'); box.textContent = '';
+    var cls = (LIB && LIB.classes) || [];
+    if (!cls.length) { box.appendChild(el('p', 'muted', L('no_classes'))); return; }
+    cls.forEach(function (c) {
+      var row = el('div', 'row'); row.style.cssText = 'justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)';
+      row.appendChild(el('b', null, c));
+      row.appendChild(mkBtn(L('remove'), 'btn sm danger', function () { saveClasses(cls.filter(function (x) { return x !== c; })); }));
+      box.appendChild(row);
+    });
+  }
+  function addClass() {
+    var v = $('newClass').value.trim(); if (!v) return;
+    var cls = ((LIB && LIB.classes) || []).slice();
+    if (cls.map(function (x) { return x.toLowerCase(); }).indexOf(v.toLowerCase()) < 0) cls.push(v);
+    $('newClass').value = ''; saveClasses(cls);
+  }
+  function saveClasses(cls) {
+    call('saveClasses', [PIN, cls]).then(function (r) { LIB.classes = r.classes; renderClasses(); $('classesMsg').textContent = L('saved'); setTimeout(function () { $('classesMsg').textContent = ''; }, 2000); })
+      .catch(function (err) { if (!handleErr(err)) $('classesMsg').textContent = userMsg(err) || 'Could not save.'; });
+  }
+
+  // ---------- AI key ----------
+  $('aiKeyBtn').addEventListener('click', function () { $('aiKeyInput').value = ''; $('aiKeyMsg').textContent = LIB && LIB.hasAiKey ? L('aikey_have') : ''; $('aiKeyDlg').showModal(); });
+  $('aiKeyCancel').addEventListener('click', function () { $('aiKeyDlg').close(); });
+  $('aiKeySave').addEventListener('click', function () {
+    var k = $('aiKeyInput').value.trim(); if (!k) { $('aiKeyMsg').textContent = L('aikey_paste_first'); return; }
+    $('aiKeySave').disabled = true;
+    call('saveAiKey', [PIN, k]).then(function (r) { $('aiKeySave').disabled = false; LIB.hasAiKey = r.hasAiKey; $('aiKeyMsg').textContent = L('saved'); setTimeout(function () { $('aiKeyDlg').close(); }, 700); })
+      .catch(function (err) { $('aiKeySave').disabled = false; $('aiKeyMsg').textContent = userMsg(err) || 'Could not save.'; });
+  });
+
+  // ---------- new test from photo ----------
+  $('newBlankBtn').addEventListener('click', function () { openEditorWith({ id: '', title: '', folder: '', source: 'manual', status: 'draft', content: { langs: SLANGS(), allowTranslate: false, sections: [{ title: '', instructions: '', questions: [] }] } }, []); });
+  $('addSamplesBtn').addEventListener('click', function () {
+    var b = $('addSamplesBtn'); b.disabled = true;
+    call('addSampleTests', [PIN]).then(function (r) { b.disabled = false; alert(r.added ? L('samples_added', { n: r.added }) : L('samples_none')); loadLibrary(); })
+      .catch(function (err) { b.disabled = false; if (!handleErr(err)) alert(userMsg(err) || err); });
+  });
+  $('newAiBtn').addEventListener('click', function () {
+    if (!LIB.hasAiKey) { $('aiKeyBtn').click(); $('aiKeyMsg').textContent = L('ai_need_key'); return; }
+    $('aiLangs').classList.toggle('hidden', SUBJ().mode === 'translate' || ONE_LANG());
+    if (ONE_LANG()) { $('aiLangUk').checked = SLANGS()[0] === 'uk'; $('aiLangEn').checked = SLANGS()[0] === 'en'; }
+    $('aiNote').value = ''; $('aiDlg').showModal();
+  });
+  $('aiCancel').addEventListener('click', function () { $('aiDlg').close(); });
+  $('aiChoose').addEventListener('click', function () { $('fileInput').value = ''; $('fileInput').click(); });
+  $('fileInput').addEventListener('change', function () {
+    var files = Array.prototype.slice.call(this.files || []).slice(0, 6);
+    if (!files.length) return;
+    var note = $('aiNote').value || '';
+    var langs = []; if ($('aiLangUk').checked) langs.push('uk'); if ($('aiLangEn').checked) langs.push('en');
+    if (ONE_LANG()) langs = SLANGS();
+    $('aiDlg').close();
+    Promise.all(files.map(readImage)).then(function (images) {
+      $('aiBusyDlg').showModal();
+      return call('generateFromPhotos', [PIN, images, note, langs]).then(function (res) {
+        $('aiBusyDlg').close();
+        openEditorWith({ id: '', title: res.title, folder: '', source: 'ai', status: 'draft', content: res.content }, res.warnings || []);
+      });
+    }).catch(function (err) { $('aiBusyDlg').close(); alert(L('ai_fail') + ' ' + (userMsg(err) || err)); });
+  });
+  function readImage(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var max = 1600, w = img.width, h = img.height, scale = Math.min(1, max / Math.max(w, h));
+        var c = document.createElement('canvas'); c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve({ dataUrl: c.toDataURL('image/jpeg', 0.85) });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
+      img.src = url;
+    });
+  }
+
+  // ---------- editor ----------
+  function openEditor(id) { call('getTest', [PIN, id]).then(function (t) { openEditorWith(t, []); }).catch(function (err) { if (!handleErr(err)) alert(userMsg(err) || err); }); }
+  function openEditorWith(t, warnings) {
+    EDIT = { id: t.id, source: t.source, status: t.status, langs: editLangs(t.content.langs), allowTranslate: !!t.content.allowTranslate, tools: (t.content.tools || []).slice(), sheet: t.content.sheet || null };
+    CURVIEW = function () { var cur = collectContent(); openEditorWith({ id: EDIT.id, title: '', folder: $('efolder').value, source: EDIT.source, status: EDIT.status, content: cur }, []); };
+    var box = $('editor'); box.textContent = '';
+    var c = el('div', 'card');
+    var h = el('div', 'row'); h.appendChild(mkBtn(L('back'), 'btn sm', function () { if (confirm(L('leave_editor'))) loadLibrary(); }));
+    h.appendChild(el('div', null, '')); c.appendChild(h);
+    // the name in both languages; an older test has one string → shown in both fields
+    var tl = (t.content && t.content.title) || t.titles || { uk: t.title || '', en: t.title || '' };
+    c.appendChild(el('label', 'lab', L('test_title_lab')));
+    c.appendChild(locField('e-title', tl, 'input', function (l) { return TR[l].untitled; }, SUBJ().mode === 'translate' ? ['en'] : null));
+    c.appendChild(folderField(t.folder || ''));
+    if (t.source === 'ai') { var ab = el('p', 'muted', L('ai_made_note')); c.appendChild(ab); }
+    c.appendChild(langBar());
+    c.appendChild(toolsBar());
+    box.appendChild(c);
+
+    if (warnings && warnings.length) {
+      var wb = el('div', 'warnbox'); wb.appendChild(el('b', null, L('warnings_title')));
+      var ul = el('ul'); warnings.forEach(function (w) { ul.appendChild(el('li', null, tx(w))); }); wb.appendChild(ul); box.appendChild(wb);
+    }
+
+    var secWrap = el('div'); secWrap.id = 'secWrap'; box.appendChild(secWrap);
+    (t.content.sections || []).forEach(function (s) { secWrap.appendChild(sectionCard(s)); });
+    if (!(t.content.sections || []).length) secWrap.appendChild(sectionCard({ title: '', instructions: '', questions: [] }));
+
+    var addSec = el('div'); addSec.style.marginTop = '12px';
+    addSec.appendChild(mkBtn(L('add_section'), 'btn', function () { secWrap.appendChild(sectionCard({ title: '', instructions: '', questions: [] })); }));
+    box.appendChild(addSec);
+
+    var save = el('div', 'sticky-save');
+    save.appendChild(mkBtn(L('save'), 'btn solid', saveEditor));
+    save.appendChild(mkBtn(L('save_publish'), 'btn', function () { saveEditor(true); }));
+    save.appendChild(el('span', 'err', '')).id = 'saveMsg';
+    box.appendChild(save);
+    show('editor'); markLangs();
+  }
+  /** Editor: which languages students get (switch mode) or whether they may open the translation (English). */
+  function langBar() {
+    var bar = el('div', 'langbar');
+    if (SUBJ().mode === 'translate') {
+      var lab = el('label'); var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'eAllowTr'; cb.checked = EDIT.allowTranslate;
+      cb.addEventListener('change', function () { EDIT.allowTranslate = cb.checked; markLangs(); });
+      lab.appendChild(cb); lab.appendChild(el('span', null, L('allow_tr'))); bar.appendChild(lab);
+    } else if (ONE_LANG()) {
+      return el('div', 'hidden');   // one language: nothing to choose, nothing to translate
+    } else {
+      bar.appendChild(el('span', null, L('langs_lab')));
+      ['uk', 'en'].forEach(function (l) {
+        var lab2 = el('label'); var c2 = document.createElement('input'); c2.type = 'checkbox'; c2.id = 'eLang-' + l; c2.checked = EDIT.langs.indexOf(l) >= 0;
+        c2.addEventListener('change', function () {
+          var on = ['uk', 'en'].filter(function (x) { return $('eLang-' + x).checked; });
+          if (!on.length) { c2.checked = true; alert(L('langs_need_one')); return; }
+          EDIT.langs = on; markLangs();
+        });
+        lab2.appendChild(c2); lab2.appendChild(el('span', null, L('lang_' + l))); bar.appendChild(lab2);
+      });
+    }
+    var sp = el('span'); sp.style.flex = '1'; bar.appendChild(sp);
+    var tb = mkBtn(L('auto_tr'), 'btn sm', function () {
+      if (!LIB.hasAiKey) { $('aiKeyBtn').click(); $('aiKeyMsg').textContent = L('ai_need_key'); return; }
+      tb.disabled = true; tb.textContent = L('auto_tr_busy');
+      call('autoTranslate', [PIN, collectContent()]).then(function (r) {
+        var keep = { id: EDIT.id, title: '', folder: $('efolder').value, source: EDIT.source, status: EDIT.status, content: r.content };
+        openEditorWith(keep, r.warnings || []);
+        alert(r.filled ? L('auto_tr_done', { n: r.filled }) : L('auto_tr_none'));
+      }).catch(function (err) { tb.disabled = false; tb.textContent = L('auto_tr'); if (!handleErr(err)) alert(userMsg(err) || err); });
+    });
+    bar.appendChild(tb);
+    return bar;
+  }
+  /** Editor: the tools the students may open during this test (only those the subject offers), and an own formula sheet. */
+  function toolsBar() {
+    var offer = SUBJ().tools || [];
+    if (!offer.length) return el('div', 'hidden');
+    var bar = el('div', 'toolbar-ed'); bar.appendChild(el('b', null, L('tools_lab')));
+    offer.forEach(function (k) {
+      var lab = el('label'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'eTool-' + k; cb.checked = EDIT.tools.indexOf(k) >= 0;
+      cb.addEventListener('change', function () {
+        EDIT.tools = offer.filter(function (x) { return $('eTool-' + x).checked; });
+        var d = $('eSheetBox'); if (d) d.classList.toggle('hidden', EDIT.tools.indexOf('formulas') < 0);
+      });
+      lab.appendChild(cb); lab.appendChild(el('span', null, L('tool_' + k))); bar.appendChild(lab);
+    });
+    if (offer.indexOf('formulas') >= 0) {
+      var d = document.createElement('details'); d.id = 'eSheetBox'; d.className = EDIT.tools.indexOf('formulas') < 0 ? 'hidden' : '';
+      var own = EDIT.sheet && ((EDIT.sheet.uk || '').trim() || (EDIT.sheet.en || '').trim()); if (own) d.open = true;
+      d.appendChild(el('summary', null, L('sheet_lab')));
+      var std = SUBJ().formulaSheet || {};
+      d.appendChild(locField('e-sheet', EDIT.sheet || { uk: '', en: '' }, 'area', function (l) { return L('sheet_ph') + (std[l] ? '\n\n' + std[l] : ''); }, null, { rows: 5 }));
+      bar.appendChild(d);
+    }
+    return bar;
+  }
+  /** Dim the fields of a language students will not see. */
+  function markLangs() {
+    var on = SUBJ().mode === 'translate' ? (EDIT.allowTranslate ? ['en', 'uk'] : ['en']) : EDIT.langs;
+    document.querySelectorAll('#editor .lcell').forEach(function (c) { c.classList.toggle('off', on.indexOf(c.dataset.l) < 0); });
+  }
+  /** Languages a field is written in, in editor order. English tests: the English original first, then the translation. */
+  function fieldLangs() { return SUBJ().mode === 'translate' ? ['en', 'uk'] : SLANGS(); }
+  function tagFor(l) { return SUBJ().mode === 'translate' && l === 'uk' ? L('tag_uk_tr') : L('tag_' + l); }
+  /** A text field in both languages. kind: 'input' | 'area'. Returns the wrapper (class lpair). */
+  function locField(cls, val, kind, ph, langs, opts) {
+    opts = opts || {};
+    var w = el('div', 'lpair ' + cls); w.dataset.loc = cls;
+    var v = (val && typeof val === 'object') ? val : { uk: '', en: String(val || '') };
+    (langs || fieldLangs()).forEach(function (l) {
+      var cell = el('div', 'lcell'); cell.dataset.l = l;
+      cell.appendChild(el('span', 'ltag', tagFor(l)));
+      var i = document.createElement(kind === 'area' ? 'textarea' : 'input'); if (kind !== 'area') i.type = 'text'; else i.rows = opts.rows || 2;
+      i.dataset.l = l; i.value = v[l] || ''; i.placeholder = (typeof ph === 'function' ? ph(l) : ph) || '';
+      cell.classList.toggle('empty', !i.value);
+      i.addEventListener('input', function () { cell.classList.toggle('empty', !i.value); });
+      cell.appendChild(i);
+      if (opts.preview) {
+        var prev = el('div', 'q-preview'); cell.appendChild(prev);
+        var up = function () { prev.textContent = i.value; prev.classList.toggle('hidden', i.value.indexOf('$') < 0 || !SUBJ().formulas); renderMath(prev); };
+        i.addEventListener('input', up); setTimeout(up, 0);
+      }
+      w.appendChild(cell);
+    });
+    return w;
+  }
+  function readLoc(root, cls) {
+    var w = root.querySelector('[data-loc="' + cls + '"]'), o = { uk: '', en: '' };
+    if (!w) return o;
+    w.querySelectorAll('[data-l]').forEach(function (i) { if (i.tagName === 'INPUT' || i.tagName === 'TEXTAREA') o[i.dataset.l] = i.value; });
+    return o;
+  }
+  function labRow(label, id, type, val) { var w = el('div'); w.appendChild(el('label', 'lab', label)).htmlFor = id; var i = document.createElement(type === 'area' ? 'textarea' : 'input'); if (type !== 'area') i.type = type; i.id = id; i.value = val == null ? '' : val; w.appendChild(i); return w; }
+  function folderField(val) {
+    var w = el('div');
+    w.appendChild(el('label', 'lab', L('class_choose_lab')));
+    var inp = document.createElement('input'); inp.type = 'text'; inp.id = 'efolder'; inp.value = val || ''; inp.setAttribute('list', 'classlist'); inp.placeholder = L('class_ph');
+    var dl = document.createElement('datalist'); dl.id = 'classlist';
+    ((LIB && LIB.classes) || []).forEach(function (c) { var o = document.createElement('option'); o.value = c; dl.appendChild(o); });
+    w.appendChild(inp); w.appendChild(dl);
+    return w;
+  }
+
+  function sectionCard(s) {
+    var card = el('div', 'sec'); card.dataset.sec = '1';
+    var top = el('div', 'row');
+    var ti = locField('sec-title', s.title, 'input', L('section_title_ph'), SUBJ().mode === 'translate' ? ['en'] : null); ti.style.flex = '1';
+    top.appendChild(ti);
+    top.appendChild(mkBtn(L('del_section'), 'btn sm danger', function () { if (confirm(L('confirm_del_section'))) card.remove(); }));
+    card.appendChild(top);
+    var ins = locField('sec-instr', s.instructions, 'input', function (l) { return SUBJ().mode === 'translate' && l === 'uk' ? L('instr_tr_ph') : L('section_instr_ph'); }); ins.style.marginTop = '10px';
+    card.appendChild(ins);
+    var qWrap = el('div', 'q-wrap'); card.appendChild(qWrap);
+    (s.questions || []).forEach(function (q) { qWrap.appendChild(qCard(q)); });
+    var add = el('div', 'row'); add.style.marginTop = '10px';
+    SUBJ().qtypes.forEach(function (ty) { add.appendChild(mkBtn('+ ' + qTypeName(ty), 'btn sm', function () { var qc = qCard({ type: ty }); qWrap.appendChild(qc); markLangs(); })); });
+    card.appendChild(add);
+    return card;
+  }
+  function qTypeName(ty) { return { mc: L('qtype_mc'), num: L('qtype_num'), fix: L('qtype_fix'), short: L('qtype_short'), open: L('qtype_open'), match: L('qtype_match'), chem: L('qtype_chem'), solve: L('qtype_solve') }[ty] || ty; }
+  /** One pair of a matching task: left text and right text, each in both languages. */
+  function pairRow(p) {
+    p = p || {};
+    var langs = SUBJ().mode === 'translate' ? ['en'] : null;
+    var row = el('div', 'pair'); row.dataset.pair = '1';
+    row.appendChild(locField('p-l', p.l, 'input', L('pair_l_ph'), langs));
+    row.appendChild(el('span', 'arr', '→'));
+    row.appendChild(locField('p-r', p.r, 'input', L('pair_r_ph'), langs));
+    row.appendChild(mkBtn('✕', 'btn sm danger', function () { row.remove(); }));
+    return row;
+  }
+  function okImg(v) { return /^https:\/\/\S+$/.test(v) || /^data:image\//.test(v); }
+
+  function qCard(q) {
+    q = q || {};
+    var card = el('div', 'qitem'); card.dataset.q = '1'; card.dataset.id = q.id || '';
+    var head = el('div', 'qhead');
+    head.appendChild(el('span', 'qn', 'Q'));
+    var sel = document.createElement('select'); sel.className = 'q-type';
+    var TYPE_LIST = SUBJ().qtypes;
+    var curType = q.type || TYPE_LIST[0];
+    (TYPE_LIST.indexOf(curType) < 0 ? TYPE_LIST.concat([curType]) : TYPE_LIST).forEach(function (ty) { var o = document.createElement('option'); o.value = ty; o.textContent = qTypeName(ty); if (curType === ty) o.selected = true; sel.appendChild(o); });
+    head.appendChild(sel);
+    head.appendChild(el('span', 'sp'));
+    head.appendChild(mkBtn('✕', 'btn sm danger', function () { card.remove(); }));
+    card.appendChild(head);
+    card.appendChild(locField('q-text', q.q, 'area', function (l) { return SUBJ().mode === 'translate' && l === 'uk' ? L('q_text_ph_tr') : SUBJ().formulas ? L('q_text_ph') : L('q_text_ph_plain'); }, null, { preview: true }));
+    var nt = locField('q-note', q.note, 'input', L('note_ph'), SUBJ().mode === 'translate' ? ['en'] : null); nt.style.marginTop = '8px'; card.appendChild(nt);
+    var ir = el('div', 'q-imgrow'); ir.appendChild(el('label', 'lab', L('img_lab')));
+    var im = document.createElement('input'); im.type = 'text'; im.className = 'q-img'; im.placeholder = 'https://…'; im.value = q.img || '';
+    var ip = document.createElement('img'); ip.className = 'img-prev hidden'; ip.alt = '';
+    var updImg = function () { var v = im.value.trim(); ip.classList.toggle('hidden', !okImg(v)); if (okImg(v)) ip.src = v; im.style.borderColor = v && !okImg(v) ? 'var(--bad)' : ''; im.title = v && !okImg(v) ? L('img_bad') : ''; };
+    im.addEventListener('input', updImg); updImg();
+    ir.appendChild(im); ir.appendChild(ip); card.appendChild(ir);
+    var body = el('div', 'q-body'); card.appendChild(body);
+    function build(type) {
+      body.textContent = '';
+      if (type === 'mc') {
+        var olangs = SUBJ().mode === 'translate' ? ['en'] : SLANGS();
+        body.appendChild(el('label', 'lab', olangs.length > 1 ? L('mc_options_lab2') : L('mc_options_lab')));
+        var ov = {}; olangs.forEach(function (l) { ov[l] = (q.options || []).map(function (o) { return typeof o === 'object' && o ? (o[l] || '') : String(o); }).join('\n'); });
+        body.appendChild(locField('q-options', ov, 'area', '', olangs, { rows: 4 }));
+        var cw = el('div', 'opt-correct'); cw.appendChild(el('span', null, L('mc_correct_lab')));
+        var ci = document.createElement('input'); ci.type = 'number'; ci.min = '1'; ci.className = 'q-answer'; ci.style.width = '70px'; ci.value = (typeof q.answer === 'number') ? (q.answer + 1) : ''; cw.appendChild(ci);
+        body.appendChild(cw);
+      } else if (type === 'match') {
+        body.appendChild(el('label', 'lab', L('pairs_lab')));
+        var pw = el('div', 'pairs'); body.appendChild(pw);
+        var ps = q.pairs && q.pairs.length ? q.pairs : [{}, {}, {}];
+        ps.forEach(function (p) { pw.appendChild(pairRow(p)); });
+        var ap = mkBtn(L('add_pair'), 'btn sm', function () { pw.appendChild(pairRow({})); markLangs(); }); ap.style.marginTop = '8px'; body.appendChild(ap);
+      } else if (type === 'num') {
+        body.appendChild(el('label', 'lab', L('num_accept_lab') + (SUBJ().mode === 'translate' || ONE_LANG() ? '' : L('accept_both'))));
+        var tan = document.createElement('textarea'); tan.className = 'q-accept'; tan.rows = 2; tan.value = (q.accept || []).join('\n'); body.appendChild(tan);
+        var tw = el('div', 'opt-correct'); tw.appendChild(el('span', null, L('num_tol_lab')));
+        var tol = document.createElement('input'); tol.type = 'text'; tol.className = 'q-tol'; tol.style.width = '90px'; tol.value = (q.tol != null ? q.tol : 0); tw.appendChild(tol);
+        body.appendChild(tw);
+      } else if (type === 'solve') {
+        body.appendChild(el('label', 'lab', L('solve_eq_lab')));
+        var eqa = document.createElement('textarea'); eqa.className = 'q-eq'; eqa.rows = 2; eqa.placeholder = L('solve_eq_ph'); eqa.value = (q.eq || []).join('\n'); body.appendChild(eqa);
+        var epv = el('div', 'solve-prev hidden'), ekey = el('div', 'solve-key'); body.appendChild(epv);
+        var sr = el('div', 'solve-row');
+        var vw = el('div'); vw.appendChild(el('label', 'lab', L('solve_vars_lab')));
+        var vin = document.createElement('input'); vin.type = 'text'; vin.className = 'q-vars'; vin.placeholder = L('solve_vars_ph'); vin.value = (q.vars || []).join(', '); vw.appendChild(vin); sr.appendChild(vw);
+        var sw = el('div'); sw.appendChild(el('label', 'lab', L('solve_steps_lab')));
+        var ssel = document.createElement('select'); ssel.className = 'q-steps';
+        ['show', 'grade', 'off'].forEach(function (m) { var o = document.createElement('option'); o.value = m; o.textContent = L('steps_' + m); if ((q.steps || 'show') === m) o.selected = true; ssel.appendChild(o); });
+        sw.appendChild(ssel); sr.appendChild(sw); body.appendChild(sr);
+        body.appendChild(el('label', 'lab', L('solve_acc_lab')));
+        var sacc = document.createElement('textarea'); sacc.className = 'q-accept'; sacc.rows = 2; sacc.placeholder = L('solve_acc_ph'); sacc.value = (q.accept || []).join('\n'); body.appendChild(sacc);
+        body.appendChild(ekey);
+        var kto = null;
+        var upd = function () {
+          var eqs = eqa.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+          epv.classList.toggle('hidden', !eqs.length); epv.textContent = '';
+          var texs = eqs.map(function (e) { try { return MK.lineTex(e); } catch (er) { return null; } });
+          if (eqs.length && texs.every(Boolean) && window.katex) { try { window.katex.render(texs.length > 1 ? '\\begin{cases} ' + texs.join(' \\\\ ') + ' \\end{cases}' : texs[0], epv, { throwOnError: false }); } catch (er) { epv.textContent = eqs.join('; '); } }
+          else epv.textContent = eqs.join('; ');
+          ekey.className = 'solve-key muted'; ekey.textContent = eqs.length ? L('solve_computing') : '';
+          clearTimeout(kto); if (!eqs.length) return;
+          kto = setTimeout(function () {
+            var vars = vin.value.split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+            var acc = sacc.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean), K;
+            try { K = MK.key(eqs, vars, acc); } catch (er) { K = { err: 'syntax' }; }
+            ekey.className = 'solve-key' + (K.err ? ' err' : '');
+            if (K.err) { ekey.textContent = K.err === 'need_answer' ? L('solve_need') : K.err === 'bad_accept' ? L('solve_badacc') : L('solve_bad'); return; }
+            var r = K.none ? L('solve_none') : K.all ? L('solve_all') : K.sols.map(function (sl) { return K.vars.length > 1 ? '(' + K.vars.map(function (v, i) { return v + ' = ' + MK.fmt(sl[i]); }).join('; ') + ')' : K.vars[0] + ' = ' + MK.fmt(sl[0]); }).join(', ');
+            ekey.textContent = L('solve_roots', { r: r });
+          }, 350);
+        };
+        eqa.addEventListener('input', upd); vin.addEventListener('input', upd); sacc.addEventListener('input', upd); setTimeout(upd, 0);
+      } else if (type === 'chem') {
+        body.appendChild(el('label', 'lab', L('chem_accept_lab')));
+        var tac = document.createElement('textarea'); tac.className = 'q-accept'; tac.rows = 2; tac.value = (q.accept || []).join('\n'); body.appendChild(tac);
+      } else if (type === 'fix') {
+        body.appendChild(el('label', 'lab', L('short_accept_lab')));
+        var ta2 = document.createElement('textarea'); ta2.className = 'q-accept'; ta2.rows = 2; ta2.value = (q.accept || []).join('\n'); body.appendChild(ta2);
+        body.appendChild(el('label', 'lab', L('key_label')));
+        var ki = document.createElement('input'); ki.type = 'text'; ki.className = 'q-key'; ki.value = q.key || ''; body.appendChild(ki);
+      } else if (type === 'short') {
+        body.appendChild(el('label', 'lab', L('short_accept_lab') + (SUBJ().mode === 'translate' || ONE_LANG() ? '' : L('accept_both'))));
+        var ta3 = document.createElement('textarea'); ta3.className = 'q-accept'; ta3.rows = 2; ta3.value = (q.accept || []).join('\n'); body.appendChild(ta3);
+      } else {
+        body.appendChild(el('p', 'muted', L('open_note')));
+      }
+    }
+    build(curType);
+    sel.addEventListener('change', function () { build(sel.value); markLangs(); });
+    return card;
+  }
+
+  function collectContent() {
+    var sections = [];
+    $('secWrap').querySelectorAll('[data-sec]').forEach(function (sc) {
+      var qs = [];
+      sc.querySelectorAll('[data-q]').forEach(function (qc) {
+        var type = qc.querySelector('.q-type').value;
+        var q = { id: qc.dataset.id || undefined, type: type, q: readLoc(qc, 'q-text'), note: readLoc(qc, 'q-note') };
+        var img = qc.querySelector('.q-img').value.trim(); if (img) q.img = img;
+        if (type === 'match') {
+          q.pairs = [];
+          qc.querySelectorAll('[data-pair]').forEach(function (pr) {
+            var p = { l: readLoc(pr, 'p-l'), r: readLoc(pr, 'p-r') };
+            if (p.l.uk || p.l.en || p.r.uk || p.r.en) q.pairs.push(p);
+          });
+        } else if (type === 'mc') {
+          var ol = readLoc(qc, 'q-options'), lines = {}, n = 0;
+          ['uk', 'en'].forEach(function (l) { lines[l] = ol[l].split('\n').map(function (x) { return x.trim(); }); while (lines[l].length && !lines[l][lines[l].length - 1]) lines[l].pop(); n = Math.max(n, lines[l].length); });
+          q.options = [];
+          for (var oi = 0; oi < n; oi++) { var o = { uk: lines.uk[oi] || '', en: lines.en[oi] || '' }; if (SUBJ().mode === 'translate') o = { en: o.en, uk: '' }; if (o.uk || o.en) q.options.push(o); }
+          var a = parseInt(qc.querySelector('.q-answer').value, 10);
+          q.answer = (a >= 1 && a <= q.options.length) ? a - 1 : null;
+        } else if (type === 'num') {
+          q.accept = qc.querySelector('.q-accept').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+          var tv = parseFloat(String(qc.querySelector('.q-tol').value).replace(',', '.')); q.tol = (isFinite(tv) && tv >= 0) ? tv : 0;
+        } else if (type === 'solve') {
+          q.eq = qc.querySelector('.q-eq').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+          q.vars = qc.querySelector('.q-vars').value.split(/[,;\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+          q.accept = qc.querySelector('.q-accept').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+          q.steps = qc.querySelector('.q-steps').value;
+        } else if (type === 'fix' || type === 'short' || type === 'chem') {
+          q.accept = qc.querySelector('.q-accept').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+          if (type === 'fix') q.key = qc.querySelector('.q-key').value;
+        }
+        qs.push(q);
+      });
+      sections.push({ title: readLoc(sc, 'sec-title'), instructions: readLoc(sc, 'sec-instr'), questions: qs });
+    });
+    var out = { title: readLoc($('editor'), 'e-title'), sections: sections, langs: EDIT.langs.slice(), allowTranslate: !!EDIT.allowTranslate, source: EDIT.source };
+    if ((SUBJ().tools || []).length) { out.tools = EDIT.tools.slice(); if ($('eSheetBox')) out.sheet = readLoc($('editor'), 'e-sheet'); }
+    return out;
+  }
+  function saveEditor(publish) {
+    var content = collectContent(), folder = $('efolder').value.trim();
+    var title = content.title; if (!title.uk.trim() && !title.en.trim()) title = { uk: TR.uk.untitled, en: TR.en.untitled };
+    var msg = $('saveMsg'); msg.style.color = ''; msg.textContent = L('saving');
+    call('saveTest', [PIN, EDIT.id, title, folder, content]).then(function (r) {
+      EDIT.id = r.id;
+      if (publish === true) return call('setStatus', [PIN, r.id, 'published']).then(function () { loadLibrary(); });
+      msg.style.color = 'var(--ok)'; msg.textContent = L('saved'); setTimeout(function () { msg.textContent = ''; }, 2500);
+    }).catch(function (err) { if (!handleErr(err)) { msg.style.color = 'var(--bad)'; msg.textContent = userMsg(err) || 'Could not save.'; } });
+  }
+
+  // ---------- schedule ----------
+  function openSchedule(id) { call('getTest', [PIN, id]).then(function (t) { renderSchedule(t); }).catch(function (err) { if (!handleErr(err)) alert(userMsg(err) || err); }); }
+  function renderSchedule(t) {
+    OFFSET = t.serverNow - Date.now();
+    var s = t.settings, dlg = $('scheduleDlg'); dlg.textContent = '';
+    dlg.appendChild(el('h2', null, L('schedule_t', { title: tx(t.titles) || t.title }))).style.marginTop = '0';
+    var state = el('p', 'muted'); state.textContent = L('status_pre'); state.appendChild(el('b', null, t.status === 'published' ? L('st_published') : L('st_draft')));
+    dlg.appendChild(state);
+
+    var g = el('div', 'grid2');
+    var sm = selField(L('sch_start'), 'sch-start', [['manual', L('sch_start_manual')], ['time', L('sch_start_time')]], s.startMode); g.appendChild(sm.wrap);
+    var startAt = labRow(L('sch_open_lab'), 'sch-open', 'datetime-local', toLocalInput(s.opensAt)); g.appendChild(startAt);
+    var em = selField(L('sch_end'), 'sch-end', [['manual', L('sch_end_manual')], ['hours', L('sch_end_hours')], ['time', L('sch_end_time')]], s.endMode); g.appendChild(em.wrap);
+    var hrs = labRow(L('sch_hours_lab'), 'sch-hours', 'number', s.hours || ''); g.appendChild(hrs);
+    var endAt = labRow(L('sch_close_lab'), 'sch-close', 'datetime-local', toLocalInput(s.closesAt)); g.appendChild(endAt);
+    var lim = labRow(L('sch_min_lab'), 'sch-min', 'number', s.minutes || 0); g.appendChild(lim);
+    dlg.appendChild(g);
+
+    function sync() {
+      startAt.style.display = $('sch-start').value === 'time' ? '' : 'none';
+      hrs.style.display = $('sch-end').value === 'hours' ? '' : 'none';
+      endAt.style.display = $('sch-end').value === 'time' ? '' : 'none';
+    }
+    $('sch-start').addEventListener('change', sync); $('sch-end').addEventListener('change', sync); sync();
+
+    dlg.appendChild(checkRow('sch-shuffleQ', L('sch_shuffleQ'), s.shuffleQ));
+    dlg.appendChild(checkRow('sch-shuffleO', L('sch_shuffleO'), s.shuffleO));
+    dlg.appendChild(checkRow('sch-monitor', L('sch_monitor'), s.monitor));
+    dlg.appendChild(checkRow('sch-score', L('sch_score'), s.showScore));
+
+    var now2 = now(), closeMs = t.closesAt, open = t.status === 'published' && s.opensAt && now2 >= s.opensAt && (!closeMs || now2 < closeMs);
+    var acts = el('div', 'row'); acts.style.marginTop = '16px';
+    if (open) acts.appendChild(mkBtn(L('stop_now'), 'btn danger', function () { call('stopNow', [PIN, t.id]).then(function () { dlg.close(); loadLibrary(); }).catch(function (err) { $('sch-msg').textContent = userMsg(err) || 'Error'; }); }));
+    else acts.appendChild(mkBtn(L('start_now'), 'btn solid', function () { saveSchedule(t.id, function () { call('startNow', [PIN, t.id]).then(function () { dlg.close(); loadLibrary(); }).catch(function (err) { $('sch-msg').textContent = userMsg(err) || 'Error'; }); }); }));
+    var sp = el('span'); sp.style.flex = '1'; acts.appendChild(sp);
+    acts.appendChild(mkBtn(L('close'), 'btn', function () { dlg.close(); }));
+    acts.appendChild(mkBtn(L('btn_save'), 'btn solid', function () { saveSchedule(t.id, function () { dlg.close(); loadLibrary(); }); }));
+    dlg.appendChild(acts);
+    dlg.appendChild(el('div', 'err')).id = 'sch-msg';
+    var del = el('div'); del.style.marginTop = '14px';
+    del.appendChild(mkBtn(L('del_test_btn'), 'btn sm danger', function () { if (confirm(L('confirm_del_test2', { title: tx(t.titles) || t.title }))) call('deleteTest', [PIN, t.id]).then(function () { dlg.close(); loadLibrary(); }); }));
+    dlg.appendChild(del);
+    dlg.showModal();
+  }
+  function selField(label, id, opts, val) { var w = el('div'); w.appendChild(el('label', 'lab', label)); var s = document.createElement('select'); s.id = id; opts.forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; if (o[0] === val) op.selected = true; s.appendChild(op); }); w.appendChild(s); return { wrap: w, sel: s }; }
+  function checkRow(id, label, val) { var w = el('label', 'check'); var i = document.createElement('input'); i.type = 'checkbox'; i.id = id; i.checked = !!val; w.appendChild(i); w.appendChild(el('span', null, label)); return w; }
+  function saveSchedule(id, then) {
+    var input = { startMode: $('sch-start').value, endMode: $('sch-end').value, opensAt: fromLocalInput($('sch-open').value),
+      closesAt: fromLocalInput($('sch-close').value), hours: Number($('sch-hours').value) || 0, minutes: Number($('sch-min').value) || 0,
+      shuffleQ: $('sch-shuffleQ').checked, shuffleO: $('sch-shuffleO').checked, monitor: $('sch-monitor').checked, showScore: $('sch-score').checked };
+    call('saveTestSettings', [PIN, id, input]).then(function () { then && then(); }).catch(function (err) { var m = $('sch-msg'); if (m) m.textContent = userMsg(err) || 'Could not save.'; });
+  }
+
+  // ---------- results ----------
+  function openResults(id) {
+    call('getResults', [PIN, id]).then(function (res) { RES = res; RES.testId = id; OFFSET = res.serverNow - Date.now(); RESOPEN = null; CURVIEW = renderResults; renderResults(); show('results'); })
+      .catch(function (err) { if (!handleErr(err)) alert(userMsg(err) || err); });
+  }
+  function level(score, max) { var p = max ? score / max : 0; return p >= 0.8 ? 'hi' : p >= 0.5 ? 'mid' : 'lo'; }
+  function statusText(s) { return s === 'In progress' ? L('st_inprogress') : s === 'Late' ? L('st_late') : L('st_submitted'); }
+  function renderResults() {
+    var box = $('results'); box.textContent = '';
+    var top = el('div', 'row'); top.appendChild(mkBtn(L('all_tests'), 'btn sm', loadLibrary));
+    var sp = el('span'); sp.style.flex = '1'; top.appendChild(sp);
+    if (RES.state === 'open') top.appendChild(mkBtn(L('copy_student_link'), 'btn sm', function (e) { copyLink(RES.testId, e.target); }));
+    if (RES.sheetUrl) { var sl = el('a', 'btn sm'); sl.textContent = L('spreadsheet'); sl.href = RES.sheetUrl; sl.target = '_blank'; sl.rel = 'noopener'; sl.style.textDecoration = 'none'; top.appendChild(sl); }
+    top.appendChild(mkBtn(L('refresh'), 'btn sm', function () { openResults(RES.testId); }));
+    box.appendChild(top);
+    box.appendChild(el('h2', null, tx(RES.titles) || RES.title)).style.margin = '12px 0';
+
+    var all = RES.results, done = all.filter(function (r) { return r.grade; });
+    var maxScore = done.length ? done[0].grade.max : 0;
+    var stats = el('div', 'stats');
+    stats.appendChild(statCard(done.length, L('stat_submitted')));
+    stats.appendChild(statCard(all.length - done.length, L('stat_inprogress')));
+    stats.appendChild(statCard(done.length ? (done.reduce(function (s, r) { return s + r.grade.score; }, 0) / done.length).toFixed(1) : '–', L('stat_average') + (maxScore ? L('of_n', { n: maxScore }) : '')));
+    stats.appendChild(statCard(done.filter(function (r) { return (r.flags || []).length; }).length, L('stat_flagged')));
+    box.appendChild(stats);
+
+    var card = el('div', 'card');
+    var tools = el('div', 'tools');
+    var search = document.createElement('input'); search.type = 'text'; search.placeholder = L('search_ph'); search.id = 'resSearch'; search.value = (window.__q || '');
+    search.addEventListener('input', function () { window.__q = search.value; renderRows(); });
+    tools.appendChild(search); card.appendChild(tools);
+    var table = el('table'), thead = el('thead'), htr = el('tr');
+    htr.appendChild(el('th', null, L('th_name'))); htr.appendChild(el('th', null, L('th_class'))); htr.appendChild(el('th', null, L('th_status')));
+    htr.appendChild(el('th', 'num', L('th_score'))); htr.appendChild(el('th', 'num', L('th_time')));
+    thead.appendChild(htr); table.appendChild(thead);
+    var tb = el('tbody'); tb.id = 'resRows'; table.appendChild(tb); card.appendChild(table);
+    box.appendChild(card);
+    renderRows();
+  }
+  function statCard(v, l) { var c = el('div', 'stat'); c.appendChild(el('div', 'v', String(v))); c.appendChild(el('div', 'l', l)); return c; }
+  function renderRows() {
+    var tb = $('resRows'); if (!tb) return; tb.textContent = '';
+    var q = (window.__q || '').toLowerCase();
+    var list = RES.results.filter(function (r) { return !q || (r.name + ' ' + r.group).toLowerCase().indexOf(q) >= 0; });
+    list.sort(function (a, b) { return (b.submitted || b.started || 0) - (a.submitted || a.started || 0); });
+    var nameCount = {}; RES.results.forEach(function (r) { var k = r.name.trim().toLowerCase(); nameCount[k] = (nameCount[k] || 0) + 1; });
+    if (!RES.results.length) { var tr0 = el('tr'); var td0 = el('td'); td0.colSpan = 5; td0.className = 'muted'; td0.style.textAlign = 'center'; td0.style.padding = '24px'; td0.textContent = L('no_attempts'); tr0.appendChild(td0); tb.appendChild(tr0); return; }
+    list.forEach(function (r) {
+      var tr = el('tr', 'row2' + (RESOPEN === r.id ? ' open' : ''));
+      var tdN = el('td'); tdN.appendChild(el('b', null, r.name));
+      var hi = (r.flags || []).filter(function (f) { return f.level === 'high'; }).length;
+      if (r.flags && r.flags.length) { var fl = el('span', 'flag' + (hi ? ' high' : ''), '⚑ ' + r.flags.length); fl.title = r.flags.map(function (f) { return f[LANG] || f.text; }).join('\n'); tdN.appendChild(fl); }
+      tr.appendChild(tdN);
+      tr.appendChild(el('td', 'muted', r.group || '—'));
+      var cls = r.status === 'In progress' ? 'prog' : r.status === 'Late' ? 'late' : 'done';
+      var tdS = el('td'); tdS.appendChild(el('span', 'st ' + cls, statusText(r.status))); tr.appendChild(tdS);
+      if (r.grade) { var tdSc = el('td', 'num'); tdSc.appendChild(el('span', 'pill ' + level(r.grade.score, r.grade.max), r.grade.score + '/' + r.grade.max)); tr.appendChild(tdSc); }
+      else tr.appendChild(el('td', 'num muted', '—'));
+      tr.appendChild(el('td', 'num muted', fmtTime(r.submitted || r.started)));
+      tr.addEventListener('click', function () { RESOPEN = RESOPEN === r.id ? null : r.id; renderRows(); });
+      tb.appendChild(tr);
+      if (RESOPEN === r.id) tb.appendChild(detailRow(r));
+    });
+  }
+  function detailRow(r) {
+    var tr = el('tr', 'detail'), td = el('td'); td.colSpan = 5; var inner = el('div', 'inner');
+    if (r.flags && r.flags.length) {
+      var high = r.flags.some(function (f) { return f.level === 'high'; });
+      var fb = el('div', 'flags-box' + (high ? ' high' : '')); fb.appendChild(el('b', null, L('activity_title')));
+      var ul = el('ul'); r.flags.forEach(function (f) { ul.appendChild(el('li', null, f[LANG] || f.text)); }); fb.appendChild(ul);
+      var copies = (r.activity.log || []).filter(function (e) { return e.t === 'copy' && e.x; });
+      if (copies.length) { var lg = el('div', 'log'); lg.appendChild(el('div', null, L('copied_text_label'))); copies.forEach(function (e) { lg.appendChild(el('div', null, 'at ' + Math.floor(e.at / 60) + ':' + ('0' + (e.at % 60)).slice(-2) + ' — “' + e.x + '”')); }); fb.appendChild(lg); }
+      inner.appendChild(fb);
+    }
+    var ainfo = [];
+    if (r.activity && r.activity.langs && r.activity.langs.length) ainfo.push(L('res_langs', { l: r.activity.langs.map(function (l) { return L('tag_' + l); }).join(', ') }));
+    if (r.activity && r.activity.translateCount) ainfo.push(L('res_tr', { n: r.activity.translateCount }));
+    if (r.activity && r.activity.tools && Object.keys(r.activity.tools).length) ainfo.push(L('res_tools', { t: Object.keys(r.activity.tools).map(function (k) { return L('tool_' + k) + ' ' + r.activity.tools[k] + '×'; }).join(', ') }));
+    if (ainfo.length) inner.appendChild(el('p', 'muted', ainfo.join(' · ')));
+    if (!r.grade) { inner.appendChild(el('p', 'muted', L('not_submitted_yet'))); }
+    else {
+      r.grade.sections.forEach(function (sec) {
+        inner.appendChild(el('h3', 'model', tx(sec.title) + (sec.scored ? ' · ' + sec.got + '/' + sec.scored : '')));
+        sec.questions.forEach(function (a) {
+          var row = el('div', 'ans');
+          row.appendChild(el('span', 'mark ' + (a.scored ? (a.ok ? 'ok' : 'no') : ''), a.scored ? (a.ok ? '✓' : '✗') : '•'));
+          var b = el('div'); b.appendChild(el('div', 'model', tx(a.q)));
+          if (a.type === 'open') { b.appendChild(el('div', null, (a.given || '').trim() || '—')); }
+          else if (a.type === 'mc') { b.appendChild(el('span', 'given' + (a.ok ? '' : ' no'), tx(a.given) || L('no_answer'))); if (!a.ok && a.correct) b.appendChild(el('span', 'model', '  → ' + tx(a.correct))); }
+          else if (a.type === 'num' || a.type === 'chem') { b.appendChild(el('span', 'given' + (a.ok ? '' : ' no'), (a.given || '').trim() || L('no_answer'))); if (!a.ok && a.accept && a.accept.length) b.appendChild(el('span', 'model', '  → ' + a.accept.join(' / '))); }
+          else if (a.type === 'solve') {
+            if (a.mode !== 'off') {
+              var stb = el('div');
+              if (!(a.steps || []).length) stb.appendChild(el('div', 'muted', L('no_steps')));
+              (a.steps || []).forEach(function (st) {
+                var ln = el('div', 'st-line ' + st.st); ln.appendChild(el('span', 'sm', { ok: '✓', extra: '✓', lost: '✗', wrong: '✗', bad: '?', note: '•', skip: '•' }[st.st] || '•'));
+                var tx0 = el('span'), tt = null; try { tt = MK.lineTex(st.s); } catch (er) {}
+                if (tt && window.katex) { try { window.katex.render(tt, tx0, { throwOnError: false }); } catch (er) { tx0.textContent = st.s; } } else tx0.textContent = st.s;
+                ln.appendChild(tx0); ln.appendChild(el('span', 'why', L('st_' + st.st))); stb.appendChild(ln);
+              });
+              if (a.mode === 'grade' && (a.steps || []).length) stb.appendChild(el('div', 'model', L('solve_steps_res', { s: L(a.workOk ? 'solve_work_ok' : 'solve_work_no') })));
+              b.appendChild(stb);
+            }
+            var gv = a.none ? L('solve_none') : a.all ? L('solve_all') : (a.roots || []).map(function (x) { return Array.isArray(x) ? '(' + x.join('; ') + ')' : x; }).join(', ');
+            b.appendChild(el('span', 'given' + (a.rootsOk ? '' : ' no'), L('solve_given') + (gv || L('no_answer'))));
+            var k = a.key || {}, kv = k.err ? '' : k.none ? L('solve_none') : k.all ? L('solve_all') : (k.sols || []).map(function (sl) { return (k.vars || []).length > 1 ? '(' + sl.join('; ') + ')' : sl[0]; }).join(', ');
+            if (!a.rootsOk && kv) b.appendChild(el('span', 'model', '  → ' + kv));
+            if (a.pts > 1) b.appendChild(el('div', 'model', a.got + ' / ' + a.pts));
+          }
+          else if (a.type === 'match') {
+            (a.items || []).forEach(function (it) {
+              b.appendChild(el('div', 'm-item given' + (it.ok ? '' : ' no'), (it.ok ? '✓ ' : '✗ ') + tx(it.l) + ' → ' + (tx(it.given) || L('no_answer'))));
+              if (!it.ok) b.appendChild(el('div', 'model', '   ' + L('correct_label') + tx(it.correct)));
+            });
+            b.appendChild(el('div', 'model', a.got + ' / ' + a.pts));
+          }
+          else { b.appendChild(el('div', 'given' + (a.ok ? '' : ' no'), a.unchanged ? L('not_changed') : (a.given || L('no_answer')))); if (a.key) b.appendChild(el('div', 'model', L('key_label') + a.key)); }
+          if (a.scored) { var ov = el('div', 'ov');
+            [['auto', 'Auto', null], ['ok', '✓', true], ['no', '✗', false]].forEach(function (o) {
+              var on = o[2] === null ? a.override === null : a.override === o[2];
+              var btn = el('button', o[0] + (on ? ' on' : ''), o[1] === 'Auto' ? L('ov_auto') + ' (' + (a.auto ? '✓' : '✗') + ')' : o[1]); btn.type = 'button';
+              btn.addEventListener('click', function (e) { e.stopPropagation(); if (!on) { btn.textContent = '…'; call('setOverride', [PIN, r.id, a.id, o[2]]).then(function () { openResults(RES.testId); }).catch(function (err) { alert(userMsg(err) || err); }); } });
+              ov.appendChild(btn);
+            }); b.appendChild(ov);
+          }
+          row.appendChild(b); inner.appendChild(row);
+        });
+      });
+      inner.appendChild(mkBtn(L('del_attempt'), 'btn sm danger', function (e) { e.stopPropagation(); if (confirm(L('confirm_del_attempt', { name: r.name }))) call('deleteAttempt', [PIN, r.id]).then(function () { RESOPEN = null; openResults(RES.testId); }); })).style.marginTop = '12px';
+    }
+    td.appendChild(inner); tr.appendChild(td); setTimeout(function () { renderMath(inner); }, 0); return tr;
+  }
+
+  /** If mhchem could not load, draw $\ce{…}$ with plain LaTeX so formulas still look right. */
+  function ceFallback(root) {
+    if (window.__mhchem || !root || !document.createTreeWalker) return;
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), n, list = [];
+    while ((n = w.nextNode())) if (n.nodeValue.indexOf('\\ce{') >= 0 && !(n.parentNode && /^(TEXTAREA|INPUT)$/.test(n.parentNode.nodeName))) list.push(n);
+    list.forEach(function (node) {
+      node.nodeValue = node.nodeValue.replace(/\\ce\{((?:[^{}]|\{[^{}]*\})*)\}/g, function (m, x) {
+        return '\\mathrm{' + x.replace(/([A-Za-z)\]])(\d+)/g, '$1_{$2}').replace(/\^(\d*[+-])/g, '^{$1}')
+          .replace(/\s*(<=>|<->)\s*/g, ' \\rightleftharpoons ').replace(/\s*->\s*/g, ' \\rightarrow ').replace(/\s+\+\s+/g, ' + ') + '}';
+      });
+    });
+  }
+  function renderMath(root) {
+    if (!root || !SUBJ().formulas) return;
+    if (window.renderMathInElement) {
+      ceFallback(root);
+      try { window.renderMathInElement(root, { delimiters: [{ left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }, { left: '\\(', right: '\\)', display: false }, { left: '\\[', right: '\\]', display: true }], throwOnError: false, ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'input', 'select', 'option'] }); } catch (e) {}
+    } else { window.__mathPending = function () { renderMath(document.body); }; }
+  }
+
+  applyLang();
+  boot(false);
+})();
+</script>
+</body>
+</html>

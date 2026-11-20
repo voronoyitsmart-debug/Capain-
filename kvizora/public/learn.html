@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Навчання — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<script src="/js/photos.js"></script>
+<script src="/js/nav.js" data-active="learn"></script>
+<style>
+  .tasks { display: grid; gap: 10px; }
+  .task { display: flex; gap: 12px; align-items: center; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--radius); padding: 14px; cursor: pointer; text-align: left; font: inherit; color: var(--ink); width: 100%; }
+  .task:hover, .task:focus-visible { border-color: var(--accent); }
+  .task .ic { font-size: 28px; line-height: 1; }
+  .task .tt { flex: 1; min-width: 0; }
+  .task .tt b { display: block; font-size: 16px; }
+  .task .tt small { color: var(--muted); font-size: 13px; }
+  .meter { height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; margin-top: 6px; max-width: 260px; }
+  .meter i { display: block; height: 100%; background: var(--ok); }
+  .due.soon { color: #a86b00; font-weight: 700; } .due.past { color: var(--muted); }
+  .kind { display: flex; gap: 8px; flex-wrap: wrap; }
+  .kind label { display: flex; gap: 6px; align-items: center; margin: 0; font-weight: 600; color: var(--ink); border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+  .kind input { width: auto; }
+  .thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .thumb { position: relative; }
+  .thumb img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .thumb .x { position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; }
+  .thumb .x button { font: inherit; font-size: 12px; border: 0; border-radius: 6px; background: rgba(0,0,0,.6); color: #fff; padding: 1px 5px; cursor: pointer; }
+  .sub { border-top: 1px solid var(--line); padding: 12px 0; display: grid; grid-template-columns: minmax(160px, 1fr) minmax(200px, 2fr) 210px; gap: 12px; align-items: start; }
+  .sub .ans { white-space: pre-wrap; font-size: 14px; max-height: 9em; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .sub .mk input.g { width: 64px; text-align: center; font-weight: 700; padding: 6px; }
+  .sub .mk input.cm { margin-top: 6px; padding: 6px 8px; font-size: 14px; }
+  .sub .mk .row { gap: 6px; margin-top: 6px; }
+  .st-todo { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat { background: var(--bg); border-radius: 12px; padding: 12px; }
+  .stat b { display: block; font-size: 24px; }
+  .stat small { color: var(--muted); }
+  .lv { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin-top: 8px; background: var(--line); }
+  .lv i { display: block; height: 100%; }
+  .l-high { background: #1d7a46; } .l-sufficient { background: #4b9b6e; } .l-middle { background: #d49b1e; } .l-initial { background: #b3121f; }
+  .avg { font-weight: 800; padding: 2px 8px; border-radius: 8px; color: #fff; display: inline-block; min-width: 38px; text-align: center; }
+  .mchip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); margin: 1px; }
+  .warn { color: var(--bad); font-size: 13px; }
+  .tbl td.c, .tbl th.c { text-align: center; }
+  @media (max-width: 760px) { .sub { grid-template-columns: 1fr; } }
+  @media print { .task { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span>🎓 Навчання</span><small id="who"></small></h1>
+</div></header>
+<div id="nav"></div>
+<main>
+  <div class="navtabs noprint" role="tablist">
+    <button type="button" id="tabTasks" class="on" role="tab" aria-selected="true">📋 Домашні завдання</button>
+    <button type="button" id="tabAnn" role="tab" aria-selected="false">📢 Оголошення</button>
+    <button type="button" id="tabProg" role="tab" aria-selected="false">📈 Успішність</button>
+  </div>
+
+  <!-- ===== homework ===== -->
+  <section id="pTasks">
+    <div class="card noprint">
+      <div class="row">
+        <div class="grow"><label for="fCls" style="margin-top:0">Клас</label><select id="fCls"><option value="">Усі класи</option></select></div>
+        <div class="grow"><label for="fSubj" style="margin-top:0">Предмет</label><select id="fSubj"><option value="">Усі предмети</option></select></div>
+        <button class="btn solid" id="newBtn" type="button" style="align-self:flex-end">＋ Нове завдання</button>
+      </div>
+      <p class="muted" style="font-size:13px;margin:10px 0 0">Завдання бачать учні вибраного класу (або групи) у своїй вкладці «🎓 Навчання». Відповідь — текстом, тестом Kvizora або без здачі (наприклад, вивчити вірш). Оцінки за завдання потрапляють у 📒 Журнал (вигляд «За датами», у день терміну) і в звіт про учня.</p>
+    </div>
+    <div class="card hidden" id="photoCard">
+      <b>📷 Фото зошита у відповідях</b> <span class="pill mute" id="photoState"></span>
+      <p class="muted" style="font-size:13px;margin:6px 0">Учні зможуть додати до відповіді до 3 фото зошита. Вмикайте лише після того, як батьків поінформовано (повідомлення для батьків — у розділі «Дані й право»). Фото видаляються автоматично через <span id="keepDays">30</span> днів, метадані видаляються одразу.</p>
+      <button class="btn sm" id="photoBtn" type="button"></button>
+    </div>
+    <div class="tasks" id="tasks"><p class="muted">Завантаження…</p></div>
+  </section>
+
+  <!-- one task: the students' answers -->
+  <section id="pTask" class="hidden">
+    <div class="card">
+      <div class="row"><button class="btn sm noprint" id="backBtn" type="button">← Усі завдання</button><span class="grow"></span><button class="btn sm noprint" id="editBtn" type="button">✏️ Змінити</button><button class="btn sm noprint" id="printTask" type="button">🖨</button></div>
+      <h2 id="tTitle" style="margin:12px 0 4px"></h2>
+      <div class="muted" id="tMeta" style="font-size:14px"></div>
+      <div id="tBody" style="white-space:pre-wrap;margin-top:10px"></div>
+      <div id="tCrit" class="hidden" style="white-space:pre-wrap;margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--accent-soft);font-size:14px"></div>
+      <div class="thumbs" id="tFiles"></div>
+      <label class="noprint" style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:14px"><input type="checkbox" id="onlyCheck" style="width:auto"> Лише ті, що чекають перевірки</label>
+      <div id="subs"></div>
+      <div class="err" id="tErr"></div>
+    </div>
+  </section>
+
+  <!-- ===== progress ===== -->
+  <!-- ===== announcements ===== -->
+  <section id="pAnn" class="hidden">
+    <form class="card noprint" id="annForm">
+      <h2 style="margin:0 0 4px">Нове оголошення</h2>
+      <p class="muted" style="font-size:13px;margin:0">Лише текст: учні класу (групи) побачать його вгорі вкладки «🎓 Навчання». Без файлів і коментарів.</p>
+      <div class="row">
+        <div class="grow"><label for="aSubj">Предмет</label><select id="aSubj"></select></div>
+        <div class="grow"><label for="aCls">Клас</label><select id="aCls"></select></div>
+        <div class="grow" id="aGrpBox" hidden><label for="aGrp">Кому</label><select id="aGrp"></select></div>
+        <div class="grow"><label for="aDays">Показувати</label><select id="aDays"><option value="3">3 дні</option><option value="7">тиждень</option><option value="14" selected>2 тижні</option><option value="30">місяць</option></select></div>
+      </div>
+      <label for="aText">Текст</label><textarea id="aText" maxlength="1000" style="min-height:90px" placeholder="Напр.: у п’ятницю контрольна з теми «Лінійні рівняння». Повторіть § 10–12."></textarea>
+      <p class="muted" style="font-size:12px;margin:4px 0 0">⚠️ Оголошення бачать усі учні класу та їхні батьки. Не пишіть оцінок, поведінки, причин пропусків чи інших даних окремих учнів.</p>
+      <div class="row" style="margin-top:10px"><button class="btn solid" type="submit">📢 Опублікувати</button><span class="err" id="aErr" style="margin:0"></span></div>
+    </form>
+    <div class="tasks" id="annList"></div>
+  </section>
+
+  <section id="pProg" class="hidden">
+    <div class="card noprint">
+      <div class="row">
+        <div class="grow"><label for="pCls" style="margin-top:0">Клас</label><select id="pCls"></select></div>
+        <div class="grow" id="pGrpBox" hidden><label for="pGrp" style="margin-top:0">Група</label><select id="pGrp"></select></div>
+        <div class="grow"><label for="pSubj" style="margin-top:0">Предмет</label><select id="pSubj"><option value="">Усі мої предмети</option></select></div>
+        <div class="grow"><label for="pFrom" style="margin-top:0">Період</label><select id="pFrom"><option value="sem">Цей семестр</option><option value="30">Останні 30 днів</option><option value="all">Увесь час</option></select></div>
+      </div>
+      <label class="hidden" id="pWideBox" style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:10px"><input type="checkbox" id="pWide" style="width:auto"> Оцінки всіх учителів школи (бачить лише адміністратор)</label>
+      <p class="muted" style="font-size:13px;margin:10px 0 0">Середня — з усіх оцінок 1–12: за тести, уроки й домашні завдання. Рівні: високий 10–12, достатній 7–9, середній 4–6, початковий 1–3. «Увага», якщо середня нижче 6, здано менше 60 % д/з, тести нижче 50 %, оцінки падають або 3+ «н». Натисніть ім’я — повний звіт у журналі.</p>
+    </div>
+    <div class="card">
+      <div class="row"><h2 class="grow" id="pTitle" style="margin:0"></h2><button class="btn sm noprint" id="pPrint" type="button">🖨 Друкувати</button></div>
+      <div class="stats" id="pStats" style="margin-top:12px"></div>
+      <div class="tbl-wrap"><table class="tbl"><thead id="pHead"></thead><tbody id="pBody"></tbody></table></div>
+      <div class="err" id="pErr"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="edDlg" aria-labelledby="edTitle">
+  <form id="edForm" method="dialog">
+    <h2 id="edTitle" style="margin:0 0 6px">Нове завдання</h2>
+    <div class="row">
+      <div class="grow"><label for="eSubj">Предмет</label><select id="eSubj" required></select></div>
+      <div class="grow"><label for="eCls">Клас</label><select id="eCls" required></select></div>
+      <div class="grow" id="eGrpBox" hidden><label for="eGrp">Кому</label><select id="eGrp"></select></div>
+    </div>
+    <label for="eName">Назва</label><input id="eName" maxlength="140" required placeholder="Напр.: § 12, вправи 3–5">
+    <label for="eBody">Що зробити</label><textarea id="eBody" maxlength="8000" placeholder="Пояснення, сторінки підручника, посилання…"></textarea>
+    <label for="eCrit">Критерії оцінювання <span style="font-weight:400">(необов’язково, учні їх бачать)</span></label><textarea id="eCrit" maxlength="2000" style="min-height:70px" placeholder="Напр.: 10–12 — усі вправи правильно й з перевіркою; 7–9 — одна помилка; 4–6 — розв’язано половину."></textarea>
+    <label>Як учні здають</label>
+    <div class="kind" role="radiogroup">
+      <label><input type="radio" name="kind" value="text" checked> ✍️ Відповідь текстом</label>
+      <label><input type="radio" name="kind" value="test"> 📝 Тест Kvizora</label>
+      <label><input type="radio" name="kind" value="none"> 📖 Без здачі</label>
+    </div>
+    <div id="eTestBox" hidden><label for="eTest">Тест (ваші опубліковані тести цього предмета)</label><select id="eTest"></select></div>
+    <div class="row">
+      <div class="grow"><label for="eDay">Термін — дата</label><input id="eDay" type="date" required></div>
+      <div class="grow"><label for="eTime">час</label><input id="eTime" type="time" value="08:00" required></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="eLate" checked style="width:auto"> Приймати й після терміну (позначка «із запізненням»)</label>
+    <label>Картинки до завдання (до 5: аркуш, схема)</label>
+    <div class="thumbs" id="eFiles"></div>
+    <input type="file" id="ePick" accept="image/*" multiple style="padding:8px">
+    <div class="err" id="edErr"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn solid" id="edSave" type="submit" value="save">Зберегти</button>
+      <button class="btn" id="edCancel" type="button">Скасувати</button>
+      <span class="grow"></span>
+      <button class="btn danger hidden" id="edDel" type="button">Видалити</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function L(fn) { return window.api('/api/learn/' + fn, { args: Array.prototype.slice.call(arguments, 1) }); }
+  function msg(e) { var m = String(e && e.message || e), i = m.indexOf('USER:'); return (i >= 0 ? m.slice(i + 5) : m).replace(/\s*\[#[a-z_]+\]\s*$/, '').trim(); }
+  function fail(box) { return function (e) { if (e.status === 401) location.href = '/login?next=/app/learn'; else $(box).textContent = msg(e); }; }
+  function nm(x) { return x && typeof x === 'object' ? (x.uk || x.en || '') : String(x || ''); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function dayOf(ms) { var d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function when(ms) { var d = new Date(ms); return d.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'long' }) + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function dueText(ms, now) {
+    var days = Math.round((new Date(dayOf(ms)) - new Date(dayOf(now))) / 86400000);
+    var w = days === 0 ? 'сьогодні' : days === 1 ? 'завтра' : days === -1 ? 'вчора' : '';
+    return 'до ' + (w ? w + ', ' + pad(new Date(ms).getHours()) + ':' + pad(new Date(ms).getMinutes()) : when(ms));
+  }
+  function thumb(id, acts) {
+    var t = el('div', 'thumb'), a = el('a'); a.href = '/learn/file/' + id + '.jpg'; a.target = '_blank'; a.rel = 'noopener';
+    var im = el('img'); im.src = a.href; im.alt = 'Фото'; im.loading = 'lazy'; a.appendChild(im); t.appendChild(a);
+    if (acts) { var x = el('div', 'x'); acts.forEach(function (b) { var bt = el('button', null, b[0]); bt.type = 'button'; bt.title = b[1]; bt.onclick = b[2]; x.appendChild(bt); }); t.appendChild(x); }
+    return t;
+  }
+  var H = null, TASK = null, NOW = Date.now();
+  var STATE = { todo: ['Ще не здано', 'pill st-todo'], missing: ['Не здано', 'pill bad'], submitted: ['Здано — перевірити', 'pill'], returned: ['На доопрацюванні', 'pill mute'], checked: ['Перевірено', 'pill ok'] };
+  var KIND = { text: '✍️ текстом', test: '📝 тест', none: '📖 без здачі' };
+
+  // ---------- tabs ----------
+  function tab(name) {
+    var top = name === 'task' ? 'tasks' : name;
+    [['tabTasks', 'tasks'], ['tabAnn', 'ann'], ['tabProg', 'prog']].forEach(function (x) { $(x[0]).classList.toggle('on', top === x[1]); $(x[0]).setAttribute('aria-selected', String(top === x[1])); });
+    $('pTasks').classList.toggle('hidden', name !== 'tasks'); $('pTask').classList.toggle('hidden', name !== 'task'); $('pProg').classList.toggle('hidden', name !== 'prog'); $('pAnn').classList.toggle('hidden', name !== 'ann');
+    try { localStorage.setItem('learn-tab', top); } catch (e) {}
+    if (name === 'prog') progress();
+    if (name === 'ann') anns();
+  }
+  $('tabTasks').onclick = function () { tab('tasks'); list(); };
+  $('tabAnn').onclick = function () { tab('ann'); };
+  $('tabProg').onclick = function () { tab('prog'); };
+
+  // ---------- start ----------
+  L('home').then(function (h) {
+    H = h; NOW = h.serverNow;
+    $('who').textContent = h.me.name + (h.me.school ? ' · ' + h.me.school : '');
+    h.subjects.forEach(function (s) {
+      [$('fSubj'), $('eSubj'), $('pSubj'), $('aSubj')].forEach(function (sel) { var o = el('option', null, s.icon + ' ' + nm(s.name)); o.value = s.key; sel.appendChild(o); });
+    });
+    h.classes.forEach(function (c) {
+      [$('fCls'), $('eCls'), $('pCls'), $('aCls')].forEach(function (sel) { var o = el('option', null, c.name + ' (' + c.students + ')'); o.value = c.name; sel.appendChild(o); });
+    });
+    if (h.me.role === 'admin' || h.me.role === 'owner') { $('photoCard').classList.remove('hidden'); $('pWideBox').classList.remove('hidden'); paintPhotos(); }
+    $('keepDays').textContent = h.keepFileDays;
+    var last = {}; try { last = JSON.parse(localStorage.getItem('learn-last') || '{}') || {}; } catch (e) {}
+    if (last.c && h.classes.some(function (c) { return c.name === last.c; })) { $('pCls').value = last.c; $('fCls').value = last.c; }
+    groupsOf($('pCls').value, $('pGrp'), $('pGrpBox'), 'Увесь клас');
+    if (last.c && h.classes.some(function (c) { return c.name === last.c; })) $('aCls').value = last.c;
+    groupsOf($('aCls').value, $('aGrp'), $('aGrpBox'), 'Увесь клас');
+    var t0 = 'tasks'; try { t0 = localStorage.getItem('learn-tab') || 'tasks'; } catch (e) {}
+    tab(t0); list();
+  }, fail('tasks'));
+  function groupsOf(cls, sel, box, all) {
+    var c = (H.classes.filter(function (x) { return x.name === cls; })[0] || {}), gs = c.groups || [];
+    sel.textContent = ''; box.hidden = !gs.length;
+    var o0 = el('option', null, all); o0.value = '0'; sel.appendChild(o0);
+    gs.forEach(function (g) { var o = el('option', null, 'Група ' + g.group + ' (' + g.students + ')'); o.value = String(g.group); sel.appendChild(o); });
+  }
+  function paintPhotos() {
+    $('photoState').textContent = H.photos ? 'увімкнено' : 'вимкнено';
+    $('photoBtn').textContent = H.photos ? 'Вимкнути фото' : 'Увімкнути фото для школи';
+  }
+  $('photoBtn').onclick = function () {
+    if (!H.photos && !confirm('Увімкнути фото зошита у відповідях для всієї школи? Переконайтеся, що батьків повідомлено.')) return;
+    L('setPhotos', !H.photos).then(function (r) { H.photos = r.photos; paintPhotos(); }, function (e) { alert(msg(e)); });
+  };
+
+  // ---------- the list of tasks ----------
+  function list() {
+    var box = $('tasks');
+    L('list', { cls: $('fCls').value, subject: $('fSubj').value }).then(function (r) {
+      NOW = r.serverNow; box.textContent = '';
+      if (!r.tasks.length) { var p = el('div', 'card muted', 'Завдань ще немає. Натисніть «＋ Нове завдання».'); box.appendChild(p); return; }
+      var upcoming = r.tasks.filter(function (t) { return t.due >= NOW; }).reverse(), past = r.tasks.filter(function (t) { return t.due < NOW; });
+      [['Актуальні', upcoming], ['Минулі', past]].forEach(function (grp) {
+        if (!grp[1].length) return;
+        box.appendChild(el('h2', null, grp[0])).style.margin = '10px 0 0';
+        grp[1].forEach(function (t) {
+          var b = el('button', 'task'); b.type = 'button'; b.onclick = function () { open(t.id); };
+          b.appendChild(el('div', 'ic', t.icon));
+          var tt = el('div', 'tt'); tt.appendChild(el('b', null, t.title));
+          var soon = t.due >= NOW && t.due - NOW < 86400000 * 1.5;
+          var sm = el('small'); sm.appendChild(el('span', 'due' + (soon ? ' soon' : t.due < NOW ? ' past' : ''), dueText(t.due, NOW)));
+          sm.appendChild(document.createTextNode(' · ' + t.cls + (t.group ? ', група ' + t.group : '') + ' · ' + nm(t.subjectName) + ' · ' + KIND[t.kind]));
+          tt.appendChild(sm);
+          if (t.kind !== 'none' && t.students) { var m = el('div', 'meter'), i = el('i'); i.style.width = Math.round(t.done / t.students * 100) + '%'; m.appendChild(i); tt.appendChild(m); }
+          b.appendChild(tt);
+          if (t.kind !== 'none') b.appendChild(el('span', 'pill mute', 'здали ' + t.done + ' / ' + t.students));
+          if (t.toCheck) b.appendChild(el('span', 'pill', 'перевірити: ' + t.toCheck));
+          box.appendChild(b);
+        });
+      });
+    }, fail('tasks'));
+  }
+  $('fCls').onchange = function () { try { localStorage.setItem('learn-last', JSON.stringify({ c: $('fCls').value })); } catch (e) {} list(); };
+  $('fSubj').onchange = list;
+
+  // ---------- one task ----------
+  function open(id) {
+    $('tErr').textContent = '';
+    L('detail', id).then(function (d) { TASK = d; NOW = d.serverNow; paintTask(); tab('task'); window.scrollTo(0, 0); }, fail('tErr'));
+  }
+  $('backBtn').onclick = function () { tab('tasks'); list(); };
+  $('printTask').onclick = function () { window.print(); };
+  $('onlyCheck').onchange = function () { if (TASK) paintTask(); };
+  function paintTask() {
+    var d = TASK;
+    $('tTitle').textContent = d.icon + ' ' + d.title;
+    $('tMeta').textContent = nm(d.subjectName) + ' · ' + d.cls + (d.group ? ', група ' + d.group : '') + ' · ' + dueText(d.due, NOW) + ' · ' + KIND[d.kind] + (d.kind === 'test' ? ' (код ' + d.testId + ')' : '') + (d.late ? '' : ' · після терміну не приймається');
+    var tb = $('tBody'); tb.textContent = '';
+    String(d.body).split(/(https?:\/\/[^\s<>"']+)/g).forEach(function (part, i) { if (i % 2) { var a = el('a', null, part); a.href = part; a.target = '_blank'; a.rel = 'noopener noreferrer'; tb.appendChild(a); } else tb.appendChild(document.createTextNode(part)); });
+    $('tCrit').classList.toggle('hidden', !d.criteria); $('tCrit').textContent = d.criteria ? '📏 Критерії: ' + d.criteria : '';
+    var tf = $('tFiles'); tf.textContent = ''; d.files.forEach(function (f) { tf.appendChild(thumb(f)); });
+    var box = $('subs'); box.textContent = '';
+    var only = $('onlyCheck').checked, shown = 0;
+    var sum = el('p', 'muted');
+    function counts() {
+      var c = {}; d.students.forEach(function (s) { c[s.state] = (c[s.state] || 0) + 1; });
+      sum.textContent = 'Учнів: ' + d.students.length + ' · здано: ' + ((c.submitted || 0) + (c.checked || 0)) + ' · чекають перевірки: ' + (c.submitted || 0) + ' · перевірено: ' + (c.checked || 0) + (c.returned ? ' · на доопрацюванні: ' + c.returned : '') + (c.missing ? ' · не здали: ' + c.missing : '');
+    }
+    counts(); box.appendChild(sum);
+    d.students.forEach(function (s) {
+      if (only && s.state !== 'submitted') return; shown++;
+      var row = el('div', 'sub');
+      var who = el('div'); who.appendChild(el('b', null, s.name)); who.appendChild(document.createElement('br'));
+      var pill = who.appendChild(el('span', STATE[s.state][1], STATE[s.state][0]));
+      if (s.late) who.appendChild(el('span', 'pill mute', '⏰ із запізненням'));
+      if (s.submitted) who.appendChild(el('div', 'muted', when(s.submitted))).style.fontSize = '12px';
+      row.appendChild(who);
+      var ans = el('div');
+      if (s.test) ans.appendChild(el('div', null, s.test.submitted ? '📝 Тест: ' + s.test.score + ' / ' + s.test.max : '📝 Тест: пише…'));
+      if (s.text) ans.appendChild(el('div', 'ans', s.text));
+      if (s.files.length) {
+        var th = el('div', 'thumbs');
+        s.files.forEach(function (f) {
+          th.appendChild(thumb(f, [['🗑', 'Видалити фото', function () { if (confirm('Видалити це фото?')) L('dropPhoto', f, false).then(function () { open(d.id); }, function (e) { $('tErr').textContent = msg(e); }); }],
+            ['🚩', 'Неприйнятне фото: видалити й повідомити адміністратора', function () { if (confirm('Фото неприйнятне? Його буде видалено, а адміністратор школи побачить запис у журналі.')) L('dropPhoto', f, true).then(function () { open(d.id); }, function (e) { $('tErr').textContent = msg(e); }); }]]));
+        });
+        ans.appendChild(th);
+      }
+      if (!s.text && !s.files.length && !s.test) ans.appendChild(el('span', 'muted', d.kind === 'none' ? 'Без здачі — поставте оцінку, якщо треба.' : '—'));
+      row.appendChild(ans);
+      var mk = el('div', 'mk'), r1 = el('div', 'row');
+      var g = el('input', 'g'); g.value = s.grade; g.maxLength = 12; g.inputMode = 'numeric'; g.placeholder = s.suggest ? String(s.suggest) : '1–12'; g.setAttribute('aria-label', 'Оцінка, ' + s.name);
+      r1.appendChild(g);
+      var save = el('button', 'btn sm solid', '✓'); save.type = 'button'; save.title = 'Зберегти оцінку й коментар';
+      var back = el('button', 'btn sm', '↩'); back.type = 'button'; back.title = 'Повернути на доопрацювання (напишіть у коментарі, що виправити)';
+      r1.appendChild(save); if (d.kind === 'text') r1.appendChild(back);
+      mk.appendChild(r1);
+      var cm = el('input', 'cm'); cm.value = s.comment; cm.maxLength = 1000; cm.placeholder = 'Коментар учню'; cm.setAttribute('aria-label', 'Коментар, ' + s.name); mk.appendChild(cm);
+      var st = el('div', 'muted'); st.style.fontSize = '12px'; mk.appendChild(st);
+      function go(isBack) {
+        if (isBack && !cm.value.trim()) { st.textContent = 'Напишіть у коментарі, що виправити.'; cm.focus(); return; }
+        L('mark', d.id, s.id, isBack ? '' : g.value.trim(), cm.value, !!isBack).then(function (r) { s.state = r.state; s.grade = r.grade; s.comment = r.comment; g.value = r.grade; st.textContent = isBack ? 'Повернено ✓' : 'Збережено ✓';
+          pill.className = STATE[r.state][1]; pill.textContent = STATE[r.state][0]; counts(); },
+          function (e) { st.textContent = msg(e); });
+      }
+      save.onclick = function () { go(false); }; back.onclick = function () { go(true); };
+      g.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); go(false); } };
+      row.appendChild(mk);
+      box.appendChild(row);
+    });
+    if (!shown) box.appendChild(el('p', 'muted', only ? 'Немає робіт, що чекають перевірки 🎉' : 'У класі немає учнів.'));
+  }
+
+  // ---------- the editor ----------
+  var ED = null, NEWF = [];
+  function testsFor() {
+    var sel = $('eTest'), keep = sel.value; sel.textContent = '';
+    H.tests.filter(function (t) { return t.subject === $('eSubj').value; }).forEach(function (t) { var o = el('option', null, t.title + ' · ' + t.id); o.value = t.id; sel.appendChild(o); });
+    if (!sel.options.length) { var o = el('option', null, 'Немає опублікованих тестів цього предмета'); o.value = ''; sel.appendChild(o); }
+    if (keep) sel.value = keep;
+  }
+  function kind() { var k = document.querySelector('input[name=kind]:checked'); return k ? k.value : 'text'; }
+  function editor(t) {
+    ED = t || null; NEWF = []; $('edErr').textContent = '';
+    $('edTitle').textContent = t ? 'Змінити завдання' : 'Нове завдання'; $('edDel').classList.toggle('hidden', !t);
+    $('eSubj').value = t ? t.subject : ($('fSubj').value || $('eSubj').value);
+    $('eCls').value = t ? t.cls : ($('fCls').value || $('eCls').value);
+    groupsOf($('eCls').value, $('eGrp'), $('eGrpBox'), 'Увесь клас'); $('eGrp').value = String(t ? t.group : 0);
+    $('eName').value = t ? t.title : ''; $('eBody').value = t ? t.body : ''; $('eCrit').value = t ? (t.criteria || '') : '';
+    document.querySelector('input[name=kind][value=' + (t ? t.kind : 'text') + ']').checked = true;
+    testsFor(); if (t && t.testId) $('eTest').value = t.testId; $('eTestBox').hidden = kind() !== 'test';
+    var due = t ? new Date(t.due) : new Date(Date.now() + 86400000);
+    $('eDay').value = dayOf(due); $('eTime').value = t ? pad(due.getHours()) + ':' + pad(due.getMinutes()) : '08:00';
+    $('eLate').checked = t ? t.late : true;
+    ED_FILES = t ? t.files.slice() : []; DROP = []; paintFiles();
+    $('edDlg').showModal(); $('eName').focus();
+  }
+  var ED_FILES = [], DROP = [];
+  function paintFiles() {
+    var b = $('eFiles'); b.textContent = '';
+    ED_FILES.forEach(function (f) { b.appendChild(thumb(f, [['✕', 'Прибрати', function () { DROP.push(f); ED_FILES.splice(ED_FILES.indexOf(f), 1); paintFiles(); }]])); });
+    NEWF.forEach(function (d, i) { var t = el('div', 'thumb'), im = el('img'); im.src = d; im.alt = 'Нове фото'; t.appendChild(im);
+      var x = el('div', 'x'), bt = el('button', null, '✕'); bt.type = 'button'; bt.onclick = function () { NEWF.splice(i, 1); paintFiles(); }; x.appendChild(bt); t.appendChild(x); b.appendChild(t); });
+  }
+  $('ePick').onchange = function () {
+    var files = Array.prototype.slice.call($('ePick').files || []); $('ePick').value = '';
+    if (ED_FILES.length + NEWF.length + files.length > 5) { $('edErr').textContent = 'Не більше 5 картинок.'; return; }
+    files.reduce(function (p, f) { return p.then(function () { return window.kvPhoto(f).then(function (d) { NEWF.push(d); }); }); }, Promise.resolve())
+      .then(paintFiles, function (e) { $('edErr').textContent = msg(e); });
+  };
+  $('newBtn').onclick = function () { if (!H.classes.length) { alert('У школі ще немає класів з учнями. Їх додає адміністратор.'); return; } editor(null); };
+  $('editBtn').onclick = function () { if (TASK) editor(TASK); };
+  $('eSubj').onchange = testsFor;
+  $('eCls').onchange = function () { groupsOf($('eCls').value, $('eGrp'), $('eGrpBox'), 'Увесь клас'); };
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=kind]'), function (r) { r.onchange = function () { $('eTestBox').hidden = kind() !== 'test'; }; });
+  $('edCancel').onclick = function () { $('edDlg').close(); };
+  $('edForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('edErr').textContent = '';
+    var due = new Date($('eDay').value + 'T' + ($('eTime').value || '08:00'));
+    if (isNaN(due)) { $('edErr').textContent = 'Оберіть термін.'; return; }
+    $('edSave').disabled = true;
+    L('save', { id: ED ? ED.id : 0, subject: $('eSubj').value, cls: $('eCls').value, group: Number($('eGrp').value || 0), title: $('eName').value, body: $('eBody').value, criteria: $('eCrit').value,
+      kind: kind(), testId: $('eTest').value, due: due.getTime(), late: $('eLate').checked, files: NEWF, removeFiles: DROP })
+      .then(function (t) { $('edDlg').close(); if (ED) open(t.id); else list(); }, function (err) { $('edErr').textContent = msg(err); })
+      .then(function () { $('edSave').disabled = false; });
+  });
+  $('edDel').onclick = function () {
+    if (!ED || !confirm('Видалити завдання «' + ED.title + '» разом із відповідями й оцінками учнів?')) return;
+    L('remove', ED.id).then(function () { $('edDlg').close(); tab('tasks'); list(); }, function (e) { $('edErr').textContent = msg(e); });
+  };
+
+  // ---------- announcements ----------
+  function anns() {
+    L('announcements').then(function (r) {
+      var box = $('annList'); box.textContent = '';
+      if (!r.list.length) { box.appendChild(el('div', 'card muted', 'Оголошень ще немає.')); return; }
+      r.list.forEach(function (a) {
+        var c = el('div', 'card'); c.style.margin = '0'; if (!a.active) c.style.opacity = '.6';
+        var hd = el('div', 'row'); hd.appendChild(el('b', 'grow', a.icon + ' ' + nm(a.subjectName) + ' · ' + a.cls + (a.group ? ', група ' + a.group : '')));
+        hd.appendChild(el('span', 'pill ' + (a.active ? 'ok' : 'mute'), a.active ? 'до ' + new Date(a.until).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' }) : 'приховано'));
+        var del = el('button', 'btn sm danger', 'Видалити'); del.type = 'button';
+        del.onclick = function () { if (confirm('Видалити оголошення?')) L('unannounce', a.id).then(anns, function (e) { alert(msg(e)); }); };
+        hd.appendChild(del); c.appendChild(hd);
+        c.appendChild(el('div', null, a.text)).style.whiteSpace = 'pre-wrap';
+        c.appendChild(el('div', 'muted', when(a.at))).style.fontSize = '12px';
+        box.appendChild(c);
+      });
+    }, fail('aErr'));
+  }
+  $('aCls').onchange = function () { groupsOf($('aCls').value, $('aGrp'), $('aGrpBox'), 'Увесь клас'); };
+  $('annForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('aErr').textContent = '';
+    L('announce', { subject: $('aSubj').value, cls: $('aCls').value, group: Number($('aGrp').value || 0), text: $('aText').value, days: Number($('aDays').value) })
+      .then(function () { $('aText').value = ''; anns(); }, function (err) { $('aErr').textContent = msg(err); });
+  });
+
+  // ---------- progress ----------
+  var LV = { high: 'високий', sufficient: 'достатній', middle: 'середній', initial: 'початковий' };
+  var LVC = { high: '#1d7a46', sufficient: '#4b9b6e', middle: '#b07d10', initial: '#b3121f' };
+  var WHY = { low: 'низька середня', homework: 'мало д/з', tests: 'тести < 50 %', down: 'оцінки падають', absent: 'пропуски' };
+  var TR = { up: '📈', down: '📉', flat: '➡️' };
+  function fromOf(v) {
+    var d = new Date(NOW);
+    if (v === '30') return NOW - 30 * 86400000;
+    if (v === 'all') return 0;
+    return d.getMonth() >= 8 ? new Date(d.getFullYear(), 8, 1).getTime() : new Date(d.getFullYear(), 0, 1).getTime();   // semesters: from 1 September or from 1 January
+  }
+  function avgBadge(a, lvl) { var s = el('span', 'avg', a == null ? '—' : String(a).replace('.', ',')); s.style.background = a == null ? 'var(--muted)' : LVC[lvl]; return s; }
+  function progress() {
+    if (!H || !$('pCls').value) { $('pErr').textContent = H ? 'У школі ще немає класів з учнями.' : ''; return; }
+    $('pErr').textContent = '';
+    L('progress', $('pCls').value, Number($('pGrp').value || 0), $('pSubj').value, fromOf($('pFrom').value), $('pWide').checked).then(paintProg, fail('pErr'));
+  }
+  ['pSubj', 'pFrom', 'pGrp', 'pWide'].forEach(function (id) { $(id).onchange = progress; });
+  $('pCls').onchange = function () { groupsOf($('pCls').value, $('pGrp'), $('pGrpBox'), 'Увесь клас'); try { localStorage.setItem('learn-last', JSON.stringify({ c: $('pCls').value })); } catch (e) {} progress(); };
+  $('pPrint').onclick = function () { window.print(); };
+  function stat(big, small, extra) { var d = el('div', 'stat'); d.appendChild(el('b', null, big)); d.appendChild(el('small', null, small)); if (extra) d.appendChild(extra); return d; }
+  function paintProg(r) {
+    var subjName = r.subject ? H.subjects.filter(function (s) { return s.key === r.subject; }).map(function (s) { return s.icon + ' ' + nm(s.name); })[0] : (r.wide ? 'усі предмети, усі вчителі' : 'усі мої предмети');
+    $('pTitle').textContent = r.cls + (r.group ? ', група ' + r.group : '') + ' · ' + subjName;
+    var st = $('pStats'); st.textContent = ''; var sm = r.summary;
+    st.appendChild(stat(sm.avg == null ? '—' : String(sm.avg).replace('.', ','), 'середня оцінка класу'));
+    var lv = el('div', 'lv'), tot = sm.levels.high + sm.levels.sufficient + sm.levels.middle + sm.levels.initial;
+    ['high', 'sufficient', 'middle', 'initial'].forEach(function (k) { if (sm.levels[k]) { var i = el('i', 'l-' + k); i.style.width = (sm.levels[k] / tot * 100) + '%'; i.title = LV[k] + ': ' + sm.levels[k]; lv.appendChild(i); } });
+    st.appendChild(stat(tot ? sm.levels.high + sm.levels.sufficient + ' з ' + tot : '—', 'на високому й достатньому рівні', tot ? lv : null));
+    st.appendChild(stat(sm.hwRate == null ? '—' : sm.hwRate + ' %', 'домашніх завдань здано'));
+    st.appendChild(stat(String(sm.attention), 'учнів потребують уваги'));
+    var head = $('pHead'); head.textContent = ''; var hr = el('tr');
+    hr.appendChild(el('th', null, 'Учень')); hr.appendChild(el('th', 'c', 'Середня'));
+    if (!r.subject) r.subjects.forEach(function (s) { var th = el('th', 'c', s.icon); th.title = nm(s.name); hr.appendChild(th); });
+    else hr.appendChild(el('th', null, 'Останні оцінки'));
+    ['Д/з', 'Тести', 'н', ''].forEach(function (x, i) { var th = el('th', 'c', x); if (i === 3) th.textContent = 'Увага'; hr.appendChild(th); });
+    head.appendChild(hr);
+    var body = $('pBody'); body.textContent = '';
+    if (!r.students.length) { var tr0 = el('tr'), td0 = el('td', 'muted', 'У класі немає учнів.'); td0.colSpan = 6; tr0.appendChild(td0); body.appendChild(tr0); }
+    r.students.forEach(function (s) {
+      var tr = el('tr'), tn = el('td'), a = el('a', null, s.name);
+      a.href = '/app/grades?s=' + encodeURIComponent(r.subject || (r.subjects[0] && r.subjects[0].key) || H.subjects[0].key) + '&c=' + encodeURIComponent(r.cls) + '&r=' + s.id; a.title = 'Звіт про учня в журналі';
+      tn.appendChild(a); if (s.group) tn.appendChild(el('span', 'muted', ' · гр. ' + s.group)); tr.appendChild(tn);
+      var ta = el('td', 'c'); ta.appendChild(avgBadge(s.avg, s.level)); if (s.trend) ta.appendChild(el('span', null, ' ' + TR[s.trend])); ta.title = s.level ? LV[s.level] + ' рівень · оцінок: ' + s.marks : 'оцінок немає'; tr.appendChild(ta);
+      if (!r.subject) r.subjects.forEach(function (sj) { var v = s.bySubject[sj.key]; tr.appendChild(el('td', 'c', v == null ? '·' : String(v).replace('.', ','))); });
+      else { var tl = el('td'); s.last.forEach(function (m) { tl.appendChild(el('span', 'mchip', m)); }); if (!s.last.length) tl.appendChild(el('span', 'muted', '—')); tr.appendChild(tl); }
+      tr.appendChild(el('td', 'c', s.hw.given ? s.hw.done + '/' + s.hw.given : '—'));
+      tr.appendChild(el('td', 'c', s.tests == null ? '—' : s.tests + ' %'));
+      tr.appendChild(el('td', 'c', s.absent ? String(s.absent) : ''));
+      tr.appendChild(el('td', 'warn', s.attention.map(function (w) { return WHY[w]; }).join(', ')));
+      body.appendChild(tr);
+    });
+  }
+})();
+</script>
+</body>
+</html>

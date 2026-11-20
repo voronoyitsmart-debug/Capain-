@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мої тести — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<script src="/js/photos.js"></script>
+<script>window.KV_MARKS = true;   // «⭐ Оцінки» is drawn by /js/my-learn.js</script>
+<link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<script defer src="/vendor/katex/katex.min.js"></script>
+<script defer src="/vendor/katex/contrib/mhchem.min.js"></script>
+<script defer src="/vendor/katex/contrib/auto-render.min.js"></script>
+<style>
+  #revDlg { max-width: min(760px, calc(100vw - 24px)); width: 100%; }
+  .rv-q { padding: 12px 0; border-top: 1px solid var(--line); }
+  .rv-q .mk { display: inline-block; width: 26px; font-weight: 800; }
+  .rv-q .mk.ok { color: var(--ok); } .rv-q .mk.no { color: var(--bad); }
+  .rv-line { margin: 6px 0 0; } .rv-given { margin: 6px 0 0; } .rv-line .rv-given { margin: 0; font-weight: 600; } .rv-given.no { color: var(--bad); text-decoration: line-through; }
+  .rv-right { margin: 4px 0 0; color: var(--ok); font-weight: 600; }
+  .rv-why { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 14px; }
+  .rv-q img { max-width: 100%; border-radius: 8px; margin-top: 6px; }
+  .stiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .stile { font: inherit; text-align: left; cursor: pointer; background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; padding: 12px; color: var(--ink); }
+  .stile .ic { font-size: 26px; line-height: 1; } .stile b { display: block; margin-top: 6px; font-size: 15px; }
+  .stile small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .stile .dot { color: var(--ok); font-weight: 700; }
+  .stile.none { opacity: .7; } .stile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .now .ttest:first-of-type { border-top: 0; }
+  .prof dt { color: var(--muted); font-size: 13px; margin-top: 10px; } .prof dd { margin: 2px 0 0; font-weight: 600; }
+  .mk-s { padding: 10px 0; border-top: 1px solid var(--line); } .mk-s:first-child { border-top: 0; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span>Kvizora</span><small id="who"></small></h1>
+  <a class="btn head" href="/help?tab=tests" style="text-decoration:none" title="Як це працює" aria-label="Як це працює">?</a>
+  <button class="btn head" id="logout" type="button">Вийти</button>
+</div></header>
+<main>
+  <div class="ptabs" role="tablist" aria-label="Розділи">
+    <button type="button" role="tab" data-t="tests" aria-selected="true">📝 Тести</button>
+    <button type="button" role="tab" data-t="learn" aria-selected="false">🎓 Навчання <span class="pill hidden" id="learnBadge"></span></button>
+    <button type="button" role="tab" data-t="marks" aria-selected="false">⭐ Оцінки</button>
+    <button type="button" role="tab" data-t="profile" aria-selected="false">👤 Профіль</button>
+  </div>
+  <section data-tab="tests">
+    <div class="card" id="noClass" hidden><b>Вас ще не додано до класу.</b> <span class="muted">Зверніться до адміністратора школи. Тест за кодом від учителя можна відкрити нижче.</span></div>
+    <div class="card now" id="nowCard"><h2 style="margin:0 0 4px">🔔 Зараз</h2><div id="nowBox"><p class="muted">Завантаження…</p></div></div>
+    <h2 style="margin:20px 0 10px">Предмети</h2>
+    <div class="stiles" id="stiles"></div>
+    <div class="subjects" id="subjects" style="display:block;margin-top:12px"></div>
+    <form id="codeForm" class="row" style="margin-top:18px">
+      <label for="code" style="margin:0">Учитель дав код тесту?</label>
+      <input id="code" maxlength="16" autocomplete="off" autocapitalize="characters" placeholder="напр. K7M2QX" style="text-transform:uppercase;max-width:180px">
+      <button class="btn sm" type="submit">Відкрити</button>
+    </form>
+  </section>
+  <section data-tab="learn" hidden></section>
+  <section data-tab="marks" hidden><div class="card" id="marksBox"><p class="muted">Оцінок ще немає.</p></div></section>
+  <section data-tab="profile" hidden>
+    <div class="card"><dl class="prof" style="margin:0" id="prof"></dl>
+      <div class="row" style="margin-top:16px"><a class="btn" href="/password">🔑 Змінити пароль</a><a class="btn" href="/help?tab=tests">📘 Як користуватися</a></div>
+    </div>
+  </section>
+</main>
+<dialog id="revDlg" aria-labelledby="revTitle">
+  <div class="row"><h2 class="grow" id="revTitle" style="margin:0">Розбір помилок</h2><button class="btn sm" type="button" id="revClose">Закрити</button></div>
+  <p class="muted" id="revScore" style="margin:6px 0 0"></p>
+  <label style="display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:400"><input type="checkbox" id="revOnlyWrong" style="width:auto"> Лише помилки</label>
+  <div id="revBody"></div>
+</dialog>
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  var OFF = 0;
+  function when(ms) { var d = new Date(ms); return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' }) + ', ' + d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }); }
+  function testRow(t) {
+    var r = el('div', 'ttest'), tt = el('div', 'tt');
+    tt.appendChild(el('b', null, (t.titles && (t.titles.uk || t.titles.en)) || t.id));
+    var meta = [t.teacher, t.questions + ' пит.'];
+    if (t.common) meta.push('для всієї школи');
+    if (t.minutes) meta.push(t.minutes + ' хв');
+    if (t.state === 'open' && t.closesAt && !t.mine) meta.push('до ' + when(t.closesAt));
+    tt.appendChild(el('small', null, meta.join(' · ')));
+    r.appendChild(tt);
+    if (t.grade) r.appendChild(el('span', 'pill', 'Оцінка: ' + t.grade));
+    if (t.mine === 'done') {
+      r.appendChild(el('span', 'pill ok', t.score ? '✓ ' + t.score.score + ' / ' + t.score.max : '✓ Здано'));
+      if (t.review) { var rv = el('button', 'btn sm', '🔍 Розбір помилок'); rv.type = 'button'; rv.style.flexBasis = '100%'; rv.onclick = function () { review(t.id); }; r.style.flexWrap = 'wrap'; r.appendChild(rv); }
+    } else if (t.state === 'open') {
+      var a = el('a', 'btn solid sm', t.mine === 'started' ? 'Продовжити' : 'Почати'); a.href = '/t/' + encodeURIComponent(t.id); r.appendChild(a);
+    } else if (t.state === 'scheduled') {
+      r.appendChild(el('span', 'pill mute', '🕒 ' + when(t.opensAt)));
+    } else if (t.state === 'waiting') {
+      r.appendChild(el('span', 'pill mute', 'Ще не відкрито'));
+    } else {
+      r.appendChild(el('span', 'pill bad', t.mine === 'started' ? 'Не завершено' : '🔒 Закрито'));
+    }
+    return r;
+  }
+  function render(d) {
+    OFF = d.serverNow - Date.now();
+    $('who').textContent = d.student.name + ' · ' + d.student.login + (d.student.school ? ' · ' + d.student.school : '');
+    if (d.student.cls) { var b = el('span', 'clsbadge', d.student.cls); $('who').appendChild(b); }
+    $('noClass').hidden = !!d.student.cls;
+    // «Зараз відкрито»: every open test not handed in yet, from all subjects
+    var now = $('nowBox'); now.textContent = '';
+    // a review the teacher allowed: first, so it is not lost in a subject
+    d.subjects.forEach(function (s) { s.tests.forEach(function (t) { if (t.mine === 'done' && t.review) { var r = testRow(t); r.querySelector('.tt b').textContent = s.icon + ' ' + r.querySelector('.tt b').textContent; now.appendChild(r); } }); });
+    d.subjects.forEach(function (s) { s.tests.forEach(function (t) { if (t.state === 'open' && t.mine !== 'done') { var r = testRow(t); r.querySelector('.tt b').textContent = s.icon + ' ' + r.querySelector('.tt b').textContent; now.appendChild(r); } }); });
+    if (!now.childNodes.length) now.appendChild(el('p', 'muted', 'Відкритих тестів зараз немає. Коли вчитель відкриє тест, він з’явиться тут.'));
+    // a long list: the first few, the rest behind one button
+    var rows = now.querySelectorAll('.ttest');
+    if (rows.length > 5 && !NOW_ALL) {
+      Array.prototype.forEach.call(rows, function (r, i) { if (i >= 4) r.hidden = true; });
+      var more = el('button', 'btn sm', 'Показати всі (' + rows.length + ')'); more.type = 'button'; more.style.marginTop = '10px';
+      more.onclick = function () { NOW_ALL = true; Array.prototype.forEach.call(rows, function (r) { r.hidden = false; }); more.remove(); };
+      now.appendChild(more);
+    }
+    // the subjects: small tiles; the chosen one shows its tests below
+    var tiles = $('stiles'), box = $('subjects'); tiles.textContent = ''; box.textContent = '';
+    if (!d.subjects.some(function (s) { return s.key === SUBJ; })) SUBJ = (d.subjects.filter(function (s) { return s.tests.length; })[0] || {}).key || '';
+    d.subjects.forEach(function (s) {
+      var open = s.tests.filter(function (t) { return t.state === 'open' && t.mine !== 'done'; }).length;
+      var b = el('button', 'stile' + (s.tests.length ? '' : ' none')); b.type = 'button'; b.setAttribute('aria-pressed', String(s.key === SUBJ));
+      b.appendChild(el('div', 'ic', s.icon)); b.appendChild(el('b', null, s.name.uk || s.name.en));
+      var sm = el('small'); if (!s.tests.length) sm.textContent = '❌ Тестів ще немає'; else { sm.textContent = 'Тестів: ' + s.tests.length; if (open) sm.appendChild(el('span', 'dot', ' · відкрито ' + open)); }
+      b.appendChild(sm);
+      b.onclick = function () { SUBJ = s.key; try { localStorage.setItem('my-subj', SUBJ); } catch (e) {} render(d); };
+      tiles.appendChild(b);
+      var tile = el('div', 'tile' + (s.tests.length ? '' : ' none')); tile.hidden = s.key !== SUBJ; tile.setAttribute('data-subj', s.key);
+      tile.appendChild(el('h3', null, s.icon + ' ' + (s.name.uk || s.name.en)));
+      if (!s.tests.length) {
+        var n = el('div', 'none-mark'); n.appendChild(el('span', null, '❌')); n.appendChild(document.createTextNode('Тестів ще немає'));
+        tile.appendChild(n);
+      } else s.tests.forEach(function (t) { tile.appendChild(testRow(t)); });
+      box.appendChild(tile);
+    });
+    // ⭐ Оцінки (a fuller page comes with «🎓 Навчання»): the marks and scores of handed-in tests
+    if (!window.KV_MARKS) {
+      var mb = $('marksBox'); mb.textContent = '';
+      d.subjects.forEach(function (s) {
+        var done = s.tests.filter(function (t) { return t.grade || t.score; }); if (!done.length) return;
+        var w = el('div', 'mk-s'); w.appendChild(el('b', null, s.icon + ' ' + (s.name.uk || s.name.en)));
+        done.forEach(function (t) { w.appendChild(el('div', 'muted', ((t.titles && (t.titles.uk || t.titles.en)) || t.id) + ': ' + (t.grade ? 'оцінка ' + t.grade : '') + (t.grade && t.score ? ' · ' : '') + (t.score ? t.score.score + ' / ' + t.score.max + ' балів' : ''))); });
+        mb.appendChild(w);
+      });
+      if (!mb.childNodes.length) mb.appendChild(el('p', 'muted', 'Оцінок ще немає.'));
+    }
+    var pr = $('prof'); pr.textContent = '';
+    [['Ім’я', d.student.name], ['Логін', d.student.login], ['Клас', d.student.cls || '—'], ['Школа', d.student.school || '—']].forEach(function (x) { pr.appendChild(el('dt', null, x[0])); pr.appendChild(el('dd', null, x[1])); });
+    // transparency: the student sees that the parents can view the marks (a code from the school)
+    pr.appendChild(el('dt', null, '👪 Доступ батьків'));
+    pr.appendChild(el('dd', null, d.parent ? 'увімкнено: батьки бачать твої оцінки, д/з і пропуски (код діє до ' + new Date(d.parent.expires).toLocaleDateString('uk-UA') + ')' : 'немає'));
+  }
+  // ---------- tabs: Тести · Навчання · Оцінки · Профіль ----------
+  var NOW_ALL = false, SUBJ = ''; try { SUBJ = localStorage.getItem('my-subj') || ''; } catch (e) {}
+  function tab(k) {
+    Array.prototype.forEach.call(document.querySelectorAll('.ptabs [data-t]'), function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-t') === k)); });
+    Array.prototype.forEach.call(document.querySelectorAll('main > section[data-tab]'), function (s) { s.hidden = s.getAttribute('data-tab') !== k; });
+    try { history.replaceState(null, '', k === 'tests' ? location.pathname : '#' + k); } catch (e) {}
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.ptabs [data-t]'), function (b) { b.onclick = function () { tab(b.getAttribute('data-t')); }; });
+  window.KvMy = { tab: tab };
+  (function () { var h = location.hash.slice(1), b = h && document.querySelector('.ptabs [data-t="' + h + '"]'); if (b && !b.hidden) tab(h); })();
+  // ---------- the review of a finished test (when the teacher allowed it) ----------
+  var REV = null;
+  function T(L) { return L && typeof L === 'object' ? (L.uk || L.en || '') : String(L == null ? '' : L); }
+  function review(id) {
+    window.api('/api/student/review', { args: [id] }).then(function (d) { REV = d; paintReview(); $('revDlg').showModal(); },
+      function (e) { alert(String(e && e.message || e).replace(/^.*USER:\s*/, '').replace(/\s*\[#[a-z_]+\]\s*$/, '')); });
+  }
+  function paintReview() {
+    var d = REV, body = $('revBody'), only = $('revOnlyWrong').checked; body.textContent = '';
+    $('revTitle').textContent = '🔍 ' + T(d.title); $('revScore').textContent = 'Бали: ' + d.score + ' з ' + d.max;
+    var n = 0;
+    d.sections.forEach(function (sec) {
+      sec.questions.forEach(function (q) {
+        if (only && q.ok !== false) return;
+        var b = el('div', 'rv-q'), h = el('div');
+        h.appendChild(el('span', 'mk ' + (q.ok === true ? 'ok' : q.ok === false ? 'no' : ''), q.ok === true ? '✓' : q.ok === false ? '✗' : '•'));
+        h.appendChild(el('b', null, (++n) + '. ')); h.appendChild(document.createTextNode(T(q.q))); b.appendChild(h);
+        if (q.img) { var im = el('img'); im.src = q.img; im.alt = 'Зображення до питання'; b.appendChild(im); }
+        if (q.items) q.items.forEach(function (it) {
+          b.appendChild(el('div', 'rv-given' + (it.ok ? '' : ' no'), (it.ok ? '✓ ' : '✗ ') + T(it.l) + ' → ' + (T(it.given) || 'без відповіді')));
+          if (!it.ok) b.appendChild(el('div', 'rv-right', '→ ' + T(it.l) + ' → ' + T(it.correct)));
+        });
+        else {
+          if (q.steps && q.steps.length) {   // an equation: the student's working, every line marked
+            var sw = el('div', 'rv-line', 'Розв’язання:');
+            q.steps.forEach(function (st) {
+              var bad = st.st === 'lost' || st.st === 'wrong' || st.st === 'bad', mk = { ok: '✓', extra: '✓', lost: '✗', wrong: '✗', bad: '?' }[st.st] || '•';
+              var why = { extra: ' (з’явилися сторонні корені — їх треба перевірити)', lost: ' (тут загубився корінь)', wrong: ' (помилка в цьому кроці)', bad: ' (не вдалося прочитати)' }[st.st] || '';
+              var sl = el('div', 'rv-given', mk + ' ' + st.s + why); sl.style.fontWeight = '400'; if (bad) sl.style.color = 'var(--bad)'; sw.appendChild(sl);
+            });
+            b.appendChild(sw);
+          }
+          var gv = el('div', 'rv-line', 'Ваша відповідь: '); gv.appendChild(el('span', 'rv-given' + (q.ok === false ? ' no' : ''), T(q.given).trim() || '—')); b.appendChild(gv);
+          if (q.ok === false && q.right) b.appendChild(el('div', 'rv-right', 'Правильно: ' + T(q.right)));
+        }
+        var why = T(q.why) || T(q.note);
+        if (why && q.ok !== true) b.appendChild(el('div', 'rv-why', '💡 ' + why));
+        body.appendChild(b);
+      });
+    });
+    if (!n) body.appendChild(el('p', 'muted', only ? 'Помилок немає 🎉' : 'Немає питань.'));
+    if (window.renderMathInElement) try { window.renderMathInElement(body, { delimiters: [{ left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }], throwOnError: false }); } catch (e) {}
+  }
+  $('revOnlyWrong').onchange = function () { if (REV) paintReview(); };
+  $('revClose').onclick = function () { $('revDlg').close(); };
+
+  function load() {
+    window.api('/api/student/home').then(render).catch(function (err) { if (err.status === 401) location.href = '/login'; else $('subjects').textContent = 'Немає зв’язку із сервером.'; });
+  }
+  $('logout').onclick = function () { window.api('/api/auth/logout').then(function () { location.href = '/login'; }, function () { location.href = '/login'; }); };
+  $('codeForm').addEventListener('submit', function (e) {
+    e.preventDefault(); var c = $('code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (c) location.href = '/t/' + c;
+  });
+  load();
+  setInterval(function () { if (!document.hidden) load(); }, 60000);   // a test the teacher opens appears by itself
+})();
+</script>
+<script src="/js/my-learn.js"></script>
+</body>
+</html>

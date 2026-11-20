@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Журнал оцінок — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<script src="/js/nav.js" data-active="grades"></script>
+<style>
+  .gb td, .gb th { text-align: center; }
+  .gb td:first-child, .gb th:first-child { text-align: left; position: sticky; left: 0; background: var(--card); z-index: 1; min-width: 170px; }
+  .gb th.tcol { font-size: 12px; text-transform: none; letter-spacing: 0; max-width: 140px; min-width: 96px; vertical-align: bottom; }
+  .gb .sc { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; white-space: nowrap; }
+  .gb .sc.ok { color: var(--ok); }
+  .gb input.g { width: 58px; padding: 6px 4px; text-align: center; font-weight: 700; }
+  .gb input.g.saved { border-color: var(--ok); }
+  .gb input.g.bad { border-color: var(--bad); }
+  .gb td.avg { font-weight: 700; }
+  .gb th.dcol { font-size: 12px; min-width: 76px; vertical-align: bottom; }
+  .gb th.dcol small { display: block; font-weight: 400; color: var(--muted); max-width: 120px; white-space: normal; }
+  .gb .tm { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: var(--soft, #eef3f5); margin: 0 2px 3px; }
+  .gb .tm.sug { color: var(--muted); font-weight: 400; }
+  .gb td:first-child button.nm { all: unset; cursor: pointer; font-weight: 700; }
+  .gb td:first-child button.nm:hover, .gb td:first-child button.nm:focus-visible { text-decoration: underline; }
+  .gb input.tp { width: 100%; min-width: 70px; font-size: 11px; padding: 3px 4px; margin-top: 3px; font-weight: 400; }
+  .gb input.g.abs { color: var(--bad); }
+  .gb td.miss { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .gb th.fcol { font-size: 12px; min-width: 76px; }
+  .gb th.fcol button { all: unset; cursor: pointer; font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; margin: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent, #0f6d8c); color: #fff; }
+  #repDlg { max-width: 760px; width: calc(100% - 24px); }
+  .rep-s { border-top: 1px solid var(--line); padding: 10px 0; }
+  .rep-s h3 { margin: 0 0 4px; font-size: 16px; }
+  .rep-bar { height: 8px; border-radius: 6px; background: var(--line); overflow: hidden; margin: 6px 0; }
+  .rep-bar i { display: block; height: 100%; background: var(--ok); }
+  .rep-bar i.mid { background: #d49b1e; } .rep-bar i.low { background: var(--bad); }
+  .rep-w { margin: 6px 0 0 0; padding-left: 18px; font-size: 14px; }
+  .rep-w li { margin: 4px 0; } .rep-w .ex { color: var(--muted); font-size: 13px; }
+  @media print { body.print-rep > header, body.print-rep > main { display: none; } body.print-rep #repDlg { position: static; border: 0; box-shadow: none; max-width: none; } }
+  @media print { .gb input.g { border: 0; background: transparent; } .gb input.g::placeholder { color: transparent; } }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span>📒 Журнал оцінок</span><small id="who"></small></h1>
+</div></header>
+<div id="nav"></div>
+<main>
+  <div class="card noprint">
+    <div class="row">
+      <div class="grow"><label for="subj" style="margin-top:0">Предмет</label><select id="subj"></select></div>
+      <div class="grow"><label for="cls" style="margin-top:0">Клас</label><select id="cls"></select></div>
+      <div class="grow" id="grpBox" hidden><label for="grp" style="margin-top:0">Моя група</label><select id="grp"></select></div>
+    </div>
+    <details class="info"><summary>ℹ️ Як це працює</summary>
+    <p id="hintDays" hidden style="margin:0">Стовпці — дні. Під датою — тема уроку (необов’язково). У клітинці — оцінки за тести того дня (сіра — підказка за балами, якщо оцінки ще немає) і поле для оцінки за урок 1–12, «н» (відсутній) або «нп» (відсутній з поважної причини; причину не записуємо). «＋ Дата» додає новий день. Стовпець «Пропуски» рахує «н» і «нп». Натисніть на ім’я учня — отримаєте звіт: як він справляється з кожним предметом і які теми йому ще незрозумілі.</p>
+    <p id="hintFinal" hidden style="margin:0">Тематичні, семестрові й річна оцінки ставите ви. Сіра цифра в полі — лише підказка (середня за оцінками того періоду: І семестр — вересень–грудень, ІІ — січень–червень), вона не зберігається. «＋ Тематична» додає стовпець для теми. «⬇️ Excel» — файл з усіма оцінками, щоб перенести їх в офіційний журнал школи.</p>
+    <p id="hintTests" style="margin:0">Натисніть на ім’я учня — звіт по всіх предметах і незрозумілих темах. У клітинці — бал за тест (якщо учень його здав) і поле для оцінки 1–12 (можна написати «н»). Сіра цифра в полі — підказка за балами; «Заповнити за балами» ставить її в порожні клітинки. Зберігається одразу. Учень бачить свою оцінку у «Моїх тестах».</p></details>
+    <div class="row" style="margin-top:12px"><span class="seg" role="group" aria-label="Вигляд журналу"><button class="btn sm" id="vTests" type="button" aria-pressed="true">📝 За тестами</button><button class="btn sm" id="vDays" type="button" aria-pressed="false">📅 За датами</button><button class="btn sm" id="vFinal" type="button" aria-pressed="false">🏁 Підсумкові</button></span><button class="btn sm" id="addTheme" type="button" hidden>＋ Тематична</button><span id="dayAdd" hidden><input id="newDay" type="date" aria-label="Нова дата" style="width:auto;padding:6px"><button class="btn sm" id="addDay" type="button">＋ Дата</button></span><button class="btn sm" id="fillBtn" type="button">✨ Заповнити за балами</button><button class="btn sm" id="printBtn" type="button">🖨 Друкувати</button><a class="btn sm" id="csvBtn" href="#" download title="Файл для Excel: дати, оцінки, пропуски, середня, підсумкові. Щоб перенести оцінки в офіційний журнал школи (наприклад, «Мрія»).">⬇️ Excel</a><span class="muted" id="status" style="font-size:13px"></span></div>
+  </div>
+  <div class="card">
+    <h2 id="title"></h2>
+    <div class="tbl-wrap"><table class="tbl gb"><thead id="head"></thead><tbody id="body"></tbody></table></div>
+    <div class="err" id="err"></div>
+  </div>
+</main>
+<dialog id="repDlg">
+  <div class="row"><h2 class="grow" style="margin:0" id="repTitle">Звіт про учня</h2><button class="btn sm noprint" id="repPrint" type="button">🖨</button><button class="btn sm noprint" id="repClose" type="button">Закрити</button></div>
+  <p class="muted" id="repSub" style="font-size:13px;margin:4px 0 8px"></p>
+  <div id="repBody"></div>
+</dialog>
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function T(subject, fn) { return window.api('/api/t/' + subject + '/' + fn, { args: ['session'].concat(Array.prototype.slice.call(arguments, 2)) }); }
+  function msg(e) { var m = String(e && e.message || e), i = m.indexOf('USER:'); return (i >= 0 ? m.slice(i + 5) : m).replace(/\s*\[#[a-z_]+\]\s*$/, '').trim(); }
+  var q = new URLSearchParams(location.search), D = null;
+  var CLS = [];
+  function remember() { try { localStorage.setItem('gb-last', JSON.stringify({ s: $('subj').value, c: $('cls').value, g: $('grp').value })); } catch (e) {} }
+  /** The groups of the chosen class (the administrator splits a class into groups 1/2): «the whole class» or one group. */
+  function groups(keep) {
+    var c = CLS.filter(function (x) { return x.name === $('cls').value; })[0], gs = (c && c.groups) || [], sel = $('grp');
+    sel.textContent = ''; $('grpBox').hidden = !gs.length;
+    var o0 = el('option', null, 'Увесь клас'); o0.value = '0'; sel.appendChild(o0);
+    gs.forEach(function (g) { var o = el('option', null, 'Група ' + g.group + ' (' + g.students + ')'); o.value = String(g.group); sel.appendChild(o); });
+    if (keep && gs.some(function (g) { return String(g.group) === String(keep); })) sel.value = String(keep);
+  }
+  function last() { try { return JSON.parse(localStorage.getItem('gb-last') || '{}') || {}; } catch (e) { return {}; } }
+
+  window.api('/api/dashboard').then(function (d) {
+    $('who').textContent = d.teacher.name;
+    d.subjects.forEach(function (s) { var o = el('option', null, s.icon + ' ' + (s.name.uk || s.name.en)); o.value = s.key; $('subj').appendChild(o); });
+    var L = last(); $('subj').value = q.get('s') || L.s || d.subjects[0].key;
+    return T($('subj').value, 'gradeClasses').then(function (r) {
+      if (!r.classes.length) { $('err').textContent = 'У школі ще немає учнів у класах. Їх додає адміністратор (адмін-панель → Учні).'; return; }
+      CLS = r.classes;
+      r.classes.forEach(function (c) { var o = el('option', null, c.name + ' (' + c.students + ')'); o.value = c.name; $('cls').appendChild(o); });
+      var wantC = q.get('c') || L.c;
+      if (wantC && r.classes.some(function (c) { return c.name === wantC; })) $('cls').value = wantC;
+      groups(L.g);
+      load();
+    });
+  }).catch(function (e) { if (e.status === 401) location.href = '/login?next=/app/grades'; else $('err').textContent = msg(e); });
+  $('subj').onchange = function () { remember(); load(); };
+  $('cls').onchange = function () { groups(); remember(); load(); };
+  $('grp').onchange = function () { remember(); load(); };
+
+  function load() {
+    $('err').textContent = ''; $('status').textContent = '';
+    T($('subj').value, 'gradebook', $('cls').value, Number($('grp').value || 0)).then(function (d) {
+      D = d; THEMES = []; render();
+      var r = Number(q.get('r') || 0); q.delete('r');   // «🎓 Навчання → Успішність»: a click on a name opens that student's report here
+      if (r) { var st = D.students.filter(function (x) { return x.id === r; })[0]; if (st) report(st); }
+    }).catch(function (e) { $('err').textContent = msg(e); });
+  }
+  function avg(st) {
+    var n = 0, sum = 0; st.cells.forEach(function (c) { if (/^\d+$/.test(c.grade)) { n++; sum += Number(c.grade); } });
+    Object.keys(st.days || {}).forEach(function (d) { var g = st.days[d].grade; if (/^\d+$/.test(g)) { n++; sum += Number(g); } });
+    var hm = (D.hw && D.hw.marks[st.id]) || {}; Object.keys(hm).forEach(function (k) { var g = hm[k].grade; if (/^\d+$/.test(g)) { n++; sum += Number(g); } });   // homework marks («🎓 Навчання»)
+    return n ? (sum / n).toFixed(1).replace('.0', '') : '—';
+  }
+  function nameCell(st) {
+    var td = el('td'), b = el('button', 'nm', st.name); b.type = 'button'; b.title = 'Звіт про учня'; b.onclick = function () { report(st); }; td.appendChild(b); return td;
+  }
+  function render() {
+    $('fillBtn').hidden = VIEW !== 'tests'; $('dayAdd').hidden = VIEW !== 'days'; $('addTheme').hidden = VIEW !== 'final';
+    $('hintDays').hidden = VIEW !== 'days'; $('hintTests').hidden = VIEW !== 'tests'; $('hintFinal').hidden = VIEW !== 'final';
+    $('vTests').setAttribute('aria-pressed', String(VIEW === 'tests')); $('vDays').setAttribute('aria-pressed', String(VIEW === 'days')); $('vFinal').setAttribute('aria-pressed', String(VIEW === 'final'));
+    $('csvBtn').href = '/app/journal/' + encodeURIComponent($('subj').value) + '.csv?c=' + encodeURIComponent(D.cls) + '&g=' + (D.group || 0);
+    if (VIEW === 'days') return renderDays();
+    if (VIEW === 'final') return renderFinal();
+    $('title').textContent = (D.subject.name.uk || D.subject.name.en) + ' · ' + D.cls + (D.group ? ' · група ' + D.group : '');
+    var head = $('head'); head.textContent = '';
+    var hr = el('tr'); hr.appendChild(el('th', null, 'Учень'));
+    D.tests.forEach(function (t) { var th = el('th', 'tcol', (t.titles.uk || t.titles.en) + (t.common ? ' 🏫' : '')); th.title = 'Код ' + t.id + ' · макс. ' + t.max; hr.appendChild(th); });
+    hr.appendChild(el('th', null, 'Середня')); head.appendChild(hr);
+    var body = $('body'); body.textContent = '';
+    if (!D.tests.length) { var tr0 = el('tr'), td0 = el('td', 'muted', 'Для цього класу ще немає опублікованих тестів із цього предмета.'); td0.colSpan = 2; tr0.appendChild(td0); body.appendChild(tr0); }
+    D.students.forEach(function (st) {
+      var tr = el('tr'); tr.appendChild(nameCell(st));
+      var tdA = el('td', 'avg', avg(st));
+      st.cells.forEach(function (c, i) {
+        var td = el('td');
+        var sc = c.score != null ? c.score + ' / ' + c.max + (c.status === 'Late' ? ' ⏰' : '') : (c.status === 'In progress' ? 'пише…' : 'не здано');
+        td.appendChild(el('span', 'sc' + (c.score != null ? ' ok' : ''), sc));
+        var inp = el('input', 'g'); inp.value = c.grade || ''; inp.maxLength = 12; inp.inputMode = 'numeric';
+        if (c.suggest) inp.placeholder = String(c.suggest);
+        inp.setAttribute('aria-label', st.name + ', ' + (D.tests[i].titles.uk || D.tests[i].titles.en));
+        inp.onchange = function () { save(st, i, inp, tdA); };
+        inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); var next = body.rows[tr.rowIndex] && body.rows[tr.rowIndex].cells[i + 1].querySelector('input'); if (next) next.focus(); } };
+        c.input = inp; td.appendChild(inp); tr.appendChild(td);
+      });
+      tr.appendChild(tdA); body.appendChild(tr);
+    });
+  }
+  function save(st, i, inp, tdA) {
+    var c = st.cells[i], v = inp.value.trim();
+    inp.classList.remove('saved', 'bad');
+    return T($('subj').value, 'setGrade', D.tests[i].id, st.id, v, c.note || '').then(function (r) {
+      c.grade = r.grade; inp.value = r.grade; inp.classList.add('saved'); tdA.textContent = avg(st);
+      $('status').textContent = 'Збережено ✓';
+    }, function (e) { inp.classList.add('bad'); $('status').textContent = msg(e); if (e.status === 401) location.href = '/login?next=/app/grades'; });
+  }
+  // ---------- the dated view: one column per day ----------
+  var VIEW = 'tests', EXTRA = [];
+  try { VIEW = ({ days: 'days', final: 'final' })[localStorage.getItem('gb-view')] || 'tests'; } catch (e) {}
+  function setView(v) { VIEW = v; try { localStorage.setItem('gb-view', v); } catch (e) {} if (D) render(); }
+  $('vTests').onclick = function () { setView('tests'); };
+  $('vDays').onclick = function () { setView('days'); };
+  $('vFinal').onclick = function () { setView('final'); };
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function dayOf(ms) { var d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function dayLabel(day) { var p = day.split('-'); return p[2] + '.' + p[1]; }
+  try { $('newDay').value = dayOf(Date.now()); } catch (e) {}
+  $('addDay').onclick = function () { var v = $('newDay').value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; if (EXTRA.indexOf(v) < 0) EXTRA.push(v); render(); };
+  function renderDays() {
+    $('title').textContent = (D.subject.name.uk || D.subject.name.en) + ' · ' + D.cls + (D.group ? ' · група ' + D.group : '') + ' · за датами';
+    var byDay = {}, set = {};
+    D.tests.forEach(function (t, i) { var d = dayOf(t.at); (byDay[d] = byDay[d] || []).push(i); set[d] = 1; });
+    var hwDay = {}; ((D.hw && D.hw.tasks) || []).forEach(function (h) { var d = dayOf(h.due); (hwDay[d] = hwDay[d] || []).push(h); set[d] = 1; });
+    D.students.forEach(function (st) { Object.keys(st.days || {}).forEach(function (d) { set[d] = 1; }); });
+    Object.keys(D.topics || {}).forEach(function (d) { set[d] = 1; });
+    EXTRA.forEach(function (d) { set[d] = 1; });
+    var days = Object.keys(set).sort();
+    var head = $('head'); head.textContent = ''; var hr = el('tr'); hr.appendChild(el('th', null, 'Учень'));
+    days.forEach(function (d) {
+      var th = el('th', 'dcol', dayLabel(d)); th.title = d;
+      (byDay[d] || []).forEach(function (i) { th.appendChild(el('small', null, '📝 ' + (D.tests[i].titles.uk || D.tests[i].titles.en))); });
+      (hwDay[d] || []).forEach(function (h) { th.appendChild(el('small', null, '🏠 ' + h.title)); });
+      var tp = el('input', 'tp'); tp.value = (D.topics || {})[d] || ''; tp.maxLength = 160; tp.placeholder = 'тема уроку'; tp.title = tp.value || 'Тема уроку';
+      tp.setAttribute('aria-label', 'Тема уроку ' + dayLabel(d));
+      tp.onchange = function () { saveTopic(d, tp); };
+      th.appendChild(tp);
+      hr.appendChild(th);
+    });
+    hr.appendChild(el('th', null, 'Пропуски')); hr.appendChild(el('th', null, 'Середня')); head.appendChild(hr);
+    var body = $('body'); body.textContent = '';
+    if (!days.length) { var tr0 = el('tr'), td0 = el('td', 'muted', 'Ще немає ні тестів, ні оцінок. Додайте дату кнопкою «＋ Дата».'); td0.colSpan = 2; tr0.appendChild(td0); body.appendChild(tr0); }
+    D.students.forEach(function (st) {
+      var tr = el('tr'); tr.appendChild(nameCell(st));
+      var tdA = el('td', 'avg', avg(st)), tdM = el('td', 'miss', missText(st));
+      days.forEach(function (d, j) {
+        var td = el('td');
+        (byDay[d] || []).forEach(function (i) {
+          var c = st.cells[i], t = D.tests[i];
+          if (c.grade) td.appendChild(el('span', 'tm', c.grade)).title = (t.titles.uk || t.titles.en) + (c.score != null ? ' · ' + c.score + ' / ' + c.max : '');
+          else if (c.score != null) td.appendChild(el('span', 'tm sug', c.suggest ? String(c.suggest) : c.score + '/' + c.max)).title = (t.titles.uk || t.titles.en) + ' · ' + c.score + ' / ' + c.max + ' (оцінку ще не поставлено)';
+        });
+        (hwDay[d] || []).forEach(function (h) {
+          var x = ((D.hw.marks[st.id] || {})[h.id]) || {};
+          if (x.grade) td.appendChild(el('span', 'tm', x.grade)).title = 'Д/з: ' + h.title;
+          else if (x.status === 'submitted') td.appendChild(el('span', 'tm sug', '✓')).title = 'Д/з здано, ще не перевірено: ' + h.title;
+        });
+        var m = (st.days || {})[d] || {}, inp = el('input', 'g' + (isAbs(m.grade) ? ' abs' : '')); inp.value = m.grade || ''; inp.maxLength = 12;
+        inp.setAttribute('aria-label', st.name + ', ' + dayLabel(d));
+        inp.onchange = function () { saveDay(st, d, inp, tdA, tdM); };
+        inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); var next = body.rows[tr.rowIndex] && body.rows[tr.rowIndex].cells[j + 1].querySelector('input'); if (next) next.focus(); } };
+        td.appendChild(document.createElement('br')); td.appendChild(inp); tr.appendChild(td);
+      });
+      tr.appendChild(tdM); tr.appendChild(tdA); body.appendChild(tr);
+    });
+  }
+  function isAbs(g) { return g === 'н' || g === 'нп'; }
+  function missText(st) {
+    var n = 0, np = 0; Object.keys(st.days || {}).forEach(function (d) { var g = st.days[d].grade; if (g === 'н') n++; else if (g === 'нп') np++; });
+    return n || np ? [n ? 'н ' + n : '', np ? 'нп ' + np : ''].filter(Boolean).join(' · ') : '';
+  }
+  function saveTopic(d, inp) {
+    inp.classList.remove('saved', 'bad');
+    return T($('subj').value, 'setDayTopic', D.cls, D.group || 0, d, inp.value).then(function (r) {
+      D.topics = D.topics || {}; if (r.topic) D.topics[d] = r.topic; else delete D.topics[d];
+      inp.value = r.topic; inp.title = r.topic || 'Тема уроку'; $('status').textContent = 'Збережено ✓';
+    }, function (e) { inp.classList.add('bad'); $('status').textContent = msg(e); });
+  }
+  function saveDay(st, d, inp, tdA, tdM) {
+    var v = inp.value.trim(), m = (st.days || {})[d] || {};
+    inp.classList.remove('saved', 'bad');
+    return T($('subj').value, 'setDayMark', st.id, d, v, m.note || '').then(function (r) {
+      st.days = st.days || {}; if (r.grade || r.note) st.days[d] = { grade: r.grade, note: r.note }; else delete st.days[d];
+      inp.value = r.grade; inp.classList.add('saved'); inp.classList.toggle('abs', isAbs(r.grade)); tdA.textContent = avg(st); if (tdM) tdM.textContent = missText(st); $('status').textContent = 'Збережено ✓';
+    }, function (e) { inp.classList.add('bad'); $('status').textContent = msg(e); if (e.status === 401) location.href = '/login?next=/app/grades'; });
+  }
+
+  // ---------- the period marks: «тематичні», semesters, the year (set by the teacher; the average is only a hint) ----------
+  var THEMES = [];
+  /** The school year now: from 1 September. Semester 1 — September to December, semester 2 — January to June. */
+  function periodsNow() {
+    var n = new Date(), y = n.getMonth() >= 7 ? n.getFullYear() : n.getFullYear() - 1;
+    return { sem1: [new Date(y, 8, 1).getTime(), new Date(y + 1, 0, 1).getTime()], sem2: [new Date(y + 1, 0, 1).getTime(), new Date(y + 1, 6, 1).getTime()] };
+  }
+  /** Every numeric mark of a student with its time: tests (on the test's day), lessons, homework (on the due day). */
+  function dated(st) {
+    var out = [];
+    st.cells.forEach(function (c, i) { if (/^\d+$/.test(c.grade)) out.push([D.tests[i].at, Number(c.grade)]); });
+    Object.keys(st.days || {}).forEach(function (d) { var g = st.days[d].grade, p = d.split('-'); if (/^\d+$/.test(g)) out.push([new Date(+p[0], +p[1] - 1, +p[2]).getTime(), Number(g)]); });
+    var hm = (D.hw && D.hw.marks[st.id]) || {};
+    ((D.hw && D.hw.tasks) || []).forEach(function (h) { var x = hm[h.id]; if (x && /^\d+$/.test(x.grade)) out.push([h.due, Number(x.grade)]); });
+    return out;
+  }
+  function mean(a) { return a.length ? Math.round(a.reduce(function (s, x) { return s + x; }, 0) / a.length) : null; }
+  function hint(st, p) {
+    if (p === 'year') { var a = Number(st.finals.sem1), b = Number(st.finals.sem2); if (a && b) return Math.round((a + b) / 2); return mean(dated(st).map(function (x) { return x[1]; })); }
+    var r = periodsNow()[p]; if (!r) return null;
+    return mean(dated(st).filter(function (x) { return x[0] >= r[0] && x[0] < r[1]; }).map(function (x) { return x[1]; }));
+  }
+  var PER = { sem1: 'І семестр', sem2: 'ІІ семестр', year: 'Річна' };
+  function renderFinal() {
+    $('title').textContent = (D.subject.name.uk || D.subject.name.en) + ' · ' + D.cls + (D.group ? ' · група ' + D.group : '') + ' · підсумкові';
+    (D.themes || []).forEach(function (t) { if (THEMES.indexOf(t) < 0) THEMES.push(t); });
+    var cols = THEMES.concat(['sem1', 'sem2', 'year']);
+    var head = $('head'); head.textContent = ''; var hr = el('tr'); hr.appendChild(el('th', null, 'Учень')); hr.appendChild(el('th', null, 'Середня'));
+    cols.forEach(function (p) {
+      var th = el('th', 'fcol', p.indexOf('th:') === 0 ? '📘 ' + p.slice(3) : PER[p]);
+      if (p.indexOf('th:') === 0) { var rn = el('button', null, '✎'); rn.type = 'button'; rn.title = 'Перейменувати'; rn.className = 'noprint'; rn.onclick = function () { renameTheme(p); }; th.appendChild(rn); }
+      hr.appendChild(th);
+    });
+    hr.appendChild(el('th', null, 'Пропуски')); head.appendChild(hr);
+    var body = $('body'); body.textContent = '';
+    D.students.forEach(function (st) {
+      var tr = el('tr'); tr.appendChild(nameCell(st)); tr.appendChild(el('td', 'avg', avg(st)));
+      cols.forEach(function (p) {
+        var td = el('td'), inp = el('input', 'g'); inp.value = (st.finals || {})[p] || ''; inp.maxLength = 12;
+        var h = p.indexOf('th:') === 0 ? null : hint(st, p); if (h) { inp.placeholder = String(h); inp.title = 'Підказка: ' + h + ' (середня). Оцінку ставите ви.'; }
+        inp.setAttribute('aria-label', st.name + ', ' + (PER[p] || p.slice(3)));
+        inp.onchange = function () { saveFinal(st, p, inp); };
+        td.appendChild(inp); tr.appendChild(td);
+      });
+      tr.appendChild(el('td', 'miss', missText(st))); body.appendChild(tr);
+    });
+  }
+  function saveFinal(st, p, inp) {
+    inp.classList.remove('saved', 'bad');
+    return T($('subj').value, 'setFinalMark', st.id, p, inp.value.trim()).then(function (r) {
+      st.finals = st.finals || {}; if (r.grade) st.finals[p] = r.grade; else delete st.finals[p];
+      inp.value = r.grade; inp.classList.add('saved'); $('status').textContent = 'Збережено ✓';
+      if (p === 'sem1' || p === 'sem2') renderFinal();
+    }, function (e) { inp.classList.add('bad'); $('status').textContent = msg(e); if (e.status === 401) location.href = '/login?next=/app/grades'; });
+  }
+  $('addTheme').onclick = function () {
+    var n = (prompt('Назва теми (наприклад, «Тема 2. Дроби»):') || '').replace(/\s+/g, ' ').trim().slice(0, 60); if (!n) return;
+    if (THEMES.indexOf('th:' + n) < 0) THEMES.push('th:' + n); renderFinal();
+  };
+  function renameTheme(p) {
+    var n = (prompt('Нова назва теми:', p.slice(3)) || '').replace(/\s+/g, ' ').trim().slice(0, 60); if (!n || 'th:' + n === p) return;
+    var has = D.students.some(function (st) { return st.finals && st.finals[p]; });
+    (has ? T($('subj').value, 'renameTheme', D.cls, D.group || 0, p, 'th:' + n) : Promise.resolve()).then(function () {
+      THEMES[THEMES.indexOf(p)] = 'th:' + n; D.themes = (D.themes || []).filter(function (t) { return t !== p; });
+      D.students.forEach(function (st) { if (st.finals && st.finals[p]) { st.finals['th:' + n] = st.finals[p]; delete st.finals[p]; } });
+      renderFinal();
+    }, function (e) { $('status').textContent = msg(e); });
+  }
+
+  // ---------- a student's report: every subject, and the topics not understood yet ----------
+  /** Formulas in a question as plain text: $7 \\times 8$ → 7 × 8, \\frac{6}{9} → 6/9. */
+  function plainMath(x) {
+    return String(x).replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)').replace(/\\(times|cdot)/g, '×').replace(/\\div/g, '÷').replace(/\\sqrt\{([^{}]*)\}/g, '√($1)')
+      .replace(/\\(le|leq)\b/g, '≤').replace(/\\(ge|geq)\b/g, '≥').replace(/\\pi\b/g, 'π').replace(/\^\{([^{}]*)\}/g, '^$1').replace(/\\[a-zA-Z]+/g, '').replace(/[{}$]/g, '').replace(/\(([\w.]+)\)\/\(([\w.]+)\)/g, '$1/$2');
+  }
+  var LEVEL = { excellent: 'відмінно', good: 'добре', fair: 'задовільно', weak: 'потребує уваги' };
+  var TREND = { up: '📈 покращується', down: '📉 погіршується', flat: '➡️ стабільно' };
+  function report(st) {
+    $('repTitle').textContent = '📊 ' + st.name; $('repSub').textContent = 'Завантаження…'; $('repBody').textContent = '';
+    $('repDlg').showModal();
+    T($('subj').value, 'studentReport', st.id).then(function (r) {
+      $('repSub').textContent = r.student.cls + ' · звіт від ' + new Date(r.made).toLocaleDateString('uk-UA') + ' · за зданими тестами вчителів школи та оцінками';
+      var box = $('repBody');
+      if (!r.subjects.length) { box.appendChild(el('p', 'muted', 'Учень ще не здав жодного тесту.')); return; }
+      var weakAll = [];
+      r.subjects.forEach(function (s) { s.weak.forEach(function (w) { weakAll.push(s.icon + ' ' + w.title); }); });
+      var sum = el('p'); sum.style.margin = '0 0 8px';
+      sum.textContent = weakAll.length ? 'Незрозумілі теми (менше 60 %): ' + weakAll.slice(0, 6).join('; ') + (weakAll.length > 6 ? '…' : '') + '.' : 'Слабких тем не знайдено: усі здані тести — від 60 %.';
+      box.appendChild(sum);
+      r.subjects.forEach(function (s) {
+        var d = el('div', 'rep-s');
+        d.appendChild(el('h3', null, s.icon + ' ' + (s.name.uk || s.name.en)));
+        var line = [];
+        if (s.pct != null) line.push(s.pct + ' % балів (' + LEVEL[s.level] + ')');
+        line.push('тестів: ' + s.tests);
+        if (s.avgMark != null) line.push('середня оцінка: ' + s.avgMark);
+        if (s.hw && s.hw.given) line.push('д/з здано: ' + s.hw.done + ' з ' + s.hw.given);
+        if (s.absent && (s.absent.n || s.absent.np)) line.push('пропуски: ' + [s.absent.n ? 'н ' + s.absent.n : '', s.absent.np ? 'нп ' + s.absent.np : ''].filter(Boolean).join(', '));
+        if (s.trend) line.push(TREND[s.trend]);
+        d.appendChild(el('div', 'muted', line.join(' · ')));
+        if (s.pct != null) { var bar = el('div', 'rep-bar'), i = el('i', s.pct < 50 ? 'low' : s.pct < 70 ? 'mid' : ''); i.style.width = s.pct + '%'; bar.appendChild(i); d.appendChild(bar); }
+        if (s.weak.length) {
+          d.appendChild(el('b', null, 'Що варто повторити:'));
+          var ul = el('ul', 'rep-w');
+          s.weak.forEach(function (w) {
+            var li = el('li'); li.appendChild(el('b', null, w.title)); li.appendChild(document.createTextNode(' — ' + w.pct + ' %, помилок: ' + w.wrong));
+            if (w.parts.length) li.appendChild(el('div', 'ex', 'Найслабше: ' + w.parts.map(function (p) { return p.title + ' (' + p.pct + ' %)'; }).join('; ')));
+            w.examples.forEach(function (x) { li.appendChild(el('div', 'ex', '✗ ' + plainMath(x))); });
+            ul.appendChild(li);
+          });
+          d.appendChild(ul);
+        } else if (s.tests) d.appendChild(el('div', null, '✓ Тем нижче 60 % немає.'));
+        box.appendChild(d);
+      });
+    }, function (e) { $('repSub').textContent = msg(e); });
+  }
+  $('repClose').onclick = function () { $('repDlg').close(); };
+  $('repPrint').onclick = function () { document.body.classList.add('print-rep'); window.print(); setTimeout(function () { document.body.classList.remove('print-rep'); }, 500); };
+
+  $('fillBtn').onclick = function () {
+    if (!D) return; var jobs = [];
+    D.students.forEach(function (st) {
+      var tdA = st.cells.length ? st.cells[0].input.parentNode.parentNode.lastChild : null;
+      st.cells.forEach(function (c, i) { if (!c.grade && c.suggest) { c.input.value = String(c.suggest); jobs.push(function () { return save(st, i, c.input, tdA); }); } });
+    });
+    if (!jobs.length) { $('status').textContent = 'Немає порожніх клітинок зі зданими тестами.'; return; }
+    if (!confirm('Поставити оцінки за балами в ' + jobs.length + ' порожніх клітинок?')) { render(); return; }
+    jobs.reduce(function (p, f) { return p.then(f); }, Promise.resolve()).then(function () { $('status').textContent = 'Заповнено: ' + jobs.length + ' ✓'; });
+  };
+  $('printBtn').onclick = function () { window.print(); };
+})();
+</script>
+</body>
+</html>

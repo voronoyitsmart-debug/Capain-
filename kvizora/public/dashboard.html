@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Предмети — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<script src="/js/nav.js"></script>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span id="appName">Kvizora</span><small id="who"></small></h1>
+  <div class="langtog"><button id="lang-uk">УКР</button><button id="lang-en">EN</button></div>
+</div></header>
+<div id="nav"></div>
+<main>
+  <section data-page="tests">
+    <h2 id="pick" style="margin:8px 0 14px">Оберіть предмет</h2>
+    <div class="subjects" id="subjects"></div>
+    <details class="info" style="margin-top:14px"><summary id="howShort">ℹ️ Як учні заходять у тест</summary><p id="howText" style="margin:4px 0 0"></p></details>
+  </section>
+
+  <section data-page="settings" hidden>
+  <div class="card">
+    <h2 id="studentsTitle">Як учні відкривають тест</h2>
+    <p style="margin:0 0 6px"><b id="pubLab">🌍 Адреса Kvizora (працює звідусіль)</b></p>
+    <div class="linkbox"><code id="pubUrl">…</code><button class="btn" id="copyPub" type="button">Копіювати</button></div>
+    <p style="margin:16px 0 6px"><b id="lanLab">🏫 Усередині школи (той самий Wi-Fi) — запасна адреса</b></p>
+    <div class="linkbox"><code id="lanUrl">…</code><button class="btn" id="copyLan" type="button">Копіювати</button></div>
+    <p class="muted" id="studentsText" style="margin-bottom:0"></p>
+  </div>
+
+  <details class="card" id="clsCard" open>
+    <summary style="cursor:pointer;font-weight:700">🏫 Класи школи</summary>
+    <p class="muted" style="font-size:13px">Додайте клас, якого ще немає: він з’явиться у виборі класів для тестів. Учнів до класу додає адміністратор школи. Видалити можна лише доданий вами клас, поки в ньому немає учнів.</p>
+    <form id="clsForm" class="row"><input id="clsName" class="grow" maxlength="40" placeholder="Наприклад, 9-А" aria-label="Назва класу"><button class="btn" type="submit">＋ Додати клас</button></form>
+    <div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><tbody id="clsBody"></tbody></table></div>
+    <div class="err" id="clsErr"></div>
+  </details>
+
+  <details class="card">
+    <summary id="pwTitle" style="cursor:pointer;font-weight:700">Змінити пароль</summary>
+    <form id="pwForm" style="max-width:380px">
+      <label for="pwOld" id="pwOldLab">Поточний пароль</label><input id="pwOld" type="password" autocomplete="current-password">
+      <label for="pwNew" id="pwNewLab">Новий пароль (щонайменше 8 символів)</label><input id="pwNew" type="password" autocomplete="new-password" minlength="8">
+      <button class="btn solid" style="margin-top:12px" id="pwSave" type="submit">Зберегти</button>
+      <div class="err" id="pwMsg"></div>
+    </form>
+  </details>
+
+  <details class="card" id="dataCard">
+    <summary style="cursor:pointer;font-weight:700">🔎 Дані учня (запит учня чи батьків)</summary>
+    <p class="muted" style="font-size:13px">Знайдіть учня в усіх своїх тестах: завантажте його дані (CSV), виправте ім’я або видаліть усі його роботи. Відповісти на запит треба протягом 30 днів.</p>
+    <form id="dsForm" class="row"><input id="dsQ" class="grow" maxlength="80" placeholder="Прізвище або ім’я" aria-label="Ім’я учня"><button class="btn" type="submit">Знайти</button></form>
+    <div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><tbody id="dsBody"></tbody></table></div>
+    <div class="err" id="dsErr"></div>
+  </details>
+
+  <details class="card">
+    <summary style="cursor:pointer;font-weight:700">🗂 Мої дані</summary>
+    <p style="margin:8px 0"><a class="btn" href="/account/data.json" download>⬇ Завантажити всі мої дані (JSON)</a></p>
+    <p class="muted" style="font-size:13px">Тести, результати, оцінки й журнал дій вашого акаунта.</p>
+    <form id="delForm" style="max-width:380px;margin-top:14px">
+      <b>Видалити мій акаунт</b>
+      <p class="muted" style="font-size:13px;margin:4px 0">Буде видалено акаунт і все в ньому: тести, роботи учнів, оцінки. Скасувати не можна.</p>
+      <label for="delPw">Пароль для підтвердження</label><input id="delPw" type="password" autocomplete="current-password">
+      <button class="btn danger" style="margin-top:10px" type="submit">Видалити акаунт назавжди</button>
+      <div class="err" id="delErr"></div>
+    </form>
+  </details>
+  </section>
+</main>
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function msg(e) { var m = String(e && e.message || e), i = m.indexOf('USER:'); return (i >= 0 ? m.slice(i + 5) : m).replace(/\s*\[#[a-z_]+\]\s*$/, '').trim(); }
+  function D(fn) { return window.api('/api/data/' + fn, { args: Array.prototype.slice.call(arguments, 1) }); }
+  function btn(t, cls, f) { var b = el('button', 'btn sm ' + (cls || ''), t); b.type = 'button'; b.onclick = f; return b; }
+  function find() {
+    $('dsErr').textContent = '';
+    D('findStudent', $('dsQ').value).then(function (r) {
+      var tb = $('dsBody'); tb.textContent = '';
+      if (!r.people.length) { var tr0 = el('tr'), td0 = el('td', 'muted', 'Нікого не знайдено.'); tr0.appendChild(td0); tb.appendChild(tr0); }
+      r.people.forEach(function (p) {
+        var tr = el('tr'), tn = el('td'); tn.appendChild(el('b', null, p.name)); tn.appendChild(el('span', 'muted', ' ' + (p.group || '') + ' · робіт: ' + p.attempts + (p.account ? ' · акаунт' : ''))); tr.appendChild(tn);
+        var a = el('td', 'acts');
+        a.appendChild(btn('⬇ CSV', '', function () { D('exportStudent', p.key).then(function (x) { var l = el('a'); l.href = URL.createObjectURL(new Blob([x.csv], { type: 'text/csv' })); l.download = x.name; document.body.appendChild(l); l.click(); setTimeout(function () { l.remove(); }, 500); }, function (e) { $('dsErr').textContent = msg(e); }); }));
+        if (!p.account) a.appendChild(btn('Виправити ім’я', '', function () { var n = prompt('Правильне ім’я', p.name); if (n && n.trim() !== p.name) D('renameStudent', p.key, n).then(find, function (e) { $('dsErr').textContent = msg(e); }); }));
+        a.appendChild(btn('Видалити роботи', 'danger', function () { if (confirm('Видалити всі роботи «' + p.name + '» у ваших тестах (' + p.attempts + ')? Скасувати не можна.')) D('deleteStudent', p.key).then(find, function (e) { $('dsErr').textContent = msg(e); }); }));
+        tr.appendChild(a); tb.appendChild(tr);
+      });
+    }, function (e) { $('dsErr').textContent = msg(e); });
+  }
+  $('dsForm').addEventListener('submit', function (e) { e.preventDefault(); find(); });
+  function C(fn) { return window.api('/api/classes/' + fn, { args: Array.prototype.slice.call(arguments, 1) }); }
+  function showClasses(r) {
+    var tb = $('clsBody'); tb.textContent = ''; $('clsErr').textContent = '';
+    if (!r.classes.length) { var tr0 = el('tr'); tr0.appendChild(el('td', 'muted', 'Класів ще немає.')); tb.appendChild(tr0); }
+    r.classes.forEach(function (c) {
+      var tr = el('tr'), tn = el('td'); tn.appendChild(el('b', null, c.name)); tn.appendChild(el('span', 'muted', ' · учнів: ' + c.students + (c.mine ? ' · додали ви' : ''))); tr.appendChild(tn);
+      var a = el('td', 'acts');
+      if (c.mine && !c.students) a.appendChild(btn('Видалити', 'danger', function () { if (confirm('Видалити клас «' + c.name + '»?')) C('deleteMyClass', c.name).then(showClasses, function (e) { $('clsErr').textContent = msg(e); }); }));
+      tr.appendChild(a); tb.appendChild(tr);
+    });
+  }
+  // /app = the subjects; /app/settings = classes, password, data (the same page, the other half shown)
+  var SETTINGS = location.pathname === '/app/settings';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-page]'), function (s) { s.hidden = (s.getAttribute('data-page') === 'settings') !== SETTINGS; });
+  function loadClasses() { C('myClasses').then(showClasses, function (e) { $('clsErr').textContent = msg(e); }); }
+  $('clsCard').addEventListener('toggle', function () { if ($('clsCard').open) loadClasses(); });
+  if (SETTINGS) loadClasses();
+  $('clsForm').addEventListener('submit', function (e) { e.preventDefault(); C('addMyClass', $('clsName').value).then(function (r) { $('clsName').value = ''; showClasses(r); }, function (e) { $('clsErr').textContent = msg(e); }); });
+  $('delForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('delErr').textContent = '';
+    if (!confirm('Видалити ваш акаунт і всі ваші тести та результати назавжди?')) return;
+    window.api('/api/me/delete', { password: $('delPw').value }).then(function (r) { location.href = r.next || '/login'; }, function (e) { $('delErr').textContent = msg(e); });
+  });
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var T = {
+    uk: { app: 'Kvizora', pick: 'Оберіть предмет', logout: 'Вийти', tests: 'тестів', open: 'відкрито: {n}', sub: 'надіслано робіт: {n}',
+      students: 'Як учні відкривають тест', copy: 'Копіювати', copied: 'Скопійовано!',
+      students_text: 'Учень відкриває адресу й входить зі свого акаунта (логін і пароль дає адміністратор). Одразу після входу він бачить відкриті тести свого класу — тобто ті, у яких у полі «Клас» стоїть його клас. Також можна дати код або QR (кнопка «📺 Код на екран»): після входу учень одразу потрапляє в тест.',
+      pub: '🌍 Адреса Kvizora (працює звідусіль)', lan: '🏫 Усередині школи (той самий Wi-Fi) — запасна адреса', no_pub: 'інтернет-адреса ще не готова або вимкнена — зверніться до адміністратора',
+      pw: 'Змінити пароль', pw_old: 'Поточний пароль', pw_new: 'Новий пароль (щонайменше 8 символів)', save: 'Зберегти', saved: 'Пароль змінено.', mode_tr: 'тест англійською, переклад за потреби', mode_sw: 'УКР / EN', how: 'ℹ️ Як учні заходять у тест', how_text: 'Учень входить зі свого акаунта й одразу бачить відкриті тести свого класу. Можна також показати код або QR (кнопка «📺 Код на екран» біля тесту). Адреса Kvizora — у «⚙️ Налаштування».', settings: 'Налаштування' },
+    en: { app: 'Kvizora', pick: 'Choose a subject', logout: 'Log out', tests: 'tests', open: 'open: {n}', sub: 'submitted: {n}',
+      students: 'How students open a test', copy: 'Copy', copied: 'Copied!',
+      students_text: 'A student opens the address and logs in with their own account (the administrator gives the login and password). Right after logging in they see the open tests of their class — the tests whose “Class” field is their class. You can also give the code or QR (“📺 Show code”): after logging in the student goes straight into the test.',
+      pub: '🌍 Kvizora address (works from anywhere)', lan: '🏫 Inside the school (same Wi-Fi) — spare address', no_pub: 'the internet address is not ready yet or turned off — ask the administrator',
+      pw: 'Change password', pw_old: 'Current password', pw_new: 'New password (at least 8 characters)', save: 'Save', saved: 'Password changed.', mode_tr: 'English test, translation on request', mode_sw: 'УКР / EN', how: 'ℹ️ How students open a test', how_text: 'A student logs in with their own account and sees the open tests of their class at once. You can also show the code or QR (“📺 Show code” next to the test). The Kvizora address is in “⚙️ Settings”.', settings: 'Settings' }
+  };
+  var LANG = (function () { try { return localStorage.getItem('revtest-lang') === 'en' ? 'en' : 'uk'; } catch (e) { return 'uk'; } })();
+  var D = null;
+  function $(id) { return document.getElementById(id); }
+  function t(k, v) { var s = T[LANG][k] || k; if (v) Object.keys(v).forEach(function (x) { s = s.replace('{' + x + '}', v[x]); }); return s; }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function paint() {
+    document.documentElement.lang = LANG;
+    $('lang-uk').classList.toggle('on', LANG === 'uk'); $('lang-en').classList.toggle('on', LANG === 'en');
+    $('appName').textContent = location.pathname === '/app/settings' ? '⚙️ ' + t('settings') : t('app'); $('pick').textContent = t('pick'); $('howShort').textContent = t('how'); $('howText').textContent = t('how_text');
+    if (window.KvNav) window.KvNav.rebuild();
+    $('studentsTitle').textContent = t('students'); $('copyPub').textContent = t('copy'); $('copyLan').textContent = t('copy');
+    $('pubLab').textContent = t('pub'); $('lanLab').textContent = t('lan'); $('studentsText').textContent = t('students_text');
+    $('pwTitle').textContent = t('pw'); $('pwOldLab').textContent = t('pw_old'); $('pwNewLab').textContent = t('pw_new'); $('pwSave').textContent = t('save');
+    if (!D) return;
+    $('who').textContent = D.teacher.name + ' · ' + D.teacher.email + (D.teacher.school ? ' · ' + D.teacher.school : '');
+    $('pubUrl').textContent = D.publicUrl || t('no_pub'); $('copyPub').classList.toggle('hidden', !D.publicUrl);
+    $('lanUrl').textContent = D.lanUrl;
+    var box = $('subjects'); box.textContent = '';
+    D.subjects.forEach(function (s) {
+      var a = el('a', 'subj'); a.href = '/app/' + encodeURIComponent(s.key);
+      a.appendChild(el('div', 'ic', s.icon));
+      a.appendChild(el('b', null, s.name[LANG] || s.name.uk));
+      a.appendChild(el('div', 'meta', s.tests + ' ' + t('tests') + ' · ' + t('sub', { n: s.submitted })));
+      if (s.open) a.appendChild(el('span', 'open', t('open', { n: s.open })));
+      box.appendChild(a);
+    });
+  }
+  function setLang(l) { LANG = l; try { localStorage.setItem('revtest-lang', l); } catch (e) {} paint(); }
+  $('lang-uk').onclick = function () { setLang('uk'); }; $('lang-en').onclick = function () { setLang('en'); };
+  function copier(btn, get) {
+    btn.onclick = function () {
+      var v = get(); if (!v) return;
+      try { navigator.clipboard.writeText(v).then(function () { btn.textContent = t('copied'); setTimeout(paint, 1500); }); } catch (e) { prompt('', v); }
+    };
+  }
+  copier($('copyPub'), function () { return D && D.publicUrl; });
+  copier($('copyLan'), function () { return D && D.lanUrl; });
+  // the internet address appears a few seconds after the server starts
+  var polls = 0;
+  var poll = setInterval(function () { if (++polls > 36) return clearInterval(poll); if (D && !D.publicUrl && !document.hidden) window.api('/api/dashboard').then(function (d) { if (d.publicUrl) { D = d; paint(); } }, function () {}); }, 5000);
+  $('pwForm').addEventListener('submit', function (e) {
+    e.preventDefault(); var m = $('pwMsg'); m.style.color = ''; m.textContent = '';
+    window.api('/api/auth/password', { old: $('pwOld').value, password: $('pwNew').value }).then(function () {
+      m.style.color = 'var(--ok)'; m.textContent = t('saved'); $('pwOld').value = ''; $('pwNew').value = '';
+    }).catch(function (err) {
+      var s = String(err.message || err), c = /\[#([a-z_]+)\]/.exec(s), i = s.indexOf('USER:');
+      var UK = { pw_old: 'Поточний пароль невірний.', su_pw: 'Пароль — щонайменше 8 символів.', pw_weak: 'Пароль занадто простий. Оберіть інший.', pw_same: 'Новий пароль має відрізнятися від поточного.', rate: 'Забагато спроб. Зачекайте хвилину.' };
+      m.textContent = (LANG === 'uk' && c && UK[c[1]]) || (i >= 0 ? s.slice(i + 5).replace(/\s*\[#[a-z_]+\]\s*$/, '') : s);
+    });
+  });
+  paint();
+  window.api('/api/dashboard').then(function (d) { D = d; paint(); }).catch(function (err) { if (err.status === 401) location.href = '/login'; else if (err.status === 403) location.href = '/password'; });
+})();
+</script>
+</body>
+</html>

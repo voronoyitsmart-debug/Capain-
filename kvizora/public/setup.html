@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Перше налаштування — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+</head>
+<body>
+<header><div class="wrap"><h1>Kvizora<small>Перше налаштування</small></h1></div></header>
+<main>
+  <div class="card auth">
+    <h2>Створіть акаунт адміністратора</h2>
+    <p class="muted" style="font-size:14px;margin-top:0">Це робиться один раз. Адміністратор створює акаунти вчителів і учнів, класи, і сам теж може вести тести як учитель. Самостійної реєстрації в застосунку немає.</p>
+    <div id="remote" class="err hidden">Першого адміністратора можна створити лише на комп’ютері, де запущено сервер (адреса http://localhost:3000/setup), або в мережі школи.</div>
+    <form id="form" autocomplete="on">
+      <label for="school">Назва школи</label><input id="school" maxlength="100" required placeholder="напр. Ліцей № 5, м. Київ">
+      <p class="muted" style="font-size:13px;margin:4px 0 0">Інші школи можна додати потім в адмін-панелі.</p>
+      <label for="name">Ім’я та прізвище</label><input id="name" autocomplete="name" maxlength="80" required>
+      <label for="email">E-mail (це ваш логін)</label><input id="email" type="email" autocomplete="username" maxlength="120" required>
+      <label for="password">Пароль (щонайменше 8 символів)</label><input id="password" type="password" autocomplete="new-password" minlength="8" maxlength="200" required>
+      <label for="password2">Повторіть пароль</label><input id="password2" type="password" autocomplete="new-password" maxlength="200" required>
+      <div id="terms" class="terms">
+        <label class="consent"><input type="checkbox" id="t1"><span>Мені виповнилося 18 років. Я приймаю <a href="/legal/terms" target="_blank">Умови використання</a> та ознайомився(-лась) з <a href="/legal/privacy" target="_blank">Політикою конфіденційності</a>.</span></label>
+        <label class="consent"><input type="checkbox" id="t2"><span>Я використовую Kvizora від імені закладу освіти, який поінформував учнів і батьків про обробку їхніх даних, або беру цю відповідальність на себе.</span></label>
+      </div>
+      <button class="btn solid wide" id="go" type="submit">Створити адміністратора</button>
+      <div class="err" id="err" role="alert"></div>
+    </form>
+  </div>
+</main>
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var LOCAL = '__LOCAL__' === '1';
+  if (!LOCAL) { $('remote').classList.remove('hidden'); $('form').classList.add('hidden'); }
+  var E = { su_pw: 'Пароль — щонайменше 8 символів.', pw_weak: 'Пароль занадто простий. Оберіть інший.', su_email: 'Введіть правильний e-mail.', su_name: 'Введіть своє ім’я.', sc_name: 'Введіть назву школи.',
+    setup_local: 'Лише на комп’ютері-сервері або в мережі школи.', setup_done: 'Адміністратор уже є. Увійдіть.', rate: 'Забагато спроб. Зачекайте.' };
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault(); $('err').textContent = '';
+    if ($('password').value !== $('password2').value) { $('err').textContent = 'Паролі не збігаються.'; return; }
+    if (!($('t1').checked && $('t2').checked)) { $('err').textContent = 'Позначте обидві галочки.'; return; }
+    var b = $('go'); b.disabled = true;
+    window.api('/api/setup', { school: $('school').value.trim(), name: $('name').value.trim(), email: $('email').value.trim(), password: $('password').value, terms: $('t1').checked, schoolOk: $('t2').checked })
+      .then(function (r) { location.href = r.next || '/admin'; })
+      .catch(function (err) {
+        b.disabled = false; var m = String(err.message), c = /\[#([a-z_]+)\]/.exec(m);
+        $('err').textContent = (c && E[c[1]]) || m.replace(/^USER:\s*/, '').replace(/\s*\[#[a-z_]+\]\s*$/, '');
+        if (c && c[1] === 'setup_done') setTimeout(function () { location.href = '/login'; }, 1500);
+      });
+  });
+})();
+</script>
+</body>
+</html>

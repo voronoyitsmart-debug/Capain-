@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Адмін-панель — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<script src="/js/nav.js" data-active="admin"></script>
+<style>
+  body.printing main > *:not(#slipsCard) { display: none !important; }
+  body.printing #slipsCard .noprint { display: none !important; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span>Адмін-панель</span><small id="who"></small></h1>
+</div></header>
+<div id="nav"></div>
+<main>
+  <div class="card noprint" style="padding:12px 16px"><div class="row">
+    <label for="school" style="margin:0">🏫 Школа</label><select id="school" class="grow" style="max-width:420px"></select>
+    <span class="muted" style="font-size:13px">Класи, учні й нові акаунти — у вибраній школі.</span></div></div>
+  <div class="navtabs" id="tabs">
+    <button data-tab="schools">🏫 Школи</button><button data-tab="students" class="on">👩‍🎓 Учні</button><button data-tab="classes">🏫 Класи</button><button data-tab="teachers">🧑‍🏫 Учителі</button><button data-tab="audit" class="ownerOnly">📜 Журнал</button><button data-tab="privacy">⚖️ Дані й право</button>
+  </div>
+  <div class="card hidden" id="legalBanner" style="background:#fff4d6;border-color:#e8c766"><b>⚠️ Заповніть реквізити перед роботою з учнями.</b> <span id="legalBannerText"></span> <button class="btn sm" type="button" id="legalBannerGo">Заповнити</button></div>
+
+  <div class="card hidden" id="slipsCard">
+    <div class="row noprint" style="margin-bottom:10px"><h2 class="grow" style="margin:0" id="slipsTitle">Нові паролі</h2>
+      <button class="btn solid sm" id="slipsPrint" type="button">🖨 Друкувати</button><button class="btn sm" id="slipsHide" type="button">Сховати</button></div>
+    <p class="muted noprint" style="font-size:13px;margin-top:0">Паролі показано <b>лише зараз</b> — роздрукуйте або перепишіть. Потім їх не видно нікому (зберігається лише хеш). Забули — «Скинути пароль».</p>
+    <div class="slips" id="slips"></div>
+  </div>
+
+  <!-- schools -->
+  <section id="tab-schools" class="hidden">
+    <div class="card">
+      <h2>Школи</h2>
+      <p class="muted" style="font-size:14px;margin-top:0">Кожен учень, учитель і клас належить одній школі. Учні бачать лише тести вчителів своєї школи; тест «🌍 Кожний бажаючий» учні школи бачать у «Моїх тестах», а за кодом його може пройти будь-хто, вписавши ім’я.</p>
+      <form class="row ownerOnly" id="scForm"><input class="grow" id="scName" placeholder="напр. Гімназія № 3" maxlength="100"><button class="btn solid" type="submit">Додати школу</button></form>
+      <div class="err" id="scErr"></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Школа</th><th>Класів</th><th>Учнів</th><th>Учителів</th><th></th></tr></thead><tbody id="scBody"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- students -->
+  <section id="tab-students">
+    <div class="card">
+      <div class="row"><h2 class="grow" style="margin:0">Учні <span class="muted" id="stCount" style="font-weight:400;font-size:14px"></span></h2>
+        <button class="btn solid" id="addStBtn" type="button">➕ Додати учнів</button></div>
+      <div class="chips" id="clsChips" style="margin:14px 0 10px"></div>
+      <input id="stSearch" placeholder="Пошук за ім’ям або логіном" maxlength="60">
+      <div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Учень</th><th>Логін</th><th>Клас</th><th>Група</th><th>Останній вхід</th><th></th></tr></thead><tbody id="stBody"></tbody></table></div>
+      <div class="err" id="stErr"></div>
+    </div>
+  </section>
+
+  <!-- classes -->
+  <section id="tab-classes" class="hidden">
+    <div class="card">
+      <h2>Класи школи</h2>
+      <p class="muted" style="font-size:14px;margin-top:0">Учень бачить тести, у яких учитель указав його клас. Назви «9-А», «9 А» і «9А» вважаються тим самим класом.</p>
+      <form class="row" id="clsForm"><input class="grow" id="clsName" placeholder="напр. 9-А" maxlength="40"><button class="btn solid" type="submit">Додати клас</button></form>
+      <div class="err" id="clsErr"></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Клас</th><th>Учнів</th><th>Предмети</th><th>Батьків поінформовано</th><th></th></tr></thead><tbody id="clsBody"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- teachers -->
+  <section id="tab-teachers" class="hidden">
+    <div class="card">
+      <h2>Новий учитель</h2>
+      <form class="row" id="teForm">
+        <input class="grow" id="teName" placeholder="Ім’я та прізвище" maxlength="80">
+        <input class="grow" id="teEmail" type="email" placeholder="E-mail (логін)" maxlength="120">
+        <select id="teSchool" style="width:auto"></select>
+        <select id="teRole" style="width:auto"><option value="teacher">Учитель</option><option value="admin">Адмін школи</option><option value="owner" class="ownerOnly">Власник (усі школи)</option></select>
+        <button class="btn solid" type="submit">Створити</button>
+      </form>
+      <p class="muted" style="font-size:13px;margin:8px 0 0">Учитель отримає тимчасовий пароль і при першому вході придумає власний.</p>
+      <div class="err" id="teErr"></div>
+    </div>
+    <div class="card">
+      <h2>Учителі та адміністратори</h2>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ім’я</th><th>E-mail</th><th>Школа</th><th>Роль</th><th>Тестів</th><th>Останній вхід</th><th></th></tr></thead><tbody id="teBody"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- audit -->
+  <section id="tab-privacy" class="hidden">
+    <div class="card">
+      <h2 style="margin-top:0">Реквізити закладу (вибрана школа)</h2>
+      <p class="muted" style="font-size:13px;margin-top:0">Заклад освіти — володілець даних учнів. Ці дані підставляються в <a href="/legal/privacy" target="_blank">Політику конфіденційності</a> і в підвал сторінок.</p>
+      <form id="infoForm">
+        <label for="iLegal">Повна назва закладу</label><input id="iLegal" maxlength="200">
+        <div class="row"><div class="grow"><label for="iEdrpou">Код ЄДРПОУ</label><input id="iEdrpou" maxlength="20"></div><div class="grow"><label for="iPhone">Телефон</label><input id="iPhone" maxlength="40"></div></div>
+        <label for="iAddr">Адреса</label><input id="iAddr" maxlength="200">
+        <div class="row"><div class="grow"><label for="iPerson">Відповідальна особа (ПІБ, посада)</label><input id="iPerson" maxlength="120"></div><div class="grow"><label for="iEmail">E-mail для запитів щодо даних</label><input id="iEmail" type="email" maxlength="120"></div></div>
+        <div class="row" style="margin-top:12px"><button class="btn solid" type="submit">Зберегти</button><span class="muted" id="infoMsg"></span></div>
+        <div class="err" id="infoErr"></div>
+      </form>
+    </div>
+    <div class="card" id="parCard">
+      <h2 style="margin-top:0">👪 Доступ батьків (вибрана школа)</h2>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="parOn" style="width:auto"> Батьки можуть переглядати дані своєї дитини за кодом</label>
+      <p class="muted" style="font-size:13px">Вмикайте лише після того, як батьків поінформовано. Видавайте код лише законному представнику учня після перевірки особи. Відкликайте код, якщо дитина змінила заклад, суд обмежив права одного з батьків або код втрачено.</p>
+      <p class="muted" style="font-size:13px;margin:0">Код видається у вкладці «Учні» → «👪 Код батькам». Батьки бачать лише оцінки, домашні завдання (без відповідей і фото), пропуски, оголошення класу і теми, які варто повторити. Код діє рік; у базі зберігається лише його хеш. <span id="parCount"></span></p>
+      <div class="err" id="parErr"></div>
+    </div>
+    <div class="card ownerOnly">
+      <h2 style="margin-top:0">Власник Kvizora (контакти розробника)</h2>
+      <form id="ownForm">
+        <label for="oName">ПІБ / назва власника (РНОКПП або ЄДРПОУ)</label><input id="oName" maxlength="200">
+        <div class="row"><div class="grow"><label for="oEmail">E-mail</label><input id="oEmail" type="email" maxlength="120"></div><div class="grow"><label for="oAddr">Адреса</label><input id="oAddr" maxlength="200"></div></div>
+        <h3 style="margin:18px 0 4px">Скільки зберігати дані</h3>
+        <div class="row"><div class="grow"><label for="kDev">Дані пристрою (IP, ідентифікатор браузера, відбиток), днів</label><input id="kDev" type="number" min="1" max="3650"></div>
+          <div class="grow"><label for="kAtt">Результати тестів, днів (0 — поки не видалить учитель чи адміністратор)</label><input id="kAtt" type="number" min="0" max="3650"></div></div>
+        <div class="row" style="margin-top:12px"><button class="btn solid" type="submit">Зберегти</button><span class="muted" id="ownMsg"></span></div>
+        <p class="muted" style="font-size:13px" id="lastClean"></p>
+        <div class="row"><button class="btn danger" type="button" id="purgeBtn">🧹 Очистити дані пристроїв зараз</button><span class="muted" style="font-size:13px">IP, ідентифікатори й відбитки всіх уже зданих тестів.</span></div>
+        <div class="err" id="ownErr"></div>
+      </form>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Документи</h2>
+      <p style="margin:0"><a href="/legal/privacy" target="_blank">Політика конфіденційності</a> · <a href="/legal/terms" target="_blank">Умови використання</a> · <a href="/legal/cookies" target="_blank">Cookie</a> · <a href="/legal/licenses" target="_blank">Ліцензії</a></p>
+      <p class="muted" style="font-size:13px">Бланки згоди для батьків і шаблон запиту на дані — у папці LEGAL архіву (consent-forms.md, data-requests.md). Запит батьків щодо учня з акаунтом: вкладка «Учні» → «⬇ Дані» або «Видалити». Щодо учня без акаунта — учитель: кабінет → «🔎 Дані учня».</p>
+    </div>
+  </section>
+
+  <section id="tab-audit" class="hidden">
+    <div class="card">
+      <h2>Журнал дій</h2>
+      <p class="muted" style="font-size:14px;margin-top:0">Входи (і невдалі спроби), зміни паролів, усе, що змінено в адмін-панелі. Останні 300 записів.</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Коли</th><th>Хто</th><th>Дія</th><th>Деталі</th><th>IP</th></tr></thead><tbody id="auBody"></tbody></table></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="addDlg">
+  <h2 style="margin-top:0">Додати учнів</h2>
+  <p class="muted" style="margin:0" id="addSchool"></p>
+  <label for="addCls">Клас</label><select id="addCls"></select>
+  <label for="addGrp">Група в класі</label><select id="addGrp"><option value="0">— увесь клас</option><option value="1">Група 1</option><option value="2">Група 2</option><option value="3">Група 3</option></select>
+  <label for="addNames">Імена — по одному в рядку (можна вставити список з Excel)</label>
+  <textarea id="addNames" placeholder="Петренко Іван&#10;Коваль Марія&#10;…"></textarea>
+  <p class="muted" style="font-size:13px">Логін утворюється з імені латиницею (напр. petrenko.ivan), пароль — випадковий.</p>
+  <div class="row" style="justify-content:flex-end"><button class="btn" id="addCancel" type="button">Скасувати</button><button class="btn solid" id="addGo" type="button">Створити акаунти</button></div>
+  <div class="err" id="addErr"></div>
+</dialog>
+
+<dialog id="subjDlg">
+  <h2 style="margin-top:0" id="subjTitle">Предмети класу</h2>
+  <p class="muted" style="font-size:13px;margin:0">Зніміть галочку — і учні цього класу не бачитимуть предмет у «Моїх тестах» і не зможуть відкрити його тести.</p>
+  <div id="subjBox" style="margin:10px 0"></div>
+  <div class="row" style="justify-content:flex-end"><button class="btn" id="subjCancel" type="button">Скасувати</button><button class="btn solid" id="subjSave" type="button">Зберегти</button></div>
+  <div class="err" id="subjErr"></div>
+</dialog>
+
+<dialog id="workDlg">
+  <h2 style="margin-top:0" id="workTitle">Роботи учня</h2>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Тест</th><th>Предмет</th><th>Учитель</th><th>Коли</th><th>Результат</th></tr></thead><tbody id="workBody"></tbody></table></div>
+  <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="workClose" type="button">Закрити</button></div>
+</dialog>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function A(fn) { return window.api('/api/admin/' + fn, { args: Array.prototype.slice.call(arguments, 1) }); }
+  function msg(e) { var m = String(e && e.message || e), i = m.indexOf('USER:'); return (i >= 0 ? m.slice(i + 5) : m).replace(/\s*\[#[a-z_]+\]\s*$/, '').trim(); }
+  function fail(box) { return function (e) { if (e.status === 401) { location.href = '/login?next=/admin'; return; } $(box).textContent = E[(/\[#([a-z_]+)\]/.exec(String(e.message)) || [])[1]] || msg(e); }; }
+  function btn(text, cls, fn) { var b = el('button', 'btn sm ' + (cls || ''), text); b.type = 'button'; b.onclick = fn; return b; }
+  function when(ms) { if (!ms) return '—'; var d = new Date(ms); return d.toLocaleDateString('uk-UA') + ' ' + d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }); }
+  var E = { parents_off: 'Спершу увімкніть доступ батьків для школи (вкладка «Дані й право»).', st_off: 'Акаунт учня вимкнено.',
+    cls_name: 'Введіть назву класу, напр. 9-А.', cls_taken: 'Такий клас уже є.', cls_busy: 'У класі ще є учні. Спершу перемістіть або видаліть їх.', cls_none: 'Клас не знайдено.',
+    st_names: 'Введіть імена учнів, по одному в рядку.', st_many: 'Щонайбільше 200 учнів за раз.', st_name: 'Введіть ім’я учня.', st_login: 'Логін: 3–32 латинські літери, цифри, крапки або дефіси.',
+    st_login_taken: 'Такий логін уже зайнятий.', te_name: 'Введіть ім’я вчителя.', te_email: 'Введіть правильний e-mail.', te_taken: 'Акаунт із таким e-mail уже існує.',
+    te_self: 'Не можна вимкнути, видалити чи позбавити прав адміністратора власний акаунт.', te_last: 'Має залишитися хоча б один адміністратор.', te_self_pw: 'Свій пароль змініть на сторінці «Пароль».',
+    sc_name: 'Введіть назву школи.', sc_taken: 'Така школа вже є.', sc_busy: 'У школі ще є класи або акаунти. Спершу перемістіть або видаліть їх.', sc_none: 'Оберіть школу.'
+  };
+  var CLASSES = [], FILTER = null, URL0 = '', SCHOOLS = [], SCHOOL = null;
+  function schoolName(id) { var s = SCHOOLS.filter(function (x) { return x.id === id; })[0]; return s ? s.name : ''; }
+  function loadSchools(keep) {
+    return A('listSchools').then(function (r) {
+      SCHOOLS = r.schools; var sel = $('school'); sel.textContent = '';
+      SCHOOLS.forEach(function (sc) { var o = el('option', null, sc.name); o.value = sc.id; sel.appendChild(o); });
+      var last = null; try { last = Number(localStorage.getItem('adm-school')); } catch (e) {}
+      if (!SCHOOLS.some(function (x) { return x.id === SCHOOL; })) SCHOOL = SCHOOLS.some(function (x) { return x.id === last; }) ? last : (SCHOOLS[0] && SCHOOLS[0].id);
+      if (SCHOOL) sel.value = SCHOOL;
+      var ts = $('teSchool'); ts.textContent = '';
+      SCHOOLS.forEach(function (sc) { var o = el('option', null, sc.name); o.value = sc.id; ts.appendChild(o); }); if (SCHOOL) ts.value = SCHOOL;
+    });
+  }
+  $('school').onchange = function () { SCHOOL = Number($('school').value); FILTER = null; try { localStorage.setItem('adm-school', SCHOOL); } catch (e) {} $('teSchool').value = SCHOOL; show(CUR); };
+
+  // ---------- tabs ----------
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+    b.onclick = function () { show(b.getAttribute('data-tab')); };
+  });
+  function show(tab) {
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tab); });
+    ['schools', 'students', 'classes', 'teachers', 'audit', 'privacy'].forEach(function (k) { $('tab-' + k).classList.toggle('hidden', k !== tab); });
+    try { history.replaceState(null, '', '#' + tab); } catch (e) {}
+    CUR = tab;
+    ({ schools: renderSchools, students: loadStudents, classes: loadClasses, teachers: loadTeachers, audit: loadAudit, privacy: loadPrivacy })[tab]();
+  }
+  var CUR = 'students';
+
+  // ---------- schools ----------
+  function renderSchools() {
+    $('scErr').textContent = '';
+    loadSchools().then(function () {
+      var tb = $('scBody'); tb.textContent = '';
+      SCHOOLS.forEach(function (sc) {
+        var tr = el('tr'); var n = el('td'); n.appendChild(el('b', null, sc.name)); if (sc.id === SCHOOL) n.appendChild(el('span', 'pill', ' вибрана')); tr.appendChild(n);
+        tr.appendChild(el('td', null, String(sc.classes))); tr.appendChild(el('td', null, String(sc.students))); tr.appendChild(el('td', null, String(sc.teachers)));
+        var acts = el('td', 'acts');
+        acts.appendChild(btn('Вибрати', '', function () { $('school').value = sc.id; $('school').onchange(); show('students'); }));
+        acts.appendChild(btn('Перейменувати', '', function () { var v = prompt('Нова назва школи', sc.name); if (v && v.trim() !== sc.name) A('renameSchool', sc.id, v).then(renderSchools, fail('scErr')); }));
+        acts.appendChild(btn('Видалити', 'danger', function () { if (confirm('Видалити школу «' + sc.name + '»?')) A('deleteSchool', sc.id).then(renderSchools, fail('scErr')); }));
+        tr.appendChild(acts); tb.appendChild(tr);
+      });
+    }).catch(fail('scErr'));
+  }
+  $('scForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('scErr').textContent = '';
+    A('addSchool', $('scName').value).then(function (r) { $('scName').value = ''; SCHOOL = r.id; renderSchools(); }, fail('scErr'));
+  });
+
+  // ---------- password slips ----------
+  function slips(title, list) {
+    $('slipsTitle').textContent = title; var box = $('slips'); box.textContent = '';
+    list.forEach(function (x) {
+      var s = el('div', 'slip');
+      s.appendChild(el('b', null, x.name + (x.cls ? ' · ' + x.cls : '')));
+      if (x.school) s.appendChild(el('div', 'muted', x.school));
+      s.appendChild(el('div', null, 'Адреса: ' + (URL0 || location.origin)));
+      var l = el('div', null, 'Логін: '); l.appendChild(el('code', null, x.login || x.email)); s.appendChild(l);
+      var p = el('div', null, 'Пароль: '); p.appendChild(el('code', null, x.password)); s.appendChild(p);
+      box.appendChild(s);
+    });
+    $('slipsCard').classList.remove('hidden'); $('slipsCard').scrollIntoView({ behavior: 'smooth' });
+  }
+  /** The sheet for the parents (D14): the code, until when, where to type it. Shown once: the server keeps only a hash. */
+  function parentSlip(x) {
+    $('slipsTitle').textContent = '👪 Код для батьків (показується лише зараз — роздрукуйте або перепишіть)'; var box = $('slips'); box.textContent = '';
+    var s = el('div', 'slip'), till = new Date(x.expires).toLocaleDateString('uk-UA'), url = (x.url || location.origin + '/parent');
+    s.appendChild(el('b', null, x.student.name + ' · ' + x.student.cls)); if (x.student.school) s.appendChild(el('div', 'muted', x.student.school));
+    var c = el('div', null, 'Код: '); c.appendChild(el('code', null, x.code)); s.appendChild(c);
+    s.appendChild(el('div', null, 'Діє до: ' + till));
+    s.appendChild(el('p', 'muted', 'Код доступу до даних вашої дитини в Kvizora. Відкрийте ' + url + ' («Я з батьків») і введіть код. Ви бачитимете оцінки, домашні завдання, пропуски та оголошення класу. Це лише перегляд. Не передавайте код іншим людям: він діє як пароль. Якщо код втрачено або хтось сторонній його дізнався, повідомте заклад, і код відкличуть. Кожен вхід записується. Політика конфіденційності: ' + location.origin + '/legal/privacy')).style.fontSize = '12px';
+    box.appendChild(s);
+    $('slipsCard').classList.remove('hidden'); $('slipsCard').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('slipsHide').onclick = function () { $('slipsCard').classList.add('hidden'); $('slips').textContent = ''; };
+  $('slipsPrint').onclick = function () { document.body.classList.add('printing'); window.print(); setTimeout(function () { document.body.classList.remove('printing'); }, 500); };
+
+  // ---------- students ----------
+  function chips() {
+    var box = $('clsChips'); box.textContent = '';
+    function chip(label, val, n) {
+      var c = el('button', 'chip' + (FILTER === val ? ' on' : ''), label); c.type = 'button';
+      if (n != null) c.appendChild(el('small', null, n));
+      c.onclick = function () { FILTER = val; loadStudents(); }; box.appendChild(c);
+    }
+    chip('Усі', null);
+    CLASSES.forEach(function (c) { chip(c.name, c.name, c.students); });
+    chip('Без класу', '');
+  }
+  function classSelect(val, onChange) {
+    var s = el('select'); s.style.width = 'auto'; s.style.padding = '6px 8px';
+    var o0 = el('option', null, '— без класу —'); o0.value = ''; s.appendChild(o0);
+    CLASSES.forEach(function (c) { var o = el('option', null, c.name); o.value = c.name; if (c.name === val) o.selected = true; s.appendChild(o); });
+    s.onchange = function () { onChange(s.value); }; return s;
+  }
+  var searchT = null;
+  $('stSearch').oninput = function () { clearTimeout(searchT); searchT = setTimeout(loadStudents, 250); };
+  var PARENTS = false;
+  function loadStudents() {
+    $('stErr').textContent = '';
+    A('parentAccess', SCHOOL).then(function (p) { PARENTS = !!p.on; }, function () { PARENTS = false; }).then(function () { return A('listClasses', SCHOOL); }).then(function (r) { CLASSES = r.classes; chips(); return A('listStudents', { school: SCHOOL, cls: FILTER, q: $('stSearch').value }); }).then(function (r) {
+      $('stCount').textContent = '(' + r.total + ')';
+      var tb = $('stBody'); tb.textContent = '';
+      if (!r.students.length) { var tr0 = el('tr'), td0 = el('td', 'muted', CLASSES.length ? 'Учнів не знайдено. «➕ Додати учнів».' : 'Спершу додайте класи (вкладка «Класи»), потім учнів.'); td0.colSpan = 6; tr0.appendChild(td0); tb.appendChild(tr0); }
+      r.students.forEach(function (s) {
+        var tr = el('tr', s.active ? '' : 'off');
+        var tdN = el('td'); tdN.appendChild(el('b', null, s.name));
+        if (!s.active) tdN.appendChild(el('span', 'pill mute', ' вимкнено'));
+        if (s.locked) tdN.appendChild(el('span', 'pill bad', ' заблоковано'));
+        tr.appendChild(tdN);
+        tr.appendChild(el('td', null, s.login));
+        var tdC = el('td'); tdC.appendChild(classSelect(s.cls, function (v) { A('updateStudent', s.id, { cls: v }).then(loadStudents, fail('stErr')); })); tr.appendChild(tdC);
+        // the group inside the class (e.g. a language split 1/2): the teacher picks their group in the gradebook
+        var tdG = el('td'), gs = el('select'); gs.style.width = 'auto'; gs.setAttribute('aria-label', 'Група учня ' + s.name);
+        [[0, '—'], [1, '1'], [2, '2'], [3, '3']].forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if (o[0] === (s.group || 0)) op.selected = true; gs.appendChild(op); });
+        gs.onchange = function () { A('updateStudent', s.id, { group: Number(gs.value) }).then(loadStudents, fail('stErr')); };
+        tdG.appendChild(gs); tr.appendChild(tdG);
+        tr.appendChild(el('td', 'muted', when(s.lastLogin)));
+        var acts = el('td', 'acts');
+        acts.appendChild(btn('Роботи', '', function () { works(s); }));
+        acts.appendChild(btn('Перейменувати', '', function () { var n = prompt('Ім’я учня', s.name); if (n && n.trim() !== s.name) A('updateStudent', s.id, { name: n }).then(loadStudents, fail('stErr')); }));
+        acts.appendChild(btn('Скинути пароль', '', function () { if (confirm('Новий пароль для «' + s.name + '»? Старий перестане діяти, учня буде виведено з усіх пристроїв.')) A('resetStudent', s.id).then(function (x) { slips('Новий пароль', [x]); loadStudents(); }, fail('stErr')); }));
+        if (s.locked) acts.appendChild(btn('Розблокувати', '', function () { A('unlockStudent', s.id).then(loadStudents, fail('stErr')); }));
+        acts.appendChild(btn(s.active ? 'Вимкнути' : 'Увімкнути', '', function () { A('updateStudent', s.id, { active: !s.active }).then(loadStudents, fail('stErr')); }));
+        if (s.parent) tdN.appendChild(el('span', 'pill ok', ' 👪 до ' + new Date(s.parent.expires).toLocaleDateString('uk-UA'))).title = 'Батьки мають код доступу' + (s.parent.lastUsed ? '; останній вхід ' + when(s.parent.lastUsed) : '');
+        if (PARENTS && s.active) acts.appendChild(btn('👪 Код батькам', '', function () {
+          if (!confirm('Видати код для батьків учня «' + s.name + '»?' + (s.parent ? ' Попередній код перестане діяти.' : '') + '\n\nВидавайте код лише законному представнику учня після перевірки особи.')) return;
+          A('issueParentCode', s.id).then(function (x) { parentSlip(x); loadStudents(); }, fail('stErr'));
+        }));
+        if (s.parent) acts.appendChild(btn('Відкликати код', '', function () { if (confirm('Відкликати код батьків учня «' + s.name + '»? Вхід за ним одразу перестане діяти.')) A('revokeParentCode', s.id).then(loadStudents, fail('stErr')); }));
+        acts.appendChild(btn('⬇ Дані', '', function () { A('exportStudent', s.id).then(function (r) { download(r.name, JSON.stringify(r.data, null, 1), 'application/json'); }, fail('stErr')); }));
+        acts.appendChild(btn('Видалити', 'danger', function () {
+          if (!confirm('Видалити акаунт «' + s.name + '»?')) return;
+          var all = confirm('Видалити також УСІ роботи цього учня в усіх учителів (запит на видалення даних)?\n\nOK — видалити все. Скасувати — роботи залишаться в результатах під іменем.');
+          A('deleteStudent', s.id, all).then(loadStudents, fail('stErr'));
+        }));
+        tr.appendChild(acts); tb.appendChild(tr);
+      });
+    }).catch(fail('stErr'));
+  }
+  $('addStBtn').onclick = function () {
+    var s = $('addCls'); s.textContent = '';
+    if (!CLASSES.length) { alert('Спершу додайте клас (вкладка «Класи»).'); show('classes'); return; }
+    CLASSES.forEach(function (c) { var o = el('option', null, c.name); o.value = c.name; if (c.name === FILTER) o.selected = true; s.appendChild(o); });
+    $('addSchool').textContent = '🏫 ' + schoolName(SCHOOL);
+    $('addErr').textContent = ''; $('addDlg').showModal(); $('addNames').focus();
+  };
+  $('addCancel').onclick = function () { $('addDlg').close(); };
+  $('addGo').onclick = function () {
+    var b = $('addGo'); b.disabled = true; $('addErr').textContent = '';
+    A('addStudents', SCHOOL, $('addCls').value, $('addNames').value, Number($('addGrp').value)).then(function (r) {
+      b.disabled = false; $('addDlg').close(); $('addNames').value = '';
+      FILTER = $('addCls').value; slips('Нові учні: ' + r.created.length, r.created); loadStudents();
+    }, function (e) { b.disabled = false; fail('addErr')(e); });
+  };
+  function works(s) {
+    $('workTitle').textContent = 'Роботи: ' + s.name; var tb = $('workBody'); tb.textContent = '';
+    A('studentAttempts', s.id).then(function (r) {
+      if (!r.attempts.length) { var tr0 = el('tr'), td0 = el('td', 'muted', 'Ще немає робіт.'); td0.colSpan = 5; tr0.appendChild(td0); tb.appendChild(tr0); }
+      r.attempts.forEach(function (a) {
+        var tr = el('tr');
+        tr.appendChild(el('td', null, a.title)); tr.appendChild(el('td', null, a.subject)); tr.appendChild(el('td', null, a.teacher));
+        tr.appendChild(el('td', 'muted', when(a.submitted || a.started)));
+        tr.appendChild(el('td', null, a.submitted ? (a.score != null ? a.score + ' / ' + a.max : '✓') + (a.status === 'Late' ? ' (із запізненням)' : '') : 'не завершено'));
+        tb.appendChild(tr);
+      });
+      $('workDlg').showModal();
+    }, fail('stErr'));
+  }
+  $('workClose').onclick = function () { $('workDlg').close(); };
+
+  function download(name, text, type) {
+    var a = el('a'); a.href = URL.createObjectURL(new Blob([text], { type: type })); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  // ---------- personal data: the school's details, the owner, how long data is kept ----------
+  function banner() {
+    A('overview').then(function (o) {
+      var miss = o.incomplete.map(function (x) { return x.name; }), parts = [];
+      if (miss.length) parts.push('Реквізити закладу: ' + miss.join(', ') + '.');
+      if (o.ownerMissing) parts.push('Контакти власника Kvizora.');
+      $('legalBanner').classList.toggle('hidden', !parts.length); $('legalBannerText').textContent = parts.join(' ');
+      // a school's administrator: only their own school; schools, the owner's details, data retention and the log stay with the owner
+      OWNER = !!o.owner;
+      Array.prototype.forEach.call(document.querySelectorAll('.ownerOnly'), function (n) { n.classList.toggle('hidden', !OWNER); if (n.tagName === 'OPTION') n.disabled = !OWNER; });
+    }, function () {});
+  }
+  $('legalBannerGo').onclick = function () { show('privacy'); };
+  var IF = { iLegal: 'legalName', iEdrpou: 'edrpou', iAddr: 'address', iPerson: 'person', iEmail: 'email', iPhone: 'phone' };
+  function loadPrivacy() {
+    ['infoErr', 'ownErr', 'infoMsg', 'ownMsg'].forEach(function (k) { $(k).textContent = ''; });
+    A('schoolInfo', SCHOOL).then(function (r) { Object.keys(IF).forEach(function (k) { $(k).value = r[IF[k]] || ''; }); if (!$('iLegal').value) $('iLegal').placeholder = r.name; }, fail('infoErr'));
+    if (OWNER) A('privacySettings').then(paintPrivacy, fail('ownErr'));
+    $('parErr').textContent = '';
+    A('parentAccess', SCHOOL).then(paintParents, fail('parErr'));
+  }
+  function paintParents(p) { $('parOn').checked = !!p.on; $('parCount').textContent = 'Діючих кодів: ' + p.codes + '.'; }
+  $('parOn').onchange = function () {
+    var on = $('parOn').checked;
+    if (on && !confirm('Увімкнути доступ батьків для школи? Переконайтеся, що батьків поінформовано (бланки — consent-forms.md).')) { $('parOn').checked = false; return; }
+    if (!on && !confirm('Вимкнути доступ батьків? Усі батьки школи одразу втратять доступ (коди залишаться, запрацюють знову, якщо увімкнете).')) { $('parOn').checked = true; return; }
+    A('setParentAccess', SCHOOL, on).then(paintParents, function (e) { $('parOn').checked = !on; fail('parErr')(e); });
+  };
+  function paintPrivacy(p) {
+    $('oName').value = p.owner.name; $('oEmail').value = p.owner.email; $('oAddr').value = p.owner.address;
+    $('kDev').value = p.keepDeviceDays; $('kAtt').value = p.keepAttemptDays;
+    var r = p.lastResult; $('lastClean').textContent = p.lastCleanup ? 'Остання автоочистка: ' + when(p.lastCleanup) + (r ? ' (дані пристроїв: ' + r.device + ', спроб видалено: ' + r.attempts + ')' : '') + '. Запускається щодня.' : '';
+  }
+  $('infoForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('infoErr').textContent = ''; var x = {}; Object.keys(IF).forEach(function (k) { x[IF[k]] = $(k).value; });
+    A('saveSchoolInfo', SCHOOL, x).then(function () { $('infoMsg').textContent = 'Збережено ✓'; banner(); }, fail('infoErr'));
+  });
+  $('ownForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('ownErr').textContent = '';
+    A('savePrivacy', { owner: { name: $('oName').value, email: $('oEmail').value, address: $('oAddr').value }, keepDeviceDays: $('kDev').value, keepAttemptDays: $('kAtt').value })
+      .then(function (p) { paintPrivacy(p); $('ownMsg').textContent = 'Збережено ✓'; banner(); }, fail('ownErr'));
+  });
+  $('purgeBtn').onclick = function () {
+    if (!confirm('Стерти IP, ідентифікатори браузерів і відбитки пристроїв з усіх зданих тестів? Позначки «той самий пристрій» зникнуть.')) return;
+    A('purgeDevices').then(function (p) { paintPrivacy(p); $('ownMsg').textContent = 'Очищено: ' + p.result.device; }, fail('ownErr'));
+  };
+
+  // ---------- classes ----------
+  function loadClasses() {
+    $('clsErr').textContent = '';
+    A('listClasses', SCHOOL).then(function (r) {
+      CLASSES = r.classes; SUBJ = r.subjects || []; var tb = $('clsBody'); tb.textContent = '';
+      if (!CLASSES.length) { var tr0 = el('tr'), td0 = el('td', 'muted', 'Класів ще немає.'); td0.colSpan = 5; tr0.appendChild(td0); tb.appendChild(tr0); }
+      CLASSES.forEach(function (c) {
+        var tr = el('tr'), tdN = el('td', null, c.name); if (c.byTeacher) tdN.appendChild(el('div', 'muted', 'додав учитель: ' + c.byTeacher)); tr.appendChild(tdN); tr.appendChild(el('td', null, String(c.students)));
+        // which subjects the class has (the administrator turns the rest off)
+        var tdS = el('td'), on = SUBJ.length - (c.subjectsOff || []).length;
+        tdS.appendChild(btn(on === SUBJ.length ? 'усі (' + on + ')' : on + ' з ' + SUBJ.length, '', function () { subjDialog(c); }));
+        tr.appendChild(tdS);
+        // the parents of this class were informed (and consents for device recording collected), with the date
+        var tdP = el('td'), lp = el('label'), cbP = el('input'); cbP.type = 'checkbox'; cbP.checked = !!c.parentsAt; cbP.setAttribute('aria-label', 'Батьків класу ' + c.name + ' поінформовано');
+        lp.style.cssText = 'display:flex;gap:6px;align-items:center;margin:0;font-weight:400'; lp.appendChild(cbP); lp.appendChild(el('span', 'muted', c.parentsAt ? new Date(c.parentsAt).toLocaleDateString('uk-UA') : 'ні'));
+        cbP.onchange = function () { A('setParents', SCHOOL, c.name, cbP.checked).then(loadClasses, fail('clsErr')); };
+        tdP.appendChild(lp); tr.appendChild(tdP);
+        var acts = el('td', 'acts');
+        acts.appendChild(btn('Учні', '', function () { FILTER = c.name; show('students'); }));
+        acts.appendChild(btn('Перейменувати', '', function () { var n = prompt('Нова назва класу (учні й тести цього класу перейдуть разом із ним)', c.name); if (n && n.trim() !== c.name) A('renameClass', SCHOOL, c.name, n).then(loadClasses, fail('clsErr')); }));
+        acts.appendChild(btn('Видалити', 'danger', function () { if (confirm('Видалити клас «' + c.name + '»?')) A('deleteClass', SCHOOL, c.name).then(loadClasses, fail('clsErr')); }));
+        tr.appendChild(acts); tb.appendChild(tr);
+      });
+    }).catch(fail('clsErr'));
+  }
+  var SUBJ = [];
+  function subjDialog(c) {
+    var box = $('subjBox'); box.textContent = ''; $('subjTitle').textContent = 'Предмети класу ' + c.name; $('subjErr').textContent = '';
+    SUBJ.forEach(function (s) {
+      var lab = el('label'), cb = el('input'); cb.type = 'checkbox'; cb.value = s.key; cb.checked = (c.subjectsOff || []).indexOf(s.key) < 0; cb.style.cssText = 'width:auto;margin:0';
+      lab.style.cssText = 'display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:8px 0;font-weight:600;text-align:left'; lab.appendChild(cb); lab.appendChild(el('span', null, s.icon + ' ' + (s.name.uk || s.name.en))); box.appendChild(lab);
+    });
+    $('subjSave').onclick = function () {
+      var off = Array.prototype.filter.call(box.querySelectorAll('input'), function (i) { return !i.checked; }).map(function (i) { return i.value; });
+      A('setClassSubjects', SCHOOL, c.name, off).then(function () { $('subjDlg').close(); loadClasses(); }, fail('subjErr'));
+    };
+    $('subjDlg').showModal();
+  }
+  $('subjCancel').onclick = function () { $('subjDlg').close(); };
+  $('clsForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('clsErr').textContent = '';
+    A('addClass', SCHOOL, $('clsName').value).then(function () { $('clsName').value = ''; loadClasses(); }, fail('clsErr'));
+  });
+
+  // ---------- teachers ----------
+  var ME = null, OWNER = false;
+  function loadTeachers() {
+    $('teErr').textContent = '';
+    A('listTeachers').then(function (r) {
+      var tb = $('teBody'); tb.textContent = '';
+      r.teachers.forEach(function (t) {
+        var self = ME && t.email === ME.login;
+        var tr = el('tr', t.active ? '' : 'off');
+        var tdN = el('td'); tdN.appendChild(el('b', null, t.name + (self ? ' (ви)' : '')));
+        if (t.mustChange) tdN.appendChild(el('span', 'pill mute', ' тимчасовий пароль'));
+        if (!t.active) tdN.appendChild(el('span', 'pill mute', ' вимкнено'));
+        if (t.locked) tdN.appendChild(el('span', 'pill bad', ' заблоковано'));
+        tr.appendChild(tdN); tr.appendChild(el('td', null, t.email));
+        var tdS = el('td'), ss = el('select'); ss.style.width = 'auto'; ss.style.padding = '6px 8px';
+        SCHOOLS.forEach(function (sc) { var op = el('option', null, sc.name); op.value = sc.id; if (sc.id === t.school) op.selected = true; ss.appendChild(op); });
+        ss.onchange = function () { A('updateTeacher', t.id, { school: Number(ss.value) }).then(loadTeachers, function (e) { fail('teErr')(e); loadTeachers(); }); };
+        tdS.appendChild(ss); tr.appendChild(tdS);
+        var tdR = el('td'), rs = el('select'); rs.style.width = 'auto'; rs.style.padding = '6px 8px'; rs.disabled = self;
+        [['teacher', 'Учитель'], ['admin', 'Адмін школи']].concat(OWNER || t.role === 'owner' ? [['owner', 'Власник']] : []).forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if (o[0] === t.role) op.selected = true; rs.appendChild(op); });
+        rs.onchange = function () { A('updateTeacher', t.id, { role: rs.value }).then(loadTeachers, function (e) { fail('teErr')(e); loadTeachers(); }); };
+        tdR.appendChild(rs); tr.appendChild(tdR);
+        tr.appendChild(el('td', null, String(t.tests))); tr.appendChild(el('td', 'muted', when(t.lastLogin)));
+        var acts = el('td', 'acts');
+        if (!self) {
+          acts.appendChild(btn('Скинути пароль', '', function () { if (confirm('Тимчасовий пароль для «' + t.name + '»?')) A('resetTeacher', t.id).then(function (x) { slips('Тимчасовий пароль учителя', [x]); loadTeachers(); }, fail('teErr')); }));
+          if (t.locked) acts.appendChild(btn('Розблокувати', '', function () { A('unlockTeacher', t.id).then(loadTeachers, fail('teErr')); }));
+          acts.appendChild(btn(t.active ? 'Вимкнути' : 'Увімкнути', '', function () { A('updateTeacher', t.id, { active: !t.active }).then(loadTeachers, fail('teErr')); }));
+          acts.appendChild(btn('Видалити', 'danger', function () { if (confirm('Видалити акаунт «' + t.name + '» разом з усіма його тестами (' + t.tests + ') і результатами учнів? Цю дію не можна скасувати. Якщо сумніваєтеся — краще «Вимкнути».')) A('deleteTeacher', t.id).then(loadTeachers, fail('teErr')); }));
+        }
+        tr.appendChild(acts); tb.appendChild(tr);
+      });
+    }).catch(fail('teErr'));
+  }
+  $('teForm').addEventListener('submit', function (e) {
+    e.preventDefault(); $('teErr').textContent = '';
+    A('addTeacher', { name: $('teName').value, email: $('teEmail').value, role: $('teRole').value, school: Number($('teSchool').value) }).then(function (x) {
+      $('teName').value = ''; $('teEmail').value = ''; $('teRole').value = 'teacher';
+      slips('Тимчасовий пароль учителя', [x]); loadTeachers();
+    }, fail('teErr'));
+  });
+
+  // ---------- audit ----------
+  var ACT = { login: 'вхід', 'login.fail': 'невдалий вхід', password: 'змінив пароль', setup: 'перше налаштування',
+    'class.add': 'додав клас', 'class.rename': 'перейменував клас', 'class.delete': 'видалив клас',
+    'student.add': 'додав учнів', 'student.update': 'змінив учня', 'student.reset': 'скинув пароль учня', 'student.delete': 'видалив учня', 'student.unlock': 'розблокував учня',
+    'school.add': 'додав школу', 'school.rename': 'перейменував школу', 'school.delete': 'видалив школу',
+    'teacher.add': 'додав учителя', 'teacher.update': 'змінив учителя', 'teacher.reset': 'скинув пароль учителя', 'teacher.delete': 'видалив учителя', 'teacher.unlock': 'розблокував учителя' };
+  function loadAudit() {
+    A('auditLog', 300).then(function (r) {
+      var tb = $('auBody'); tb.textContent = '';
+      r.rows.forEach(function (x) {
+        var tr = el('tr');
+        tr.appendChild(el('td', 'muted', when(x.at))); tr.appendChild(el('td', null, x.who));
+        var a = el('td', null, ACT[x.action] || x.action); if (x.action === 'login.fail') a.className = 'err'; tr.appendChild(a);
+        tr.appendChild(el('td', null, x.detail)); tr.appendChild(el('td', 'muted', x.ip));
+        tb.appendChild(tr);
+      });
+    });
+  }
+
+
+  window.api('/api/auth/me').then(function (me) { ME = me; $('who').textContent = me.name + ' · ' + me.login; }, function () { location.href = '/login?next=/admin'; });
+  A('overview').then(function (o) { URL0 = o.appUrl; });
+  var first = (location.hash || '').slice(1);
+  loadSchools().then(function () { show(['schools', 'students', 'classes', 'teachers', 'audit', 'privacy'].indexOf(first) >= 0 ? first : 'students'); banner(); });
+})();
+</script>
+</body>
+</html>

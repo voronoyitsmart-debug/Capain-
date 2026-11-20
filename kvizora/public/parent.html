@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Для батьків — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<style>
+  [hidden] { display: none !important; }
+  .ptabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 12px; }
+  .ptabs button { font: inherit; font-weight: 600; font-size: 14px; padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; }
+  .ptabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .ps { border-top: 1px solid var(--line); padding: 12px 0; } .ps:first-child { border-top: 0; padding-top: 0; }
+  .ps h3 { margin: 0 0 4px; font-size: 16px; }
+  .mk { display: inline-block; min-width: 26px; text-align: center; font-weight: 700; padding: 2px 6px; margin: 2px; border-radius: 8px; background: var(--bg); font-size: 14px; }
+  .mk.ab { color: var(--bad); }
+  .fin { font-size: 13px; margin-top: 4px; }
+  .hw { padding: 10px 0; border-top: 1px solid var(--line); } .hw:first-child { border-top: 0; }
+  .hw small { color: var(--muted); }
+  .ann { padding: 10px 12px; border-radius: 10px; background: var(--bg); margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ann small { display: block; color: var(--muted); margin-bottom: 4px; white-space: normal; }
+  #code { text-transform: uppercase; letter-spacing: 1px; font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span>Kvizora</span><small id="who">Для батьків</small></h1>
+  <button class="btn head" id="out" type="button" hidden>Вийти</button>
+</div></header>
+<main>
+  <div class="card auth" id="enter">
+    <form id="form">
+      <h2>👪 Вхід для батьків</h2>
+      <p class="muted" style="font-size:14px;margin:0 0 6px">Введіть код, який вам дав заклад освіти. Це лише перегляд: оцінки, домашні завдання, пропуски, оголошення класу і теми, які варто повторити.</p>
+      <label for="code">Код (16 символів)</label>
+      <input id="code" maxlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" required>
+      <button class="btn solid wide" id="go" type="submit">Увійти</button>
+      <div class="err" id="err" role="alert"></div>
+    </form>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Не передавайте код іншим людям: він діє як пароль. Якщо код втрачено, повідомте заклад — його відкличуть. Кожен вхід записується. <a href="/legal/privacy">Політика конфіденційності</a> · <a href="/login">Вхід для учнів і вчителів</a></p>
+  </div>
+
+  <div id="view" hidden>
+    <div class="card">
+      <h2 id="kid" style="margin:0"></h2>
+      <p class="muted" id="kidSub" style="margin:2px 0 0;font-size:14px"></p>
+    </div>
+    <div class="card">
+      <div class="ptabs" role="tablist" aria-label="Розділи">
+        <button type="button" role="tab" data-t="marks" aria-selected="true">⭐ Оцінки</button>
+        <button type="button" role="tab" data-t="hw" aria-selected="false">🏠 Домашні</button>
+        <button type="button" role="tab" data-t="ann" aria-selected="false">📢 Оголошення <span id="annN"></span></button>
+        <button type="button" role="tab" data-t="weak" aria-selected="false">📊 Що повторити</button>
+      </div>
+      <section data-tab="marks" id="marks"></section>
+      <section data-tab="hw" id="hw" hidden></section>
+      <section data-tab="ann" id="ann" hidden></section>
+      <section data-tab="weak" id="weak" hidden></section>
+    </div>
+    <p class="muted" style="font-size:12px;text-align:center">Лише перегляд. Сесія закінчується через 2 години. <a href="/help?tab=parent">Підказка</a> · <a href="/legal/privacy">Політика конфіденційності</a></p>
+  </div>
+</main>
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, c, x) { var n = document.createElement(tag); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
+  function msg(e) { var m = String(e && e.message || e), i = m.indexOf('USER:'); return (i >= 0 ? m.slice(i + 5) : m).replace(/\s*\[#[a-z_]+\]\s*$/, '').trim(); }
+  var UK = { 'This code does not work. Check it, or ask the school for a new one.': 'Цей код не діє. Перевірте його або попросіть у школи новий.',
+    'Type the code again.': 'Введіть код ще раз.', 'Too many attempts. Wait a minute and try again.': 'Забагато спроб. Зачекайте кілька хвилин.' };
+  function say(e) { var m = msg(e); return UK[m] || m; }
+  function date(ms) { return new Date(ms).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }); }
+  var KIND = { test: '📝 тест', lesson: '📒 урок', hw: '🏠 д/з' };
+  var PER = { sem1: 'І семестр', sem2: 'ІІ семестр', year: 'Річна' };
+  var STATE = { missing: 'не здано', todo: 'треба зробити', returned: 'на доопрацювання', missed: 'не здано', submitted: 'здано, чекає перевірки', checked: 'перевірено', none: '', open: 'треба зробити', late: 'не здано' };
+
+  function show(on) { $('enter').hidden = on; $('view').hidden = !on; $('out').hidden = !on; }
+  function load() {
+    return window.api('/api/parent/home').then(function (d) { show(true); draw(d); }, function (e) { show(false); if (e.status !== 401) $('err').textContent = say(e); });
+  }
+  $('form').onsubmit = function (e) {
+    e.preventDefault(); $('err').textContent = ''; $('go').disabled = true;
+    window.api('/api/parent/login', { code: $('code').value }).then(function () { $('code').value = ''; return load(); }, function (e2) { $('err').textContent = say(e2); })
+      .then(function () { $('go').disabled = false; });
+  };
+  $('out').onclick = function () { window.api('/api/auth/logout').then(function () { location.reload(); }, function () { location.reload(); }); };
+  Array.prototype.forEach.call(document.querySelectorAll('.ptabs button'), function (b) {
+    b.onclick = function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.ptabs button'), function (x) { x.setAttribute('aria-selected', String(x === b)); });
+      Array.prototype.forEach.call(document.querySelectorAll('section[data-tab]'), function (s) { s.hidden = s.getAttribute('data-tab') !== b.getAttribute('data-t'); });
+    };
+  });
+
+  function draw(d) {
+    $('kid').textContent = d.student.name; $('kidSub').textContent = [d.student.cls, d.student.school].filter(Boolean).join(' · ');
+    var nm = function (k) { var s = d.icons[k]; return s ? s.icon + ' ' + (s.name.uk || s.name.en) : k; };
+    // marks
+    var box = $('marks'); box.textContent = '';
+    if (!d.subjects.length) box.appendChild(el('p', 'muted', 'Оцінок поки немає.'));
+    d.subjects.forEach(function (s) {
+      var sec = el('div', 'ps'); sec.appendChild(el('h3', null, s.icon + ' ' + (s.name.uk || s.name.en)));
+      var line = []; if (s.avg != null) line.push('середня ' + s.avg);
+      if (s.absent && (s.absent.n || s.absent.np)) line.push('пропуски: ' + [s.absent.n ? 'н ' + s.absent.n : '', s.absent.np ? 'нп ' + s.absent.np : ''].filter(Boolean).join(', '));
+      if (line.length) sec.appendChild(el('div', 'muted', line.join(' · ')));
+      var row = el('div');
+      s.marks.forEach(function (m) { var b = el('span', 'mk' + (/^н/i.test(m.grade) ? ' ab' : ''), m.grade); b.title = date(m.at) + ' · ' + (KIND[m.kind] || '') + (m.title ? ': ' + m.title : '') + (m.note ? ' — ' + m.note : ''); row.appendChild(b); });
+      if (s.marks.length) sec.appendChild(row);
+      var f = Object.keys(s.finals || {}).map(function (p) { return (PER[p] || ('тематична «' + p.slice(3) + '»')) + ': ' + s.finals[p]; });
+      if (f.length) sec.appendChild(el('div', 'fin', '🏁 ' + f.join(' · ')));
+      box.appendChild(sec);
+    });
+    // homework
+    var hw = $('hw'); hw.textContent = '';
+    var tasks = d.tasks.slice().sort(function (a, b) { return b.due - a.due; });
+    if (!tasks.length) hw.appendChild(el('p', 'muted', 'Домашніх завдань поки немає.'));
+    tasks.forEach(function (h) {
+      var r = el('div', 'hw'); r.appendChild(el('b', null, nm(h.subject) + ' · ' + h.title));
+      r.appendChild(el('div', null, 'до ' + date(h.due) + (STATE[h.state] ? ' · ' + STATE[h.state] : '') + (h.grade ? ' · оцінка ' + h.grade : '')));
+      if (h.comment) r.appendChild(el('small', null, 'Коментар учителя: ' + h.comment));
+      hw.appendChild(r);
+    });
+    // announcements
+    var an = $('ann'); an.textContent = '';
+    $('annN').textContent = d.announcements.length ? '(' + d.announcements.length + ')' : '';
+    if (!d.announcements.length) an.appendChild(el('p', 'muted', 'Оголошень немає.'));
+    d.announcements.forEach(function (a) {
+      var b = el('div', 'ann'); b.appendChild(el('small', null, date(a.at) + (a.subject ? ' · ' + (a.icon ? a.icon + ' ' : '') + (a.subjectName && (a.subjectName.uk || a.subjectName) || nm(a.subject)) : '') + (a.teacher ? ' · ' + a.teacher : '')));
+      b.appendChild(document.createTextNode(a.text)); an.appendChild(b);
+    });
+    // topics to repeat
+    var wk = $('weak'); wk.textContent = '';
+    wk.appendChild(el('p', 'muted', 'За тестами, які дитина здала: теми, де менше 60 % балів. Це підказка, що повторити разом, а не оцінка.'));
+    var any = false;
+    d.subjects.forEach(function (s) {
+      if (!s.weak || !s.weak.length) return; any = true;
+      var sec = el('div', 'ps'); sec.appendChild(el('h3', null, s.icon + ' ' + (s.name.uk || s.name.en)));
+      var ul = el('ul'); s.weak.forEach(function (w) { var li = el('li', null, w.title + ' — ' + w.pct + ' %'); if (w.parts.length) li.appendChild(el('div', 'muted', 'Найслабше: ' + w.parts.join('; '))); ul.appendChild(li); });
+      sec.appendChild(ul); wk.appendChild(sec);
+    });
+    if (!any) wk.appendChild(el('p', null, '✓ Слабких тем не знайдено.'));
+  }
+  load();
+})();
+</script>
+</body>
+</html>

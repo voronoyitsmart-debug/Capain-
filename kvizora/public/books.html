@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Підручники — Kvizora</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="/js/rpc.js"></script>
+<script src="/js/nav.js" data-active="books"></script>
+<script src="/js/books.js" defer></script>
+<style>
+  .bk-note { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); margin: 10px 0; }
+  .bk-warn { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft, #fff4d6); color: #4a3b00; margin: 10px 0; }
+  @media (prefers-color-scheme: dark) { .bk-warn { background: #3a3215; color: #f3e3a8; } }
+  .chk { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; cursor: pointer; color: var(--ink); margin: 12px 0 0; }
+  .chk input { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 2px; }
+  .topics input.tt { min-width: 200px; padding: 7px 9px; }
+  .topics input.pg { width: 72px; padding: 7px 6px; text-align: center; }
+  .topics input.pick { width: 18px; height: 18px; }
+  @media (max-width: 600px) { .topics input.tt { min-width: 130px; } .topics input.pg { width: 56px; } }
+  .prev { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; max-height: 420px; overflow: auto; font-size: 13px; white-space: pre-wrap; }
+  .prev img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+  .prev h3 { font-size: 13px; margin: 10px 0 4px; color: var(--muted); }
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+  .badge.beta { background: var(--warn-soft, #fff4d6); color: #6b5200; }
+  .bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .src li { margin: 3px 0; font-size: 13px; }
+  .ok-box { padding: 12px 14px; border-radius: 10px; background: var(--ok-soft); margin-top: 12px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1><span>📚 Підручники</span><small id="who"></small></h1>
+</div></header>
+<div id="nav"></div>
+<main>
+  <div class="card" id="listCard">
+    <div class="row"><h2 class="grow" style="margin:0">Підручники школи</h2><button class="btn solid sm" id="addBtn" type="button">＋ Додати підручник</button></div>
+    <p class="muted" id="d11" style="font-size:12px;margin:6px 0 0;text-align:right">Підручники захищені авторським правом. Додавайте лише ті, за якими працює ваш заклад, і лише з законних джерел. Не додавайте сторінки з іменами чи нотатками учнів.</p>
+    <details class="info"><summary>ℹ️ Як це працює</summary>
+    <p style="margin:0">Додайте підручник, за яким працює школа. Kvizora розділить його на теми, а ви оберете тему і отримаєте чернетку тесту від ШІ. Підручники бачать лише вчителі та адміністратори вашої школи, учні — ні.</p></details>
+    <div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Назва</th><th>Предмет</th><th>Клас</th><th>Сторінок</th><th>Додав</th><th></th></tr></thead><tbody id="books"></tbody></table></div>
+    <p class="muted hidden" id="empty" style="margin:12px 0 0">Підручників ще немає.</p>
+    <div class="err" id="listErr"></div>
+  </div>
+
+  <div class="card hidden" id="addCard">
+    <h2>Новий підручник</h2>
+    <div class="row">
+      <div class="grow"><label for="aTitle">Назва</label><input id="aTitle" maxlength="140" placeholder="Біологія 7 клас (автор, рік)"></div>
+      <div class="grow"><label for="aSubj">Предмет</label><select id="aSubj"></select></div>
+      <div style="width:110px"><label for="aGrade">Клас</label><input id="aGrade" maxlength="20" placeholder="7"></div>
+    </div>
+    <label for="aFile">Файл PDF або фото сторінок (можна кілька, по порядку)</label>
+    <input id="aFile" type="file" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp" multiple>
+    <div class="bk-note">Сам файл PDF на сервер <b>не надсилається</b>: ваш браузер читає текст сторінок, і на сервер школи йде лише текст. Сторінки без тексту (скани) і фото зберігаються зменшеними картинками. До ШІ потрапляють тільки сторінки тем, з яких ви створюєте тест.</div>
+    <div class="bk-warn" id="scanWarn">Скани і фото — <b>бета</b>: ШІ читає їх з картинок і частіше помиляється (особливо формули й таблиці). Найкраще працює PDF із текстом (наприклад, підручники з сайту МОН).</div>
+    <label class="chk"><input type="checkbox" id="aLawful"><span>Наш заклад працює за цим підручником, а файл отримано законно (з сайту МОН / ІМЗО, від видавця або це примірник закладу). Я додаю його лише для складання тестів для учнів свого закладу і не поширюватиму далі. Я розумію, що сторінки вибраних тем буде надіслано до Google Gemini, і відповідальність за дотримання авторських прав несу я та мій заклад. <a href="/legal/terms" target="_blank" rel="noopener">Правила</a></span></label>
+    <div class="row" style="margin-top:14px"><button class="btn solid" id="aGo" type="button">Додати</button><button class="btn" id="aCancel" type="button">Скасувати</button></div>
+    <div class="bar hidden" id="aBar"><i></i></div>
+    <p class="muted" id="aStatus" style="font-size:13px;margin:8px 0 0"></p>
+    <div class="err" id="aErr"></div>
+  </div>
+
+  <div class="card hidden" id="bookCard">
+    <div class="row"><h2 class="grow" id="bTitle" style="margin:0"></h2><button class="btn sm" id="bClose" type="button">✕ Закрити</button></div>
+    <p class="muted" id="bMeta" style="font-size:13px;margin:6px 0 0"></p>
+    <details id="bEdit" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">Змінити назву, предмет, клас</summary>
+      <div class="row">
+        <div class="grow"><label for="eTitle">Назва</label><input id="eTitle" maxlength="140"></div>
+        <div class="grow"><label for="eSubj">Предмет</label><select id="eSubj"></select></div>
+        <div style="width:110px"><label for="eGrade">Клас</label><input id="eGrade" maxlength="20"></div>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="eSave" type="button">💾 Зберегти</button><button class="btn sm danger" id="eDel" type="button">🗑 Видалити підручник</button></div>
+    </details>
+
+    <h2 style="margin-top:18px">Теми</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 8px">Сторінки — номери у файлі (як у переглядачі PDF), не друковані. Перевірте теми: натисніть 👁, щоб побачити перші сторінки теми. Поставте галочки біля тем для тесту.</p>
+    <div class="tbl-wrap"><table class="tbl topics"><thead><tr><th></th><th>Тема</th><th>Від</th><th>До</th><th></th></tr></thead><tbody id="topics"></tbody></table></div>
+    <p class="muted hidden" id="noTopics" style="margin:8px 0">Тем ще немає. Натисніть «🤖 Знайти теми» або додайте їх вручну.</p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sm" id="tAdd" type="button">＋ Тема</button>
+      <button class="btn sm" id="tSave" type="button">💾 Зберегти теми</button>
+      <button class="btn sm" id="tAi" type="button">🤖 Знайти теми (ШІ)</button>
+      <span class="muted" id="tStatus" style="font-size:13px"></span>
+    </div>
+    <div class="prev hidden" id="prev"></div>
+
+    <h2 style="margin-top:22px">✨ Тест з вибраних тем</h2>
+    <div class="row">
+      <div class="grow"><label for="gSubj">Предмет тесту</label><select id="gSubj"></select></div>
+      <div style="width:120px"><label for="gCount">Питань</label><input id="gCount" type="number" min="3" max="40" value="10"></div>
+      <div class="grow"><label for="gLang">Мова</label><select id="gLang"></select></div>
+    </div>
+    <label for="gNote">Побажання до ШІ (необов’язково)</label>
+    <textarea id="gNote" maxlength="400" style="min-height:70px" placeholder="Наприклад: більше питань на терміни; рівень — середній"></textarea>
+    <div class="bk-warn hidden" id="fWarn">Формули з підручника можуть розпізнатися неточно. Перевірте кожну формулу і відповідь у редакторі.</div>
+    <div class="bk-warn" id="aiLegal">⚠️ ШІ (Google Gemini) може помилятися у фактах і правильних відповідях. Тест зберігається як <b>чернетка</b>: перевірте кожне питання в редакторі, перш ніж дати тест учням. На безкоштовному ключі Gemini Google може використовувати надіслані сторінки для покращення своїх продуктів — рекомендуємо платний ключ.</div>
+    <label class="chk hidden" id="ackWrap"><input type="checkbox" id="aiAck"><span>Я не надсилатиму до ШІ роботи учнів, списки чи інші персональні дані. Я перевірятиму кожне завдання і відповідь, створені ШІ. Я маю право використовувати ці матеріали.</span></label>
+    <div class="row" style="margin-top:14px"><button class="btn solid" id="gGo" type="button">✨ Створити тест</button><span class="muted" id="gStatus" style="font-size:13px"></span></div>
+    <div class="err" id="gErr"></div>
+    <div id="gOut"></div>
+  </div>
+</main>
+</body>
+</html>
