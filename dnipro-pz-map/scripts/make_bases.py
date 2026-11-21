@@ -20,9 +20,9 @@ from shapely.ops import nearest_points
 
 # (name, centre lat, centre lon) - found by searching the map for empty land (see README)
 SITES = [
-    ("Військова частина «Південь» (вигадана)", 48.40503, 34.87056),
-    ("Військова частина «Північ» (вигадана)", 48.55460, 35.00678),
-    ("Військова частина «Схід» (вигадана)", 48.52226, 35.10437),
+    ("Воинская часть «Юг» (вымышленная)", 48.40503, 34.87056),
+    ("Воинская часть «Север» (вымышленная)", 48.55460, 35.00678),
+    ("Воинская часть «Восток» (вымышленная)", 48.52226, 35.10437),
 ]
 HALF = 190            # metres: a base is 380 x 380 m inside its fence
 
@@ -36,17 +36,17 @@ LAYOUT = [
     (-40, 120, 40, 140, {"building": "military", "military": "office", "building:levels": "3",
                          "name": "Штаб"}),
     (60, 80, 110, 108, {"building": "military", "military": "barracks", "building:levels": "1",
-                        "name": "Їдальня"}),
+                        "name": "Столовая"}),
     (120, 60, 170, 120, {"building": "warehouse", "military": "depot", "building:levels": "1",
-                         "name": "Склад РАО"}),
+                         "name": "Склад РАВ"}),
     (60, 20, 170, 40, {"building": "warehouse", "military": "depot", "building:levels": "1",
-                       "name": "Склад речового майна"}),
+                       "name": "Вещевой склад"}),
     (-160, -150, -40, -125, {"building": "garages", "military": "depot", "building:levels": "1",
                              "name": "Автопарк"}),
     (-160, -110, -40, -85, {"building": "garages", "military": "depot", "building:levels": "1",
                             "name": "Автопарк"}),
     (100, -150, 150, -110, {"building": "bunker", "military": "bunker", "building:levels": "1",
-                            "name": "Склад озброєння"}),
+                            "name": "Склад вооружения"}),
     (20, -140, 70, -110, {"building": "military", "military": "office", "building:levels": "2",
                           "name": "Медпункт"}),
     (-10, -186, 10, -176, {"building": "military", "military": "checkpoint", "building:levels": "1",
@@ -76,7 +76,8 @@ def main(argv):
              if f["kind"] == "way" and f["tags"].get("highway") in
              ("trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
               "service", "track")
-             and f["geometry"] and not isinstance(f["geometry"][0][0], list)]
+             and f["geometry"] and not isinstance(f["geometry"][0][0], list)
+             and int(f.get("osm_id") or 0) < 90_000_000_000]    # not a base's own roads
     out = []
     for name, lat0, lon0 in SITES:
         base = {"name": name, "ways": []}
@@ -102,7 +103,7 @@ def main(argv):
         if reach > HALF:
             scale = 175.0 / reach                    # onto the ring road inside the fence
             inner = to_latlon(lat0, lon0, dx * scale, dy * scale)
-            add({"tags": {"highway": "service", "name": "Під'їзд до військової частини"},
+            add({"tags": {"highway": "service", "name": "Подъезд к воинской части"},
                  "coords": [inner, (on_road.y, on_road.x)]})
             note = f"drive to the road {math.hypot(dx, dy) * (1 - 175.0 / reach):.0f} m"
         else:

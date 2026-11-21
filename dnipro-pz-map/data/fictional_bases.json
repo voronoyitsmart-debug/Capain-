@@ -1,12 +1,12 @@
 [
  {
-  "name": "Військова частина «Південь» (вигадана)",
+  "name": "Воинская часть «Юг» (вымышленная)",
   "ways": [
    {
     "tags": {
      "landuse": "military",
      "military": "base",
-     "name": "Військова частина «Південь» (вигадана)"
+     "name": "Воинская часть «Юг» (вымышленная)"
     },
     "coords": [
      [
@@ -153,7 +153,7 @@
      "building": "military",
      "military": "barracks",
      "building:levels": "1",
-     "name": "Їдальня"
+     "name": "Столовая"
     },
     "coords": [
      [
@@ -183,7 +183,7 @@
      "building": "warehouse",
      "military": "depot",
      "building:levels": "1",
-     "name": "Склад РАО"
+     "name": "Склад РАВ"
     },
     "coords": [
      [
@@ -213,7 +213,7 @@
      "building": "warehouse",
      "military": "depot",
      "building:levels": "1",
-     "name": "Склад речового майна"
+     "name": "Вещевой склад"
     },
     "coords": [
      [
@@ -303,7 +303,7 @@
      "building": "bunker",
      "military": "bunker",
      "building:levels": "1",
-     "name": "Склад озброєння"
+     "name": "Склад вооружения"
     },
     "coords": [
      [
@@ -497,7 +497,7 @@
    {
     "tags": {
      "highway": "service",
-     "name": "Під'їзд до військової частини"
+     "name": "Подъезд к воинской части"
     },
     "coords": [
      [
@@ -513,13 +513,13 @@
   ]
  },
  {
-  "name": "Військова частина «Північ» (вигадана)",
+  "name": "Воинская часть «Север» (вымышленная)",
   "ways": [
    {
     "tags": {
      "landuse": "military",
      "military": "base",
-     "name": "Військова частина «Північ» (вигадана)"
+     "name": "Воинская часть «Север» (вымышленная)"
     },
     "coords": [
      [
@@ -666,7 +666,7 @@
      "building": "military",
      "military": "barracks",
      "building:levels": "1",
-     "name": "Їдальня"
+     "name": "Столовая"
     },
     "coords": [
      [
@@ -696,7 +696,7 @@
      "building": "warehouse",
      "military": "depot",
      "building:levels": "1",
-     "name": "Склад РАО"
+     "name": "Склад РАВ"
     },
     "coords": [
      [
@@ -726,7 +726,7 @@
      "building": "warehouse",
      "military": "depot",
      "building:levels": "1",
-     "name": "Склад речового майна"
+     "name": "Вещевой склад"
     },
     "coords": [
      [
@@ -816,7 +816,7 @@
      "building": "bunker",
      "military": "bunker",
      "building:levels": "1",
-     "name": "Склад озброєння"
+     "name": "Склад вооружения"
     },
     "coords": [
      [
@@ -1010,13 +1010,13 @@
   ]
  },
  {
-  "name": "Військова частина «Схід» (вигадана)",
+  "name": "Воинская часть «Восток» (вымышленная)",
   "ways": [
    {
     "tags": {
      "landuse": "military",
      "military": "base",
-     "name": "Військова частина «Схід» (вигадана)"
+     "name": "Воинская часть «Восток» (вымышленная)"
     },
     "coords": [
      [
@@ -1163,7 +1163,7 @@
      "building": "military",
      "military": "barracks",
      "building:levels": "1",
-     "name": "Їдальня"
+     "name": "Столовая"
     },
     "coords": [
      [
@@ -1193,7 +1193,7 @@
      "building": "warehouse",
      "military": "depot",
      "building:levels": "1",
-     "name": "Склад РАО"
+     "name": "Склад РАВ"
     },
     "coords": [
      [
@@ -1223,7 +1223,7 @@
      "building": "warehouse",
      "military": "depot",
      "building:levels": "1",
-     "name": "Склад речового майна"
+     "name": "Вещевой склад"
     },
     "coords": [
      [
@@ -1313,7 +1313,7 @@
      "building": "bunker",
      "military": "bunker",
      "building:levels": "1",
-     "name": "Склад озброєння"
+     "name": "Склад вооружения"
     },
     "coords": [
      [

@@ -189,6 +189,10 @@ SPECIAL_BY_VALUE = {
 # civic building before the "завод" in it can make it a works.
 SPECIAL_BY_NAME_UK = [
     ("палац культур", "civic"), ("будинок культур", "civic"), ("дворец культур", "civic"),
+    ("дом культур", "civic"), ("дк ", "civic"), ("совет", "civic"), ("исполком", "civic"),
+    ("дворец спорт", "civic"), ("бассейн", "civic"), ("стадион", "civic"),
+    ("детский сад", "school"), ("детсад", "school"), ("ясли", "school"), ("академи", "school"),
+    ("роддом", "medical"), ("родильн", "medical"), ("травмпункт", "medical"),
     ("театр", "civic"), ("філармон", "civic"), ("музей", "civic"), ("цирк", "civic"),
     ("кінотеатр", "civic"), ("кинотеатр", "civic"),
     ("гуртожит", "apartment"), ("общежит", "apartment"),
