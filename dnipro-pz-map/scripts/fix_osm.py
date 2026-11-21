@@ -1,6 +1,6 @@
 """Fix known OpenStreetMap tagging errors in the Dnipro extract before KnoxMap reads it.
 
-usage: python -I fix_osm.py <in.osm.pbf> <out.osm.pbf>
+usage: python -I fix_osm.py <in.osm.pbf> <out.osm.pbf> [fictional_bases.json]
 
 - A water area (natural=water / waterway=riverbank / landuse=reservoir) that also carries a
   highway=* tag is drawn by KnoxMap as a road surface.  The Dniprovske reservoir relation
@@ -45,16 +45,54 @@ def _clean(o, kind="w"):
         return o.replace(tags=tags)
     return o
 
+# Objects that are not in OpenStreetMap at all: the fictional military bases
+# (make_bases.py). Ids far above any real one, so the file stays sorted.
+SYNTH_ID = 90_000_000_000
+extra_nodes, extra_ways = [], []
+if len(sys.argv) > 3:
+    import json
+    nid = wid = SYNTH_ID
+    for base in json.load(open(sys.argv[3], encoding="utf-8")):
+        for way in base["ways"]:
+            refs = []
+            for la, lo in way["coords"]:
+                if refs and len(refs) == len(way["coords"]) - 1 and way["coords"][0] == [la, lo]:
+                    refs.append(refs[0])             # a closed ring ends on its first node
+                    continue
+                extra_nodes.append(osmium.osm.mutable.Node(id=nid, location=(lo, la), tags={}))
+                refs.append(nid); nid += 1
+            extra_ways.append(osmium.osm.mutable.Way(id=wid, nodes=refs, tags=way["tags"]))
+            wid += 1
+        fixed.append(("Base", 0, base["name"], f"{len(base['ways'])} objects added"))
+
+
 class Fix(osmium.SimpleHandler):
     def __init__(self, writer):
         super().__init__(); self.w = writer
+        self.nodes_out = self.ways_out = False
+
+    def _flush_nodes(self):
+        if not self.nodes_out:
+            for n in extra_nodes: self.w.add_node(n)
+            self.nodes_out = True
+
+    def _flush_ways(self):
+        self._flush_nodes()
+        if not self.ways_out:
+            for w in extra_ways: self.w.add_way(w)
+            self.ways_out = True
+
     def node(self, n): self.w.add_node(n)
-    def way(self, w): self.w.add_way(_clean(w))
-    def relation(self, r): self.w.add_relation(_clean(r, "r"))
+    def way(self, w):
+        self._flush_nodes(); self.w.add_way(_clean(w))
+    def relation(self, r):
+        self._flush_ways(); self.w.add_relation(_clean(r, "r"))
 
 writer = osmium.SimpleWriter(sys.argv[2], overwrite=True)
 try:
-    Fix(writer).apply_file(sys.argv[1])
+    h = Fix(writer)
+    h.apply_file(sys.argv[1])
+    h._flush_ways()
 finally:
     writer.close()
 for f in fixed:

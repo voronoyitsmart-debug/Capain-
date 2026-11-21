@@ -21,4 +21,4 @@ osmium time-filter -O -o "$OUT/raw/current.osm.pbf" "$OUT/raw/merged.osm.pbf"
 osmium extract -O --strategy smart -S types=multipolygon,boundary,route \
   -b 34.55,48.10,35.55,48.85 -o "$OUT/raw/dnipro_area.osm.pbf" "$OUT/raw/current.osm.pbf"
 # fix known tagging errors + landmark heights (see fix_osm.py)
-"$PY" -I "$(dirname "$0")/fix_osm.py" "$OUT/raw/dnipro_area.osm.pbf" "$OUT/dnipro_area_fixed.osm.pbf"
+"$PY" -I "$(dirname "$0")/fix_osm.py" "$OUT/raw/dnipro_area.osm.pbf" "$OUT/dnipro_area_fixed.osm.pbf" "$OUT/fictional_bases.json"

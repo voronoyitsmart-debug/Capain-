@@ -74,6 +74,11 @@ SHED_VALUES = {
 # its houses into sheds.
 SHED_MAX_M2 = 30
 HOUSE_TAGS = ("house", "detached", "bungalow", "semidetached_house", "cabin")
+# ...from this many storeys a building tagged as a house is read as flats anyway.
+HOUSE_TAG_FLATS_FROM = 5
+# Tags that say people live here: a block of flats with a shop or a car repair on
+# the ground floor is still a block of flats (the ground floor keeps its use).
+RESIDENTIAL_TAGS = ("apartments", "residential", "dormitory")
 # An untagged building among tagged blocks of flats is taken for one when it
 # is at least this big, in square metres; smaller ones are the shops and
 # garages between them.
@@ -177,6 +182,54 @@ SPECIAL_BY_VALUE = {
 }
 
 # Last resort when the tags say nothing useful but the name is obvious.
+# Ukrainian and Russian names (the Dnipro map): a building named "Котельня" or
+# "Школа №23" with nothing but building=yes on it read as a house or a block of
+# flats, because every word here was English or Turkish. Order matters - the
+# first match wins - so a palace of culture "of the Komintern factory" is a
+# civic building before the "завод" in it can make it a works.
+SPECIAL_BY_NAME_UK = [
+    ("палац культур", "civic"), ("будинок культур", "civic"), ("дворец культур", "civic"),
+    ("театр", "civic"), ("філармон", "civic"), ("музей", "civic"), ("цирк", "civic"),
+    ("кінотеатр", "civic"), ("кинотеатр", "civic"),
+    ("гуртожит", "apartment"), ("общежит", "apartment"),
+    ("поліці", "police"), ("полици", "police"), ("міліці", "police"), ("милици", "police"),
+    ("пожежн", "fire"), ("пожарн", "fire"), ("рятувальн", "fire"), ("дснс", "fire"),
+    ("суд ", "civic"), ("районний суд", "civic"), ("прокуратур", "civic"),
+    ("адміністрац", "civic"), ("администрац", "civic"), ("рада", "civic"),
+    ("церкв", "church"), ("церков", "church"), ("храм", "church"), ("собор ", "church"),
+    ("каплиц", "church"), ("часовн", "church"), ("синагог", "church"), ("мечет", "church"),
+    ("лікарн", "medical"), ("больниц", "medical"), ("поліклін", "medical"),
+    ("поликлин", "medical"), ("амбулатор", "medical"), ("диспансер", "medical"),
+    ("клінік", "medical"), ("клиник", "medical"), ("пологов", "medical"),
+    ("госпітал", "medical"), ("госпитал", "medical"), ("стоматолог", "medical"),
+    ("аптек", "medical"), ("медичн", "medical"),
+    ("школ", "school"), ("гімназ", "school"), ("гимназ", "school"), ("ліцей", "school"),
+    ("лицей", "school"), ("коледж", "school"), ("колледж", "school"), ("технікум", "school"),
+    ("техникум", "school"), ("університет", "school"), ("университет", "school"),
+    ("інститут", "school"), ("институт", "school"), ("училищ", "school"),
+    ("дитячий садок", "school"), ("дитсадок", "school"), ("садочок", "school"),
+    ("навчальн", "school"),
+    ("бібліотек", "library"), ("библиотек", "library"),
+    ("трц", "mall"), ("трк", "mall"), ("тц ", "mall"), ("торговий центр", "mall"),
+    ("торговельний центр", "mall"), ("торговый центр", "mall"),
+    ("ринок", "shop"), ("рынок", "shop"), ("базар", "shop"), ("магазин", "shop"),
+    ("супермаркет", "shop"), ("маркет", "shop"), ("атб", "shop"), ("сільпо", "shop"),
+    ("ресторан", "restaurant"), ("кафе", "restaurant"), ("їдальн", "restaurant"),
+    ("столов", "restaurant"), ("піцер", "restaurant"), ("пиццер", "restaurant"),
+    ("макдональдс", "restaurant"), ("mcdonald", "restaurant"), ("kfc", "restaurant"),
+    ("автосервіс", "garage"), ("автосервис", "garage"), ("шиномонтаж", "garage"),
+    ("гараж", "garage"), ("сто ", "garage"), ("автомий", "garage"),
+    ("котельн", "industrial"), ("цех", "industrial"), ("завод", "industrial"),
+    ("фабрик", "industrial"), ("комбінат", "industrial"), ("комбинат", "industrial"),
+    ("склад", "industrial"), ("депо", "industrial"), ("елеватор", "industrial"),
+    ("элеватор", "industrial"), ("підстанці", "industrial"), ("подстанци", "industrial"),
+    ("насосн", "industrial"), ("майстерн", "industrial"), ("мастерск", "industrial"),
+    ("банк ", "civic"), ("пошта", "civic"), ("почта", "civic"),
+    ("бізнес-центр", "civic"), ("бизнес-центр", "civic"),
+    ("спорт", "civic"), ("басейн", "civic"), ("стадіон", "civic"),
+    ("вокзал", "civic"), ("автостанці", "civic"),
+]
+
 SPECIAL_BY_NAME = [
     ("school", "school"), ("academy", "school"), ("college", "school"),
     ("university", "school"), ("church", "church"), ("chapel", "church"),
@@ -435,6 +488,11 @@ def looks_like_apartment(tags: dict, area_tiles: int, rng,
     # at any size: a 1200-tile terrace came out as a single dwelling with 25
     # rooms, six bedrooms and five bathrooms.
     measured = levels_from_tags(tags, settings)
+    # A mapper who said "house" and three storeys means a three-storey house - a
+    # private cottage, of which the Ukrainian private sector has plenty. Five and
+    # up is a block of flats tagged by mistake.
+    if (tags.get("building") or "").lower() in HOUSE_TAGS and measured is not None:
+        return measured >= HOUSE_TAG_FLATS_FROM
     if measured is not None and measured >= 3:
         return True
     if measured == 1:
@@ -612,7 +670,12 @@ def classify_building(tags: dict) -> str | None:
             elif key == "military" and value != "no":
                 matched.append("military")
     name = (tags.get("name") or "").lower()
-    name_kinds = [kind for needle, kind in SPECIAL_BY_NAME if needle in name]
+    padded = name + " "
+    # At the start of a word only: "рада" (council) is not in "Отрада", nor
+    # "суд" (court) in "Посуд" (a crockery shop).
+    name_kinds = [kind for needle, kind in SPECIAL_BY_NAME_UK
+                  if re.search(r"(?<!\w)" + re.escape(needle), padded)]
+    name_kinds += [kind for needle, kind in SPECIAL_BY_NAME if needle in name]
     all_kinds = set(matched) | set(name_kinds)
     if "fire" in all_kinds and "police" in all_kinds:
         return "fire_police"
@@ -1658,6 +1721,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           uses = uses_of(inside)
           special = _business_kind(special, uses)
           special = mall_by_name(special, tags, uses, real_m2)
+          if btag in RESIDENTIAL_TAGS and special in ("shop", "restaurant", "garage", "mall"):
+              special = "apartment"
           if special == "garage":
               sheds += 1
           entrance_points = _entrances_inside(points, px)
@@ -1677,16 +1742,25 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               sheds += 1
           nearby = (context.neighbour_levels(cx, cy)
                     if levels_from_tags(tags, here) is None else None)
-          if special is None and nearby is not None and nearby >= 3 \
+          # The ground it stands on first (a works, a campus, a hospital, a
+          # base): an untagged hall on a factory site among tall tagged ones
+          # was taken for one more block of flats by the rule below, which is
+          # how three of Pivdenmash's buildings came out as housing.
+          around = areas.kind_for(cx, cy, fp.tiles) if special is None else None
+          if around == "shop":
+              site = areas.around(cx, cy) or {}
+              # A tall building in a shopping street is flats over shops; the
+              # mapper's height says so more reliably than the zoning does -
+              # except on a market, whose pavilions are shops however tall.
+              if (levels_from_tags(tags, here) or 0) >= 3 and site.get("amenity") != "marketplace":
+                  around = None
+          if around == "industrial" and (levels_from_tags(tags, here) or 0) >= 5:
+              around = "civic"           # the works' office block, not a five-storey shed
+          if special is None and around is None and nearby is not None and nearby >= 3 \
                   and real_m2 >= NEIGHBOUR_FLATS_M2 and btag not in HOUSE_TAGS:
               # Among tagged blocks of flats, a big untagged building is one more.
               special = "apartment"
           if special is None:
-              around = areas.kind_for(cx, cy, fp.tiles)
-              # A tall building in a shopping street is flats over shops; the
-              # mapper's height says so more reliably than the zoning does.
-              if around == "shop" and (levels_from_tags(tags, here) or 0) >= 3:
-                  around = None
               # When an airfield has untagged buildings and no explicit terminal,
               # promote the first compact medium/large building to a terminal so
               # regional airfields get a proper concourse alongside their hangars.
@@ -1835,7 +1909,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                   (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
               decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
                               measured, commercial, style, umask,
-                              real_name if n == 0 else ""))
+                              real_name if n == 0 else "", tags.get("osm_id", "")))
     finally:
         fp_session.close()
 
@@ -2037,7 +2111,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     basement_counts = {"house": 0, "large": 0, "installation": 0}
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
-         style, mask, real_name), (storeys, rooms, furniture, error,
+         style, mask, real_name, osm_id), (storeys, rooms, furniture, error,
                                    escalators, below, _problems) in zip(decided, results):
         if error:
             failed_buildings.append(error)
@@ -2072,6 +2146,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             "commercial": int(commercial),
             "kind": special or "house",
             "building": btag,
+            "osm_id": osm_id,
             "style": style["name"],
             "shaped": int(mask is not None),
             "angle": round(fp.angle, 1),
