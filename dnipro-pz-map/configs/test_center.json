@@ -1,0 +1,24 @@
+{
+  "mapName": "dnipro_center_test",
+  "pbf": "../data/dnipro_area_fixed.osm.pbf",
+  "metersPerTile": 1.0,
+  "bbox": {
+    "south": 48.455,
+    "west": 35.025,
+    "north": 48.475,
+    "east": 35.06
+  },
+  "settings": {
+    "preset": "city",
+    "max_levels": 31,
+    "true_map": 1,
+    "landcover": "osm",
+    "elevation": "flat",
+    "hospitals": "osm",
+    "region_override": "auto",
+    "arch_style": "ua",
+    "align_streets": 0
+  },
+  "title": "Dnipro - test block (Дніпро)",
+  "modId": "DniproTest"
+}

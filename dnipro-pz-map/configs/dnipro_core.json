@@ -1,0 +1,24 @@
+{
+  "mapName": "dnipro_core",
+  "pbf": "../data/dnipro_area_fixed.osm.pbf",
+  "metersPerTile": 1.0,
+  "bbox": {
+    "south": 48.43,
+    "west": 34.98,
+    "north": 48.5,
+    "east": 35.1
+  },
+  "settings": {
+    "preset": "city",
+    "max_levels": 31,
+    "true_map": 1,
+    "arch_style": "ua",
+    "align_streets": 0,
+    "landcover": "osm",
+    "elevation": "flat",
+    "hospitals": "osm",
+    "region_override": "auto"
+  },
+  "title": "Dnipro - centre (Дніпро)",
+  "modId": "DniproCore"
+}

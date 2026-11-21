@@ -1,0 +1,24 @@
+{
+  "mapName": "dnipro_full",
+  "pbf": "../data/dnipro_area_fixed.osm.pbf",
+  "metersPerTile": 1.0,
+  "bbox": {
+    "south": 48.26,
+    "west": 34.825,
+    "north": 48.685,
+    "east": 35.262
+  },
+  "settings": {
+    "preset": "city",
+    "max_levels": 31,
+    "true_map": 1,
+    "arch_style": "ua",
+    "align_streets": 0,
+    "landcover": "osm",
+    "elevation": "flat",
+    "hospitals": "osm",
+    "region_override": "auto"
+  },
+  "title": "Dnipro and surroundings (Дніпро)",
+  "modId": "DniproFull"
+}

@@ -1,0 +1,2428 @@
+"""Turn a Knoxify output folder into furnished .tbx buildings + a WorldEd project.
+
+    python -m knoxbuild output/mytown
+
+Reads <name>_info.json and <name>_buildings.geojson, reprojects every OSM
+footprint with Knoxify's own Projector so the buildings line up with the
+landscape BMP exactly, generates a floor plan for each, and writes:
+
+    <dir>/buildings/<name>_NNN.tbx
+    <dir>/<name>.pzw          WorldEd project with every building placed
+    <dir>/<name>_placements.csv
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import csv
+import json
+import math
+import random
+import re
+import os
+import sys
+import time
+
+import numpy as np
+from shapely.geometry import Polygon
+
+from generator.renderer import Projector
+
+import knoxfiles
+import knoxstop
+
+from .areas import AreaIndex
+from .fences import build_fences
+from . import footprint
+from .footprint import FootprintSession
+from .layout import build_building, thin_building
+from .uses import is_hotel, uses_of
+from .context import Context, style_fits
+from .population import build_spawn_map, official_population, save_footprints
+from . import hospitals
+from .profile import BuildingProfile
+from .settings import PRESETS, Settings
+from .tbx import render_tbx
+from .world import Placement, render_pzw
+from . import worldmap
+
+# OSM building tags that should get a commercial room mix rather than a house.
+COMMERCIAL_TAGS = {
+    "retail", "commercial", "industrial", "warehouse", "office", "shop",
+    "supermarket", "school", "hospital", "church", "civic", "public",
+    "government", "hotel", "service", "garage", "garages", "kiosk",
+}
+
+
+# building=* values that are not walled buildings at all. A carport or a petrol
+# station canopy is a roof on posts; ruins and tanks have no rooms. Built as
+# houses they would be solid boxes standing where the real place is open.
+NOT_BUILDINGS = {
+    "roof", "carport", "canopy", "ruins", "collapsed", "demolished", "no",
+    "bridge", "storage_tank", "tank", "silo", "transformer_tower", "chimney",
+    "tower", "grandstand", "construction",
+}
+# Outbuildings: one room, one storey, nobody living there.
+SHED_VALUES = {
+    "shed", "garage", "garages", "hut", "service", "toilets", "boathouse",
+    "allotment_house", "bunker", "garbage_shed", "guardhouse", "gatehouse",
+}
+# An untagged building this small is a shed, a garage or a kiosk, not a home:
+# 30 square metres of house would be one living room with a sofa filling it.
+# Mappers tag the small houses that do exist (building=house), and those
+# stay houses. Real square metres, so a map drawn at 4 m a tile does not turn
+# its houses into sheds.
+SHED_MAX_M2 = 30
+HOUSE_TAGS = ("house", "detached", "bungalow", "semidetached_house", "cabin")
+# An untagged building among tagged blocks of flats is taken for one when it
+# is at least this big, in square metres; smaller ones are the shops and
+# garages between them.
+NEIGHBOUR_FLATS_M2 = 60
+# Kinds whose height follows the tagged buildings around them. A school or a
+# church is its own shape whatever the street is like.
+FOLLOWS_NEIGHBOURS = {"house", "apartment", "shop", "civic", "restaurant"}
+HOUSE_MAX_LEVELS = 3
+
+
+# Named buildings worth a label on the paper map: the public ones people give
+# directions by. Hotels, banks and offices are "civic" for their room plan,
+# but a label on each buries the map in brand names.
+NOTABLE_AMENITY = {"townhall", "police", "fire_station", "library", "courthouse",
+                   "post_office", "community_centre", "theatre", "hospital",
+                   "school", "university", "college", "place_of_worship",
+                   "marketplace", "prison", "arts_centre"}
+
+
+def is_notable(tags: dict, kind: str | None) -> bool:
+    if kind in ("school", "church", "medical"):
+        return True
+    return (tags.get("amenity") in NOTABLE_AMENITY
+            or tags.get("tourism") in ("museum", "attraction")
+            or tags.get("historic") not in (None, "", "no")
+            or tags.get("heritage") not in (None, "", "no")
+            or tags.get("building") in ("government", "public", "civic", "townhall")
+            or "wikidata" in tags or "wikipedia" in tags)
+
+
+# Theatres are a hall a few storeys high.
+THEATRE_MAX_LEVELS = 3
+
+# OSM values that identify a building as something other than a house. Checked
+# against the building/amenity/shop/leisure/tourism/healthcare tags in turn.
+SPECIAL_BY_VALUE = {
+    "school": "school", "kindergarten": "school", "college": "school",
+    "university": "school", "childcare": "school", "library": "library",
+    "church": "church", "chapel": "church", "cathedral": "church",
+    "mosque": "church", "synagogue": "church", "temple": "church",
+    "place_of_worship": "church",
+    "restaurant": "restaurant", "fast_food": "restaurant", "cafe": "restaurant",
+    "bar": "restaurant", "pub": "restaurant", "food_court": "restaurant",
+    "retail": "shop", "commercial": "shop", "supermarket": "shop",
+    "convenience": "shop", "kiosk": "shop",
+    "shop": "shop", "marketplace": "shop",
+    # A shopping centre is not a big corner shop. As "shop" it took the shop
+    # recipe - one sales floor the width of the front, stockrooms behind -
+    # and a 92x72 one came out as a single room of 5,670 tiles with an
+    # office block on top. Knox County's mall is a concourse with units off
+    # it: Muldraugh 54_22 is 33.6% hall by floor, and the rest clothes,
+    # department, furniture, gift, toy and book stores of 150 to 400 tiles.
+    "mall": "mall", "department_store": "mall",
+    "industrial": "industrial", "warehouse": "industrial",
+    # A hangar is one volume with nothing in it but what is parked there,
+    # and the game's own airfield builds it that way: a long shed with a
+    # roof over the whole span. Laid out as a warehouse it came out as a
+    # row of offices and stockrooms, which is what an airport looked like.
+    "hangar": "hangar",
+    # Airport passenger terminals have their own concourse/gate seating layout;
+    # control towers stay civic (tall tower core).
+    "terminal": "terminal", "airport_terminal": "terminal",
+    "concourse": "terminal", "control_tower": "civic",
+    "factory": "industrial", "works": "industrial", "manufacture": "industrial",
+    "garage": "garage", "garages": "garage", "car_repair": "garage",
+    "barn": "barn", "farm": "barn", "farm_auxiliary": "barn",
+    "greenhouse": "barn", "stable": "barn", "cowshed": "barn",
+    "hospital": "medical", "clinic": "medical", "doctors": "medical",
+    "dentist": "medical", "pharmacy": "medical", "veterinary": "medical",
+    "apartments": "apartment", "residential": "apartment",
+    "dormitory": "apartment", "terrace": "apartment",
+    "civic": "civic", "public": "civic", "government": "civic",
+    "townhall": "civic",
+    # A police station, a library and a fire station have rooms of their own
+    # in the game, with the loot that goes in them. As "civic" they came out
+    # as an office block with a storeroom, which is what players reported
+    # when a station they knew had nothing in it.
+    "police": "police", "prison": "police", "fire_station": "fire",
+    "hotel": "civic", "office": "civic", "courthouse": "civic",
+    "museum": "civic", "bank": "civic", "post_office": "civic",
+    "theatre": "civic", "cinema": "civic", "arts_centre": "civic",
+    # Bases: barracks, armouries, the offices and stores of a military site.
+    "military": "military", "barracks": "military", "bunker": "military",
+    "armory": "military", "armoury": "military",
+    # The buildings a town is known by, which had no kind at all and so were
+    # ordinary housing: thinned like a house, grown like a house and given a
+    # sofa and two bedrooms. A castle keeps its great hall and its chapel; a
+    # ground is a concourse, changing rooms and a kit store.
+    "castle": "castle", "fort": "castle", "fortress": "castle",
+    "citadel": "castle", "manor": "castle", "palace": "castle",
+    "city_gate": "castle",
+    "stadium": "stadium", "sports_centre": "stadium", "sports_hall": "stadium",
+    "grandstand": "stadium", "pavilion": "stadium", "arena": "stadium",
+}
+
+# Last resort when the tags say nothing useful but the name is obvious.
+SPECIAL_BY_NAME = [
+    ("school", "school"), ("academy", "school"), ("college", "school"),
+    ("university", "school"), ("church", "church"), ("chapel", "church"),
+    # Big airports do not tag their hangars: Louisville's are building=yes
+    # with the word in the name and nothing else, so three of them came out
+    # as brick houses with two hundred rooms in them.
+    ("hangar", "hangar"),
+    ("terminal", "terminal"), ("concourse", "terminal"),
+    ("fbo", "terminal"), ("airport", "terminal"), ("airfield", "terminal"),
+    ("cathedral", "church"), ("hospital", "medical"), ("clinic", "medical"),
+    ("pharmacy", "medical"), ("warehouse", "industrial"),
+    ("factory", "industrial"), ("mill", "industrial"), ("plant", "industrial"),
+    ("market", "shop"), ("mall", "mall"), ("store", "shop"), ("shop", "shop"),
+    ("diner", "restaurant"), ("restaurant", "restaurant"), ("grill", "restaurant"),
+    ("cafe", "restaurant"), ("bar ", "restaurant"), ("barn", "barn"),
+    ("library", "library"), ("bibliot", "library"), ("kütüphane", "library"),
+    ("police", "police"), ("sheriff", "police"), ("polizei", "police"), ("polic", "police"),
+    ("karakol", "police"), ("politie", "police"), ("gendarm", "police"),
+    ("fire station", "fire"), ("fire department", "fire"), ("firehouse", "fire"),
+    ("fire hall", "fire"), ("feuerwehr", "fire"), ("itfaiye", "fire"),
+    ("caserne de pompiers", "fire"), ("brandweer", "fire"),
+    ("bank", "civic"), ("city hall", "civic"),
+    ("apartment", "apartment"), ("apartmani", "apartment"),
+    ("residence", "apartment"), ("towers", "apartment"), ("blok", "apartment"),
+]
+
+# Storeys, when OSM does not say and the area tables in regional.py do not
+# cover the kind either. A town of nothing but bungalows reads as a film set
+# - the skyline is what tells you whether you are downtown or in the suburbs.
+# Kinds that are one tall volume however high the mapper measured them.
+ONE_STOREY_WHATEVER_OSM_SAYS = {"hangar"}
+
+DEFAULT_LEVELS = {
+    "industrial": (1, 1),
+    "garage": (1, 1),
+    "barn": (1, 1),
+    "shed": (1, 1),
+    "hangar": (1, 1),
+    "terminal": (1, 2),
+    "church": (1, 1),
+    "apartment": (3, 5),
+    "civic": (2, 3),
+    "school": (2, 3),
+    "medical": (2, 4),
+    "shop": (1, 2),
+    "restaurant": (1, 2),
+    "military": (1, 2),
+    "police": (1, 2),
+    "library": (1, 2),
+    "fire": (1, 1),
+    "fire_police": (1, 2),
+    # A keep is tall and a stand is not. Kept short because the mix is dealt
+    # again on every storey: at four levels a castle had four chapels.
+    "castle": (2, 3),
+    "stadium": (1, 2),
+    # Knox County's mall runs to five storeys; two is the common one.
+    "mall": (1, 2),
+}
+
+# Rows of units under one outline.
+#
+# OpenStreetMap maps a parade of shops, a strip mall or a terrace of houses as
+# one polygon more often than not - the mapper drew the block, not the seven
+# front doors in it - and built as one building it came out as a single shed
+# with one door and one enormous room, whatever country the map was of. A
+# footprint this much longer than it is deep, and no deeper than a shop unit
+# is, is cut into units instead (footprint.split_row).
+#
+# Everything here is in metres, not tiles, so a map drawn at 2 m a tile splits
+# the same row the same way as one drawn at half a metre.
+ROW_KINDS = {None, "house", "apartment", "shop", "restaurant"}
+ROW_RATIO = 2.2          # long side over short side
+ROW_MIN_DEPTH_M = 5.0    # any shallower and a unit has no room in it
+ROW_MAX_DEPTH_M = 32.0   # any deeper and it is a big shop, not a row
+ROW_MIN_LENGTH_M = 22.0
+# Frontages: a terraced house is narrower than a shop unit.
+UNIT_FRONTAGE_M = {"house": 9.0, "apartment": 9.0}
+SHOP_FRONTAGE_M = 13.0
+# building=* values that say "row of houses" outright, in the countries whose
+# mappers use them.
+TERRACE_TAGS = {"terrace", "terraced", "semidetached_house", "row_house"}
+
+# OpenStreetMap room= and amenity= values the game furnishes under a name of
+
+
+# And a building too big to be one building whatever it is.
+#
+# A room may be no bigger than the game will fill (layout.MAX_ROOM_AREA), so a
+# footprint of forty thousand tiles came out as five hundred rooms in one
+# .tbx - more than any hand-made building in the game has, and slow to lay
+# out. Past this it is cut into blocks that stand wall to wall, which is what
+# a shopping centre or a works of that size is anyway.
+BIG_BUILDING_M2 = 6000.0
+# A footprint past settings.max_size is kept and cut into units instead of
+# dropped, but not without limit: a polygon this many tiles in area (about a
+# square kilometre at one metre a tile) comes to hundreds of units, each laid
+# out as a building of its own, and is a campus or an airfield mapped as one
+# building rather than a building. Past it the old answer stands: left out.
+MAX_OVERSIZE_TILES = 1_200_000
+# ...except a mall. A real one is 10,000-60,000 m2, and cut at the blocks
+# above Piqua Center came out as eleven mini-malls side by side, each with
+# a concourse of its own and nothing joining them. Up to this it is one
+# building (layout._mall_plan); past it it is a campus mapped as one outline.
+MALL_MAX_M2 = 60000.0
+# A mall mapped with no mall tag on it: "Piqua Center" with the shops drawn
+# as points inside. The name alone is not enough - a medical centre has a
+# pharmacy, an office tower called a Plaza has a cafe in its lobby, and a
+# strip of shops is a Plaza too - so it takes this many different shops or
+# places to eat, no offices, a low building and a real mall's floor area.
+MALL_NAME_MIN_SHOPS = 3
+MALL_NAME_MIN_M2 = 10000.0
+MALL_NAME_MAX_LEVELS = 2
+MALL_NAME = re.compile(r"\b(center|centre|plaza)\s*$", re.I)
+
+
+def mall_by_name(special: str | None, tags: dict,
+                 uses: list[tuple[str, str]], real_m2: float) -> str | None:
+    """"mall" for a Center, Centre or Plaza with shops in it, else `special`."""
+    from .uses import FOOD_FRONTS, OFFICE_USE, SHOP_USES
+
+    if special not in (None, "shop", "civic"):
+        return special
+    if not MALL_NAME.search(tags.get("name") or "") or real_m2 < MALL_NAME_MIN_M2:
+        return special
+    if OFFICE_USE in uses or tags.get("building") == "office":
+        return special
+    try:
+        if float(tags.get("building:levels") or 0) > MALL_NAME_MAX_LEVELS:
+            return special
+    except ValueError:
+        pass
+    retail = {front for front, _back in SHOP_USES.values()} | FOOD_FRONTS
+    shops = sum(1 for front, _back in uses if front in retail)
+    return "mall" if shops >= MALL_NAME_MIN_SHOPS else special
+
+
+def _cut_big(units: list, metres_per_tile: float,
+             max_side: int | None = None) -> list:
+    """Cut anything left that is still too big to be one building.
+
+    `max_side`, passed only for a footprint placed past settings.max_size
+    (build.py, the "large" retry), is a hard cap on either side: the gate
+    that used to throw such a building away no longer ran, so it is cut down
+    to what the gate would have allowed instead. split_row leaves a piece
+    whole when round(length / unit) comes to 1, so the cut target is 2/3 of
+    the cap - a side over the cap is then always over 1.5 targets, which
+    always divides, and every piece lands inside the cap.
+    """
+    import math
+
+    from .footprint import split_row
+
+    side = max(8, int(math.sqrt(BIG_BUILDING_M2) / max(0.05, metres_per_tile)))
+    limit = side * side
+    cut = side if max_side is None else min(side, max(4, (2 * max_side) // 3))
+
+    def needs_cut(u) -> bool:
+        return (u.width * u.height > limit
+                or (max_side is not None and max(u.width, u.height) > max_side))
+
+    out = list(units)
+    for _ in range(4):
+        if all(not needs_cut(u) for u in out):
+            break
+        nxt = []
+        for u in out:
+            nxt.extend(split_row(u, cut) if needs_cut(u) else [u])
+        if len(nxt) == len(out):
+            break
+        out = nxt
+    return out
+
+
+def row_units(fp, special: str | None, btag: str, n_uses: int,
+              metres_per_tile: float, max_side: int | None = None,
+              split: bool = True):
+    """One footprint per unit of a row, or the footprint as it stands.
+
+    `max_side` (see _cut_big) is passed only for a footprint that was too
+    wide for settings.max_size and placed anyway, to be cut into units that
+    fit rather than dropped.
+
+    `split` is off when the map is being held to a number of buildings
+    (settings.max_buildings): a mapped terrace is one footprint that would
+    otherwise become a dozen buildings, and a ceiling that counts footprints
+    while the map counts shopfronts is not the number anybody asked for. A
+    row then stays the one building the survey drew.
+    """
+    from .footprint import split_row
+
+    if not split:
+        return _cut_big([fp], metres_per_tile, max_side)
+
+    if special == "mall" and max_side is None and \
+            fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
+        return [fp]
+    if special not in ROW_KINDS and btag not in TERRACE_TAGS:
+        return _cut_big([fp], metres_per_tile, max_side)
+    long_side = max(fp.width, fp.height) * metres_per_tile
+    short_side = min(fp.width, fp.height) * metres_per_tile
+    if short_side < ROW_MIN_DEPTH_M or long_side < ROW_MIN_LENGTH_M:
+        return _cut_big([fp], metres_per_tile, max_side)
+    terrace = btag in TERRACE_TAGS
+    if not terrace:
+        if short_side > ROW_MAX_DEPTH_M or long_side < short_side * ROW_RATIO:
+            return _cut_big([fp], metres_per_tile, max_side)
+    frontage = UNIT_FRONTAGE_M.get(special or "house", SHOP_FRONTAGE_M)
+    if n_uses > 1:
+        # The shops mapped inside it say how many units there really are;
+        # keep the frontage sane so two shops in a long parade do not become
+        # two units of fifty metres.
+        frontage = min(max(frontage, long_side / n_uses), frontage * 2)
+    return _cut_big(split_row(fp, max(5, int(round(frontage / metres_per_tile)))),
+                    metres_per_tile, max_side)
+
+
+# Kinds with no walls and windows of their own (knoxbuild/catalog.py
+# SPECIAL_STYLES), dressed as the nearest kind that has: an army base is
+# built like a works, a station or a library like any other public building.
+STYLE_AS = {"military": "industrial", "garage": "industrial", "library": "civic"}
+
+
+# A footprint this big, with nothing but building=yes on it, is a block of
+# flats rather than somebody's house.
+#
+# This has to be a guess because the data gives nothing else to go on: of 3079
+# buildings in a real Turkish town, 3015 were tagged building=yes and not one
+# carried building:levels. Taking those at face value produced 2902 detached
+# houses and two apartment blocks - a suburb where a town should be.
+def looks_like_apartment(tags: dict, area_tiles: int, rng,
+                         settings: Settings) -> bool:
+    """Whether an untagged building should be treated as a block of flats."""
+    # A mapper who recorded a height or a floor count has told us something,
+    # but not everything. Three storeys up is a block of flats and one storey
+    # is not; two says nothing, because a terraced row is two storeys and so
+    # is a bungalow with an attic, and the footprint is what separates them.
+    #
+    # Taking two at face value made every large 2-storey building one house,
+    # at any size: a 1200-tile terrace came out as a single dwelling with 25
+    # rooms, six bedrooms and five bathrooms.
+    measured = levels_from_tags(tags, settings)
+    if measured is not None and measured >= 3:
+        return True
+    if measured == 1:
+        return False
+    if area_tiles < settings.apartment_footprint:
+        return False
+    if (tags.get("building") or "").lower() in ("house", "detached", "bungalow"):
+        return False
+    return rng.random() < settings.apartment_chance
+
+
+def flats_by_height(special: str | None, levels: int, btag: str, area_tiles: int,
+                    settings: Settings) -> bool:
+    """Whether a building left a house turns out a block of flats once its
+    storeys are known. looks_like_apartment rolls for a big untagged building
+    with no height, and one the roll left a house still got its storeys from
+    its footprint: Piqua had 154 houses three and four storeys up, the
+    biggest 54 x 35, each floor sixteen offices, sixteen storerooms and eight
+    laundries. Three storeys up is flats, as a measured height already is."""
+    return (special is None and levels >= 3 and btag not in HOUSE_TAGS
+            and area_tiles >= settings.apartment_footprint)
+
+
+# Metres of building per storey, for turning a height= into a floor count.
+# OSM's own convention, and close enough to the game's floor spacing.
+METRES_PER_LEVEL = 3.0
+
+
+def _number(raw: str | None) -> float | None:
+    """A leading number out of an OSM measurement, in metres.
+
+    Values in the wild are "12", "12 m", "12.5", "12,5" and occasionally
+    "40'" or "3;4" where two mappers disagreed. Feet are converted; a
+    semicolon list takes the first entry.
+    """
+    if not raw:
+        return None
+    text = str(raw).strip().split(";")[0].strip().replace(",", ".")
+    feet = text.endswith("'") or text.endswith("ft")
+    text = text.rstrip("'").removesuffix("ft").removesuffix("m").strip()
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    # float() reads "inf", "Infinity", "nan" and "1e999" as numbers. None of them
+    # is a height, and each one raised in the int() a few lines on - outside the
+    # per-building handling, so one such tag stopped the whole build.
+    if not math.isfinite(value):
+        return None
+    return value * 0.3048 if feet else value
+
+
+def levels_from_tags(tags: dict, settings: Settings) -> int | None:
+    """Storeys according to OSM, or None where it does not say.
+
+    Preference order is how confident each source is. building:levels is a
+    mapper counting floors, so it is taken as given. height is a measurement -
+    of the roof ridge, not the top floor - so it is divided by a nominal storey
+    and rounded down, which is why a 10 m building comes out as three floors
+    rather than four.
+    """
+    for key in ("building:levels", "levels"):
+        value = _number(tags.get(key))
+        if value is not None and value >= 1:
+            levels = int(value)
+            # A roof level is habitable space in OSM's model, so an attic
+            # conversion counts - but only when the mapper recorded one.
+            roof = _number(tags.get("roof:levels"))
+            if roof and roof >= 1:
+                levels += int(roof)
+            return max(1, min(settings.max_levels, levels))
+
+    for key in ("height", "building:height", "est_height"):
+        metres = _number(tags.get(key))
+        if metres and metres > 0:
+            # A building:part sitting on a podium starts partway up.
+            base = _number(tags.get("min_height")) or 0.0
+            usable = max(metres - base, metres * 0.5)
+            return max(1, min(settings.max_levels,
+                              int(usable // METRES_PER_LEVEL)))
+    return None
+
+
+def building_levels(tags: dict, kind: str | None, area_tiles: int,
+                    rng, settings: Settings,
+                    metres_per_tile: float = 1.0,
+                    region: str | None = None) -> tuple[int, bool]:
+    """How many storeys this building gets, and whether OSM said so.
+
+    OSM's own height and level tags come first, as ever. Where it says
+    nothing, the guess is the Arnis way: the kind and the real footprint
+    together (knoxbuild/regional.py) - a 90 m2 footprint is a shop unit or
+    somebody's house whatever country it is in, and a 2,500 m2 one is not a
+    bungalow - with the region's own housing tables where the map is of
+    somewhere whose housing does not run to Knox County's shapes.
+    """
+    from .regional import area_level_pool
+
+    measured = levels_from_tags(tags, settings)
+    if kind in ONE_STOREY_WHATEVER_OSM_SAYS:
+        # A height tag on a hangar measures the roof over one tall space,
+        # not two floors: eight metres came out as a hangar with a first
+        # floor in it, which is not a building anything can be rolled into.
+        return 1, measured is not None
+    if measured is not None:
+        return measured, True
+    lo, hi = DEFAULT_LEVELS.get(kind or "", (1, 2))
+    if region == "cn":
+        from .regional import CN_DEFAULT_LEVELS
+        lo, hi = CN_DEFAULT_LEVELS.get(kind or "", (lo, hi))
+    elif region == "ua":
+        from .regional import UA_DEFAULT_LEVELS
+        lo, hi = UA_DEFAULT_LEVELS.get(kind or "", (lo, hi))
+    real_m2 = area_tiles * metres_per_tile * metres_per_tile
+    pool = area_level_pool(kind, real_m2, region)
+
+    def draw() -> int:
+        if pool:
+            return max(1, min(settings.max_levels, rng.choice(pool)))
+        return rng.randint(min(lo, settings.max_levels),
+                           min(hi, settings.max_levels))
+
+    return _mixed_levels(draw, settings, rng), False
+
+
+def _mixed_levels(draw, settings: Settings, rng) -> int:
+    """Shape an unmapped building's height to the skyline that was asked for.
+
+    The guess itself (the kind and the footprint) is what knows a factory from
+    a bungalow, so it is kept and leaned on rather than replaced: two draws
+    and the lower of them for a low town, the higher for a tall one, the mean
+    for one that gathers in the middle. "Even" is the exception and means what
+    it says - every height up to the tallest, equally often - because that is
+    what was asked for and no guess survives it.
+    """
+    mix = getattr(settings, "height_mix", "auto")
+    if mix == "even":
+        return rng.randint(1, max(1, settings.max_levels))
+    first = draw()
+    if mix == "auto":
+        return first
+    if mix == "middle":
+        # The middle of three, not the mean of two: averaging a pool of 2, 3
+        # and 4 rounds its halves outwards and came out wider than the guess
+        # it was supposed to gather in.
+        return sorted((first, draw(), draw()))[1]
+    second = draw()
+    if mix == "low":
+        return min(first, second)
+    if mix == "tall":
+        return max(first, second)
+    return first
+
+
+def classify_building(tags: dict) -> str | None:
+    """The special kind for this building, or None for an ordinary one."""
+    matched: list[str] = []
+    for key in ("amenity", "shop", "healthcare", "leisure", "tourism",
+                "office", "industrial", "craft", "military", "historic",
+                "aeroway", "building"):
+        raw = (tags.get(key) or "").strip().lower()
+        if not raw:
+            continue
+        for value in (part.strip() for part in raw.split(";") if part.strip()):
+            if value in SPECIAL_BY_VALUE:
+                matched.append(SPECIAL_BY_VALUE[value])
+            # shop=* with an unlisted value is still a shop.
+            elif key == "shop" and value not in ("no", "vacant"):
+                matched.append("shop")
+            elif key == "healthcare":
+                matched.append("medical")
+            # military=* is the key mappers use for everything on a base -
+            # armory, barracks, checkpoint, office, hangar, depot - and it was
+            # not read at all, so an armoury came out as somebody's house.
+            elif key == "military" and value != "no":
+                matched.append("military")
+    name = (tags.get("name") or "").lower()
+    name_kinds = [kind for needle, kind in SPECIAL_BY_NAME if needle in name]
+    all_kinds = set(matched) | set(name_kinds)
+    if "fire" in all_kinds and "police" in all_kinds:
+        return "fire_police"
+    if matched:
+        return matched[0]
+    if name_kinds:
+        return name_kinds[0]
+    return None
+
+
+def _business_kind(special: str | None, uses: list[tuple[str, str]]) -> str | None:
+    """Promote retail outlines containing a mapped car-repair business to a garage."""
+    if special in (None, "shop") and ("mechanic", "storage") in uses:
+        return "garage"
+    return special
+
+
+# A public building has no wall style of its own, so it fell through to the
+# house styles and a police station could come out in clapboard. These borrow
+# another kind's, which is what such a building is built of.
+STATION_KINDS = {"fire", "police", "fire_police"}
+BORROWED_STYLE = {"library": "civic",
+                  "military": "civic",
+                  # Stone, not clapboard: a castle has no style of its own and
+                  # the house styles would have built one out of weatherboard.
+                  "castle": "church", "stadium": "civic", "mall": "civic"}
+# Kinds that shipped with a single style, so every church in a county was the
+# same church. The exterior wall is taken from a house style instead, whole -
+# the entry carries its own window and door tiles, so nothing is mixed.
+MORE_WALLS = {
+    "church": ("brick", "stucco", "render", "painted"),
+    "industrial": ("brick", "panel", "stucco"),
+    "barn": ("timber", "panel", "clapboard"),
+}
+# ...and the walls inside. Every variant of a kind shared one interior wall,
+# so a whole county of schools was painted the same colour indoors however
+# many materials the outside came in. The house styles carry nine different
+# ones between them and each is taken whole, window and door tiles with it.
+MORE_INSIDE = {
+    "school": ("brick", "painted", "stucco"),
+    "church": ("timber", "painted", "clapboard"),
+    "civic": ("painted", "stucco", "panel"),
+    "shop": ("painted", "panel"),
+    "apartment": ("brick", "painted", "stucco", "render"),
+    "industrial": ("panel", "stucco"),
+    "hangar": ("panel", "stucco"),
+    "terminal": ("stucco", "panel"),
+    "barn": ("timber", "panel"),
+    "medical": ("painted", "stucco"),
+    "restaurant": ("painted", "panel"),
+}
+# Of the buildings in a block, how many keep the block's own style. A street
+# built at one time is mostly one material with later infills between; every
+# house in 110 tiles being identical is what read as an estate rather than a
+# street.
+BLOCK_SHARE = 55
+
+
+def _wall_pool(kind: str | None) -> list[dict]:
+    """The styles a building of this kind is really built in, or none.
+
+    A kind that borrows another's walls - a police station is built of what a
+    civic building is built of - is asked about under the kind it borrows
+    from, which is what pick_style does; a kind with no walls of its own at
+    all has none, rather than raising.
+    """
+    from . import catalog as C
+
+    kind = BORROWED_STYLE.get(kind or "", kind)
+    if not kind or (kind not in C.SPECIAL_STYLES and kind not in STATION_KINDS):
+        return []
+    return wall_variants(kind)
+
+
+def style_names(kind: str | None = None) -> list[str]:
+    """Every wall style a zone may pin its buildings to, by name."""
+    from . import catalog as C
+
+    names = [style["name"] for style in C.HOUSE_STYLES]
+    names += [v["name"] for v in _wall_pool(kind) if v.get("name")]
+    seen, out = set(), []
+    for name in names:
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
+def style_named(name: str, kind: str | None) -> dict | None:
+    """The style of that name for this kind of building, or None.
+
+    A kind with walls of its own is asked first, so pinning "brick" on a
+    church gets the church's brick rather than a house's; a name nothing
+    answers to gets None, and the caller keeps the style it had.
+    """
+    from . import catalog as C
+
+    wanted = (name or "").strip().lower()
+    if not wanted:
+        return None
+    pools = []
+    own = _wall_pool(kind)
+    if own:
+        pools.append(own)
+    pools.append(C.HOUSE_STYLES)
+    for pool in pools:
+        for style in pool:
+            if (style.get("name") or "").lower() == wanted:
+                return style
+    # "brick" against a church's "church_brick", which is what a mapper
+    # pinning a style by its plain name means.
+    for pool in pools:
+        for style in pool:
+            if wanted in (style.get("name") or "").lower().split("_"):
+                return style
+    return None
+
+
+def wall_variants(kind: str) -> list[dict]:
+    """Every style a building of this kind may be built in."""
+    from . import catalog as C
+
+    houses = {s["name"]: s for s in C.HOUSE_STYLES}
+    if kind in STATION_KINDS:
+        base = C.SPECIAL_STYLES["civic"]
+        brick = houses.get("brick")
+        exteriors = []
+        if kind in ("fire", "fire_police") and brick:
+            exteriors.append(("brick", brick["exterior"]))
+        exteriors.append(("civic", base["exterior"]))
+        if kind == "police" and brick:
+            exteriors.append(("brick", brick["exterior"]))
+        interiors = [("civic", base["interior"])]
+        if "school" in C.SPECIAL_STYLES:
+            interiors.append(("hall", C.SPECIAL_STYLES["school"]["interior"]))
+        out = []
+        for ext_name, ext_tile in exteriors:
+            for int_name, int_tile in interiors:
+                variant = dict(base)
+                variant["exterior"] = ext_tile
+                variant["interior"] = int_tile
+                variant["name"] = f"{kind}_{ext_name}~{int_name}"
+                out.append(variant)
+        return out
+
+    base = C.SPECIAL_STYLES[kind]
+    out = list(getattr(C, "SPECIAL_STYLE_VARIANTS", {}).get(kind) or [base])
+    for name in MORE_WALLS.get(kind, ()):
+        donor = houses.get(name)
+        if not donor:
+            continue
+        variant = dict(base)
+        variant["exterior"] = donor["exterior"]
+        variant["name"] = f"{base['name']}_{name}"
+        out.append(variant)
+    inside = [(n, houses[n]["interior"]) for n in MORE_INSIDE.get(kind, ())
+              if n in houses]
+    if inside:
+        grown = []
+        for variant in out:
+            grown.append(variant)
+            for name, entry in inside:
+                other = dict(variant)
+                other["interior"] = entry
+                other["name"] = f"{variant['name']}~{name}"
+                grown.append(other)
+        out = grown
+    return out
+
+
+def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
+               settings: Settings, density: float = 0.0,
+               profile: BuildingProfile | None = None,
+               region: str | None = None) -> dict:
+    """Materials for one building: its own if special, else its block's.
+
+    Only styles that suit how built-up the place is are in the running, so the
+    old town gets render and brick and the log cabins stay in the countryside.
+    A Chinese map (or one set to Chinese) builds its houses from the flat-roofed
+    masonry pool instead - unless the building is a dated prewar one, which
+    keeps its pitched roof and era materials: the temple and the 1920s shophouse
+    are the last things a regional pool should flatten.
+    """
+    from . import catalog as C
+    from . import regional
+
+    kind = BORROWED_STYLE.get(kind or "", kind)
+    if kind and (kind in C.SPECIAL_STYLES or kind in STATION_KINDS):
+        variants = wall_variants(kind)
+        if profile:
+            picker = random.Random(profile.seed ^ 0xA37E)
+            weights = [profile.style_weight(variant["name"]) for variant in variants]
+            return picker.choices(variants, weights=weights, k=1)[0]
+        # By the building's own position, so neighbours differ and a rebuild
+        # picks the same again.
+        return variants[(tile_x * 73856093 ^ tile_y * 19349663) % len(variants)]
+
+    pool = regional.house_styles_for(region)
+    if pool and not (region == "cn" and profile and profile.dated
+                     and profile.era == "prewar"):
+        # A regional pool's names carry a prefix ("cn_brick", "ua_painted_shutters");
+        # how built-up the place is still decides which of them may stand here.
+        styles = [s for s in pool
+                  if style_fits(s["name"].split("_", 1)[1].replace("_shutters", ""),
+                                density)] or pool
+    else:
+        styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
+            or C.HOUSE_STYLES
+    size = settings.neighbourhood_tiles
+    block = (tile_x // size, tile_y // size)
+    # Deterministic per block, so re-running gives the same town.
+    idx = (block[0] * 73856093 ^ block[1] * 19349663) % len(styles)
+    # ...and then per building, so a block is a street rather than one house
+    # built over and over.
+    own = (tile_x * 83492791 ^ tile_y * 297121507) & 0x7FFFFFFF
+    if len(styles) > 1 and own % 100 >= BLOCK_SHARE:
+        idx = (own // 100) % len(styles)
+    if len(styles) > 1 and rng.random() < settings.style_oddity:
+        idx = (idx + 1 + rng.randrange(len(styles) - 1)) % len(styles)
+    if profile:
+        weights = [profile.style_weight(style["name"])
+                   * (1.4 if i == idx else 1.0)
+                   for i, style in enumerate(styles)]
+        picker = random.Random(profile.seed ^ 0xA37E)
+        return picker.choices(styles, weights=weights, k=1)[0]
+    return styles[idx]
+
+
+from .zones_detect import (  # noqa: F401
+    CAR_PARK_LANE,
+    STALL_H,
+    STALL_W,
+    _detect_zones,
+    car_park_stalls,
+)
+
+
+from .street_context import (  # noqa: F401
+    MAPPED_ROOM_KINDS,
+    RETAIL_DENSITY,
+    SHORE_LOOK_TILES,
+    STREET_LOOK_TILES,
+    YARD_AREAS,
+    _drawn_features,
+    _entrances_by_unit,
+    _entrances_inside,
+    _load_road_hierarchy,
+    _party_walls,
+    _points_inside,
+    _points_of_use,
+    _ring_points,
+    _road_weight,
+    _rooms_by_unit,
+    _street_finder,
+)
+
+
+# A job's fields up to its party walls; a BasementSpec (or None) follows.
+JOB_FIELDS = 21
+
+
+def _layout_problems(plan, kind, below) -> dict | None:
+    """What knoxbuild/audit.py finds wrong with this building, for the census.
+
+    A room with no way in, a door onto the stairs, a flat with no front door:
+    the things a player meets first. Build reports the totals beside the map so
+    a town that came out wrong is known before it is compiled, which is where
+    the hours go.
+
+    None means "not checked" and {} means "checked and clean", so a check that
+    falls over reads as missing rather than as a perfect town - and never as a
+    failed building, since a diagnostic must not cost a town its house.
+    """
+    try:
+        from .audit import audit as layout_audit, basement_unreached
+
+        found = {k: v for k, v in layout_audit(plan, kind).items()
+                 if v and not k.startswith("stat:")}
+        if below is not None:
+            unreached, _rooms = basement_unreached(below)
+            if unreached:
+                found["basement room with no way in"] = unreached
+        return found
+    except Exception:  # noqa: BLE001 - a check that breaks must not break a build
+        return None
+
+
+def _audit_report(results) -> dict:
+    """The layout audit's totals over the buildings one build holds.
+
+    `results` are the tuples _make_one returns. A building that failed, or one
+    the checks could not read (None), is left out rather than counted as clean,
+    so "0 of 0" says the audit did not run instead of claiming a perfect town.
+    """
+    checked = [r_ for r_ in results if r_ and not r_[3] and r_[6] is not None]
+    found = collections.Counter()
+    for r_ in checked:
+        found.update(r_[6])
+    return {"buildings": len(checked),
+            "flagged": sum(1 for r_ in checked if r_[6]),
+            "problems": dict(found.most_common())}
+
+
+def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
+    """Lay out one building and write its .tbx. Returns (storeys, rooms,
+    furniture, error, escalators, basement, problems): a building that cannot be
+    laid out is left out with the reason, instead of stopping the other two
+    thousand.
+    `basement` is what basements.plan_basement made of the job's last element
+    (a BasementSpec), written beside the building as <name>_bsmt.tbx, or None.
+    `problems` is what knoxbuild/audit.py found wrong with it (_layout_problems):
+    None when it could not be checked, {} when it is clean.
+    `room_limit`, when given, is how many rooms this building may have: the
+    map needed thinning to fit the game's save buffer (layout.thin_building)."""
+    (w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail,
+        uses, hotel, entrances, profile, mapped, garage_door, preset_file,
+        party, *rest) = job
+    basement = rest[0] if rest else None
+    job = job[:JOB_FIELDS]          # what the room solver reads, without the basement
+    if preset_file:
+        # A building somebody built by hand, used as it was built. Nothing is
+        # re-rendered and nothing is stretched: the file that was saved is the
+        # file that is written, which is the whole point of hand-building one.
+        try:
+            with open(preset_file, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+        except OSError as exc:
+            return (0, 0, 0, f"{os.path.basename(path)}: the preset "
+                             f"{os.path.basename(preset_file)} could not be "
+                             f"read ({exc})", [], None, None)
+        from . import presets as P
+        about = P.measure(text) or {"storeys": 1, "rooms": 0}
+        # A hand-built building is not checked: there is no plan here to check,
+        # only the file its author saved.
+        return (about["storeys"], about["rooms"], 0, None, [], None, None)
+    try:
+        # a house planned whole by the room solver (Settings.room_solver), when
+        # it is on and the house fits; anything else is laid out as always
+        from . import room_solver
+        plan = None
+        if room_solver.wanted(settings):
+            try:
+                plan = room_solver.plan_for_job(job)
+            except Exception:  # noqa: BLE001 - that house keeps Build's own layout
+                plan = None
+        if plan is None:
+            plan = build_building(w, h, levels=levels, commercial=commercial, seed=seed,
+                                  kind=kind, mask=mask, settings=settings, street=street,
+                                  retail=retail, uses=uses, hotel=hotel, party=party,
+                                  entrances=entrances, profile=profile,
+                                  mapped=mapped, garage_door=garage_door)
+        if room_limit:
+            # Fewer, larger rooms: the map would otherwise be past the buffer
+            # the game saves room state through, and none of it would be kept.
+            # Before the basement is planned, so its stair opens into a room
+            # that is still there.
+            thin_building(plan, room_limit)
+        below = None
+        if basement is not None:
+            from . import basements
+            # Before the house is written: the stairs down open its ground floor.
+            below = basements.plan_basement(plan, basement, seed, settings)
+        # After thinning and the basement, so the rooms checked are the rooms
+        # that will be in the file.
+        problems = _layout_problems(plan, kind, below)
+        text = render_tbx(plan, label, style)
+        below_text = (basements.render_basement(below, f"{label} basement", style)
+                      if below is not None else None)
+    except Exception:  # noqa: BLE001
+        import traceback
+        return (0, 0, 0, f"{os.path.basename(path)} ({kind or 'house'}, {w}x{h}, "
+                         f"{levels} storeys): {traceback.format_exc()}", [], None, None)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    info = None
+    if below is not None:
+        below_path = path[:-len(".tbx")] + "_bsmt.tbx"
+        with open(below_path, "w", encoding="utf-8") as f:
+            f.write(below_text)
+        info = {"file": os.path.basename(below_path), "tier": basement.tier,
+                "dx": below.dx, "dy": below.dy, "w": below.building.width,
+                "h": below.building.height, "levels": below.levels,
+                "rooms": len(below.building.rooms)}
+    return (len(plan.storeys), len(plan.rooms),
+            sum(len(s.furniture) for s in plan.storeys), None,
+            list(plan.escalators), info, problems)
+
+
+# Below this many buildings, starting worker processes costs more than it saves.
+PARALLEL_FROM = 60
+
+# What the last build made, kept beside its files so that building again - a new
+# zombie setting, a few footprints moved - lays out only the buildings whose
+# inputs changed. A building's .tbx depends on nothing but its own job (every
+# random choice is seeded from it, see tbx._stable_seed) and on the code that
+# lays it out, so the same job under the same code gives the same file.
+CACHE_FILE = "build_cache.json"   # in the map folder, not buildings/: that is all .tbx
+# How often the cache is written while buildings are being made. A city's cache
+# is tens of megabytes, a second or two to write.
+CACHE_EVERY_S = 120
+
+
+def _code_fingerprint() -> str:
+    """Changes whenever the code that lays a building out does, or the tiles it
+    may use. A cache from other code is not trusted: the same job would come
+    out differently."""
+    import hashlib
+
+    from .layout import _erika_ready
+
+    h = hashlib.sha1()
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in sorted(os.listdir(here)):
+        # room_solver.json: the room solver's programmes lay houses out too
+        if name.endswith(".py") or name == "room_solver.json":
+            h.update(name.encode())
+            with open(os.path.join(here, name), "rb") as f:
+                h.update(f.read())
+    layout_dir = os.path.join(here, "layout")
+    for name in sorted(os.listdir(layout_dir)):
+        if name.endswith(".py"):
+            h.update(("layout/" + name).encode())
+            with open(os.path.join(layout_dir, name), "rb") as f:
+                h.update(f.read())
+    h.update(b"erika" if _erika_ready() else b"vanilla")
+    from . import room_solver
+    h.update(os.environ.get(room_solver.ENV, "").encode())     # it overrides the setting
+    return h.hexdigest()
+
+
+def _job_key(job: tuple) -> str:
+    """A building's inputs as one string. The file name (index 10) is left out:
+    numbers shift when a footprint is added, and the building does not change."""
+    import hashlib
+    import pickle
+
+    return hashlib.sha1(pickle.dumps(job[:10] + job[11:], protocol=4)).hexdigest()
+
+
+def _rooms_that_fit(buildings: int, info: dict, out_dir: str) -> int:
+    """How many rooms this map may have and still be saved by the game.
+
+    map_meta.bin is written through one 10 MB buffer and holds the whole
+    world: this map's cells, every room and every building in it - Knox
+    County's own rooms as well, unless this map stands alone
+    (tools/make_map_mod.py). What is left of the buffer is what this map's
+    rooms may take, in the 10 bytes a room costs.
+    """
+    from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
+                                    META_CELL, META_EMPTY_GRID_RESERVE, META_ROOM)
+    from . import placement
+
+    left = META_BUDGET - META_BUILDING * buildings
+    left -= META_EMPTY_GRID_RESERVE
+    left -= META_CELL * int(info["cells_x"]) * int(info["cells_y"])
+    if not placement.standalone(out_dir):
+        left -= KNOX_COUNTY_META
+    return max(0, left // META_ROOM)
+
+
+def _read_cache(out_dir: str, code: str) -> dict:
+    try:
+        with open(os.path.join(out_dir, CACHE_FILE), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("code") != code:
+        return {}
+    return data.get("buildings") or {}
+
+
+def _write_cache(out_dir: str, code: str, entries: dict) -> None:
+    try:
+        tmp = os.path.join(out_dir, CACHE_FILE + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"code": code, "buildings": entries}, f)
+        os.replace(tmp, os.path.join(out_dir, CACHE_FILE))
+    except OSError:
+        pass          # no cache means the next build lays everything out again
+
+
+# Buildings handed to a worker at a time. The jobs come largest first, so small
+# batches spread the big ones over every worker; one batch of a 48th of the
+# town left a single worker an hour of the largest buildings while five sat idle.
+MAKE_BATCH = 16
+
+
+def _make_batch(jobs: list[tuple]) -> list[tuple]:
+    return [_make_one(job) for job in jobs]
+
+
+def _make_thin_batch(pairs: list[tuple]) -> list[tuple]:
+    """Buildings that have to lose rooms to fit the game's save buffer:
+    each is (job, how many rooms it may have)."""
+    return [_make_one(job, limit) for job, limit in pairs]
+
+
+def _make_all(jobs: list[tuple], tick=None, should_stop=None,
+              on_result=None, make_batch=_make_batch,
+              prepare_solver: bool = True) -> list[tuple[int, int, int]]:
+    """Every building, in order, across processes when there are enough.
+
+    KNOXBUILD_WORKERS=1 forces one process. If worker processes cannot start
+    at all - some locked-down PCs refuse them - the work simply runs here.
+    `tick(done, total)` is called as results come in, for a progress readout;
+    `on_result(i, result)` with each building's result as soon as it is made.
+    A stop asked for while it runs (`should_stop`) drops the work not yet
+    started and raises knoxstop.Stopped. `make_batch` makes a list of jobs;
+    the tests hand it something quicker than laying out buildings, and a
+    second run over buildings that must lose rooms hands `_make_thin_batch`
+    (`prepare_solver` is off then: they were solved on the first run).
+    """
+    out: list = [None] * len(jobs)
+    done = 0
+
+    def keep(i: int, result) -> None:
+        nonlocal done
+        out[i] = result
+        done += 1
+        if on_result:
+            on_result(i, result)
+
+    def run_here() -> list:
+        for i, job in enumerate(jobs):
+            if out[i] is not None:
+                continue           # made before the pool gave out
+            knoxstop.check(should_stop, "the buildings")
+            keep(i, make_batch([job])[0])
+            if tick and done % 25 == 0:
+                tick(done, len(jobs))
+        return out
+
+    # the room solver's houses solved before the pool starts, so each worker
+    # only reads its cache (nothing when the room_solver setting is off)
+    if prepare_solver:
+        from . import room_solver
+        room_solver.prepare([job[:JOB_FIELDS] for job in jobs])
+    workers = int(os.environ.get("KNOXBUILD_WORKERS") or
+                  max(1, min(12, (os.cpu_count() or 2) - 2)))
+    if workers <= 1 or len(jobs) < PARALLEL_FROM:
+        return run_here()
+    from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+    from concurrent.futures.process import BrokenProcessPool
+
+    pool = None
+    try:
+        pool = ProcessPoolExecutor(max_workers=workers)
+        pending = {pool.submit(make_batch, jobs[s:s + MAKE_BATCH]): s
+                   for s in range(0, len(jobs), MAKE_BATCH)}
+        last_tick = 0
+        last_tick_at = time.monotonic()
+        while pending:
+            # Woken at least every second, so a stop is seen while the big
+            # buildings are still being made.
+            finished, _ = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                start = pending.pop(fut)
+                for k, result in enumerate(fut.result()):
+                    keep(start + k, result)
+            if tick and done > last_tick and (
+                    done - last_tick >= 25 or time.monotonic() - last_tick_at >= 2.0):
+                last_tick = done
+                last_tick_at = time.monotonic()
+                tick(done, len(jobs))
+            knoxstop.check(should_stop, "the buildings")
+        pool.shutdown()
+        return out
+    except (BrokenProcessPool, OSError) as exc:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        print(f"  (worker processes unavailable: {exc}; building in one process)")
+        return run_here()
+    except BaseException:
+        # Stopped, or the window closed: the work not started is dropped
+        # rather than finished first, which on a city was hours.
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        raise
+
+
+def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+          max_size: int | None = None, settings: Settings | None = None,
+          should_stop=None, progress=None,
+          _proj_override=None, _skip_chunked: bool = False,
+          _stitch_out: dict | None = None) -> int:
+    """Generate every building for a rendered map.
+
+    The explicit seed/min_size/max_size arguments are kept so the command line
+    can override one value without composing a whole Settings.
+
+    `progress(text, fraction)`, when given, is called as the work moves on:
+    a short account of the stage, and how far through the whole run it is
+    (0 to 1, or None when that is not known). The fractions are rough: where
+    each stage starts, not a measured share of the time.
+    """
+    def say(text: str, fraction: float | None = None) -> None:
+        if progress:
+            progress(text, fraction)
+
+    say("Reading the map", 0.0)
+    settings = settings or Settings()
+    overrides = {k: v for k, v in (("seed", seed), ("min_size", min_size),
+                                   ("max_size", max_size)) if v is not None}
+    if overrides:
+        settings = Settings.from_dict({**settings.to_dict(), **overrides})
+    # Before any building is laid out: the mod-tile check is asked once and
+    # remembered, so saying this afterwards would be too late for the first.
+    from .layout import use_mod_tiles
+    use_mod_tiles(not settings.vanilla_tiles)
+    seed = settings.seed
+    min_size = settings.min_size
+    max_size = settings.max_size
+    names = [f for f in os.listdir(out_dir) if f.endswith("_info.json")]
+    if not names:
+        print(f"no <name>_info.json in {out_dir}", file=sys.stderr)
+        return 2
+    map_name = names[0][: -len("_info.json")]
+
+    info = knoxfiles.read(os.path.join(out_dir, f"{map_name}_info.json"),
+                          "what the map is", default={})
+    geo = knoxfiles.read(os.path.join(out_dir, f"{map_name}_buildings.geojson"),
+                         "the buildings")
+    if not info or geo is None:
+        print(f"{out_dir} is missing what the map is or its buildings - "
+              f"generate the map again", file=sys.stderr)
+        return 2
+    if settings.terrain_only:
+        geo = {**geo, "features": []}
+
+    bbox = info["bbox"]
+    proj = _proj_override or Projector.build(
+        bbox["south"], bbox["west"], bbox["north"],
+        bbox["east"], info["meters_per_tile"],
+        info.get("rotation") or 0.0)
+    if _proj_override is None and (proj.width, proj.height) != (info["width_tiles"], info["height_tiles"]):
+        print("projection does not match the rendered BMP - is this folder "
+              "from a different Knoxify version?", file=sys.stderr)
+        return 2
+    if not _skip_chunked:
+        from .chunked_build import build_chunked, should_chunk_build
+        if should_chunk_build(int(info.get("cells_x") or 0), int(info.get("cells_y") or 0)):
+            return build_chunked(
+                out_dir, map_name, info, geo, proj,
+                seed=seed, min_size=min_size, max_size=max_size,
+                settings=settings, should_stop=should_stop, progress=progress,
+            )
+    road_hierarchy = _load_road_hierarchy(out_dir, map_name, proj)
+
+    # What part of the world the survey is of, read from the names on its own
+    # buildings (knoxbuild/regional.py). Only Chinese housing is built its own
+    # way for now; anywhere else keeps the game's shapes, and `arch_style`
+    # forces the question either way.
+    from . import regional
+    region = None
+    if settings.arch_style in ("cn", "ua"):
+        region = settings.arch_style
+    elif settings.arch_style != "off":
+        region = regional.detect_region(geo, bbox)
+
+    # Where this map stands in the world, beside any other KnoxMap map on
+    # this PC rather than on top of it (knoxbuild/world.py). Everything
+    # below - the paper map, the zones, the compiled cells - is written from
+    # here on, so it is settled first. Quadrant sub-builds (_stitch_out)
+    # inherit the parent chunked build's origin rather than picking a fresh
+    # one for their temporary .quadrants/q* folder.
+    from .world import origin, set_origin
+    from . import placement as _placement
+    if _stitch_out is None:
+        set_origin(_placement.settled_origin(
+            out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
+            info["cells_x"], info["cells_y"]))
+        # Keep the saved choice in step with the project, so the window and the
+        # compiled cells never disagree about where the map is.
+        _placement.save(out_dir, origin())
+
+    # Record what this build actually used, whoever started it. Without this
+    # a map generated from the command line cannot be reproduced, and the app
+    # and the CLI disagree about what a folder was built with.
+    try:
+        knoxfiles.write(os.path.join(out_dir, "settings.json"),
+                        settings.to_dict(), indent=2)
+    except OSError:
+        pass
+
+    bdir = os.path.join(out_dir, "buildings")
+    os.makedirs(bdir, exist_ok=True)
+    # What the last build left. Building numbers follow the footprints, so a
+    # rebuild does not overwrite the same set of files, and leftovers from an
+    # earlier run would sit in the folder looking like part of the map: the
+    # ones this build does not write are removed once it has finished (below),
+    # and the ones it can reuse are left alone until then.
+    earlier_files = {f for f in os.listdir(bdir) if f.endswith(".tbx")}
+    code = _code_fingerprint()
+    earlier = _read_cache(out_dir, code)
+    # The cache stays as it is until the buildings start being written: nothing
+    # before that touches their files. Then it is cut down to what this build
+    # reuses and grows as each building is made (below), so a build that stops
+    # or crashes half way picks up where it was. Deleting it here instead - a
+    # half-written set of files must not be vouched for by the old record -
+    # cost a 232,000-building map its whole two and a half hours to a crash.
+    # WorldEd writes into these but will not create them: BMP to TMX fails with
+    # "Could not open file for writing" if the export directory is absent.
+    os.makedirs(os.path.join(out_dir, "tmx"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "lots"), exist_ok=True)
+
+    import random as _random
+    style_rng = _random.Random(seed ^ 0x5EED)
+
+    placements: list[Placement] = []
+    rows = []
+    skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0, "road": 0,
+               "not a building": 0}
+    # And which footprint each of those was. The counts say how many were left
+    # out; somebody looking at the hole where their house should be needs to
+    # know which building it was and why, and the counts cannot tell them.
+    # Written out as <map>_left_out.csv and read back by
+    # tools/why_no_building.py.
+    left_out: list[dict] = []
+
+    def note_left_out(feat: dict, reason: str) -> None:
+        pts = _ring_points(feat.get("geometry") or {})
+        if len(pts) < 3:
+            return
+        tags = feat.get("properties") or {}
+        px = [proj.to_px(lat, lon) for lon, lat in pts]
+        xs = [x for x, _ in px]
+        ys = [y for _, y in px]
+        left_out.append({
+            "reason": reason,
+            "tile_x": int(round(sum(xs) / len(xs))),
+            "tile_y": int(round(sum(ys) / len(ys))),
+            "lat": round(sum(p[1] for p in pts) / len(pts), 6),
+            "lon": round(sum(p[0] for p in pts) / len(pts), 6),
+            "tiles_wide": int(round(max(xs) - min(xs))),
+            "tiles_tall": int(round(max(ys) - min(ys))),
+            "building": str(tags.get("building") or ""),
+            "name": str(tags.get("name") or ""),
+            "osm_id": str(tags.get("osm_id") or tags.get("id") or ""),
+        })
+    sheds = 0        # outbuildings given a single storage room
+    from_near = 0    # storeys borrowed from tagged neighbours
+    from_osm = 0   # buildings whose storey count came from the data
+    from_area = 0  # buildings whose kind came from the land around them
+    squared = 0    # buildings close enough to the grid to square up
+    rows_split = 0   # rows of shops or terraces cut into their units
+    units_made = 0   # and how many buildings those became
+    split_large = 0  # and buildings past max_size kept by cutting them
+
+    areas = AreaIndex.load(out_dir, map_name, proj)
+    points = _points_of_use(out_dir, info, map_name, proj)
+    points_taken: set = set()
+    with_uses = 0
+    # (x0, y0, mask, storeys, kind) for the population estimate.
+    peopled: list[tuple[int, int, np.ndarray, int, str]] = []
+    hifld_by_fname: dict = {}
+    # Real outlines of the buildings placed, for the in-game paper map.
+    outlines: list[tuple[list[tuple[float, float]], str, str]] = []
+    occupied = np.zeros((proj.height, proj.width), dtype=bool)
+    # ...and the ground covered by a lot rectangle rather than by a building's
+    # own tiles, which is more ground whenever the footprint is not a rectangle
+    # (footprint._clear_box). Lots may not overlap: WorldEd writes each of them
+    # into the same cell layers, so where two cover a square only one survives.
+    lots = np.zeros((proj.height, proj.width), dtype=bool)
+    # Knox County roads: every building upright, and stood clear of the roads.
+    road_weight = _road_weight(out_dir, map_name, proj, road_hierarchy, areas)
+
+    # Biggest footprints claim their tiles first. Where two real buildings
+    # share a wall, one of them has to give up that row of tiles, and it should
+    # not be the town hall giving way to the shed behind it.
+    order = []
+    jobs: list[tuple] = []       # what each building needs to lay itself out
+    street_side = _street_finder(out_dir, map_name, road_hierarchy)
+    stations: list[tuple] = []   # petrol stations, for their pumps
+    gunshops: set[str] = set()   # and the buildings OSM says sell weapons
+    canopies: list[list] = []    # and the canopies over their forecourts
+    decided: list[tuple] = []    # and what the map needs to know about it
+    surroundings: list[tuple[float, float, float, int | None]] = []
+    centres: dict[int, tuple[float, float]] = {}   # each building's centroid
+    for i, feat in enumerate(geo["features"]):
+        pts = _ring_points(feat["geometry"])
+        if len(pts) < 3:
+            continue
+        tags = feat.get("properties", {})
+        if (tags.get("building") or "").strip().lower() in NOT_BUILDINGS:
+            skipped["not a building"] += 1
+            note_left_out(feat, "not a building")
+            if tags.get("amenity") == "fuel":
+                # A petrol station's canopy: its forecourt, pumps underneath.
+                canopies.append([proj.to_px(lat, lon) for lon, lat in pts])
+            continue
+        px = [proj.to_px(lat, lon) for lon, lat in pts]
+        poly = Polygon(px)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        order.append((-poly.area, i, px))
+        centre = poly.centroid
+        if not centre.is_empty:
+            centres[i] = (centre.x, centre.y)
+            surroundings.append((centre.x, centre.y, poly.area,
+                                 levels_from_tags(tags, settings)))
+    order.sort()
+    # A town laid out for the game rather than copied from the survey: about
+    # half the ordinary houses left out and what stays grown to a size worth
+    # walking into, landmarks kept whatever and placed first so the ground a
+    # police station needs is still free (knoxbuild/procedural.py). With
+    # true_map on, nothing here runs and the order is the one it always was.
+    thinning: dict = {}
+    # The candidates are wanted for either job: laying the town out for the
+    # game, or holding it to the number of buildings somebody asked for.
+    if not settings.true_map or settings.max_buildings:
+        from .procedural import HOUSING, Candidate, cap, plan
+        cands = []
+        m2_per_tile = info["meters_per_tile"] ** 2
+        for _neg_area, i, px in order:
+            tags = geo["features"][i].get("properties", {})
+            kind = classify_building(tags)
+            if kind is None:
+                # What the land around it says, as the placement loop asks
+                # below. Without this the huts on an army base and the wings
+                # of a hospital look like untagged houses here and are
+                # thinned away, and the base loses the building the whole
+                # map's rifles were going to spawn in. Sheds are left out of
+                # it for the same reason the loop leaves them out: a garage
+                # on an industrial estate is a garage, not a works.
+                btag = (tags.get("building") or "").strip().lower()
+                if (-_neg_area * m2_per_tile > SHED_MAX_M2
+                        and btag not in SHED_VALUES):
+                    # Already worked out above; building the polygon again
+                    # for every candidate was Shapely done twice per building.
+                    centre = centres.get(i)
+                    if centre is not None:
+                        kind = areas.kind_for(centre[0], centre[1], int(-_neg_area))
+            notable = is_notable(tags, kind)
+            # Only housing can be thinned, so only housing has to be checked
+            # for the shop or surgery mapped inside it; anything else is a
+            # landmark already. A throwaway `taken` set, because the real one
+            # is filled below, as each building claims its points for good.
+            has_use = (not notable and kind in HOUSING
+                       and bool(_points_inside(points, px, set())))
+            cands.append(Candidate(i, px, -_neg_area, kind, notable, has_use))
+        if not settings.true_map:
+            kept, thinning = plan(cands, max_size)
+            for i in thinning.pop("dropped", ()):
+                note_left_out(geo["features"][i], "thinned")
+            order = [(-c.area, c.index, c.px) for c in kept]
+            cands = kept
+        if settings.max_buildings:
+            # A ceiling on the whole map: the landmarks stay and the housing
+            # is spaced out until the count fits, so a big map can be one
+            # worth travelling across rather than one paved with houses.
+            def _mid(c):
+                # The polygon's centroid where there is one; the average of
+                # its corners for the handful whose centroid came back empty.
+                got = centres.get(c.index)
+                if got is not None:
+                    return got
+                return (sum(p[0] for p in c.px) / len(c.px),
+                        sum(p[1] for p in c.px) / len(c.px))
+
+            # Footprints that fall right off the map are not spent out of
+            # the ceiling: they were never going to be built, and counting
+            # them against it is how asking for 300 buildings gets 162. They
+            # stay in the order and the placement loop records them as
+            # "outside", exactly as it did before.
+            def _on_map(c) -> bool:
+                xs = [pt[0] for pt in c.px]
+                ys = [pt[1] for pt in c.px]
+                return (max(xs) > 0 and min(xs) < proj.width
+                        and max(ys) > 0 and min(ys) < proj.height)
+
+            on_map = [c for c in cands if _on_map(c)]
+            # The ceiling is shared out rather than applied to the map as
+            # one lump: by kind where a mix was asked for, and between the
+            # towns so a box with two cities and ten villages does not come
+            # back as two cities and ten hamlets (knoxbuild/mixer.py).
+            from . import mixer
+            mix = mixer.parse(settings.building_mix)
+            places = []
+            if settings.spread_buildings:
+                places = [pl for pl in knoxfiles.read(
+                    os.path.join(out_dir, f"{map_name}_places.json"),
+                    "the towns and villages on the map", default=[]) or []
+                    if pl.get("tile_x") is not None]
+            budgets = group_of = None
+            if mix or places:
+                where = {c.index: (mixer.nearest_place(*_mid(c), places)
+                                   if places else "") for c in on_map}
+                budgets, group_of = mixer.budgets(
+                    [(c.index, c.kind, where[c.index]) for c in on_map],
+                    int(settings.max_buildings), mix, bool(places))
+            keep = cap([(c.index, *_mid(c), c.width, c.landmark)
+                        for c in on_map], int(settings.max_buildings),
+                       budgets, group_of)
+            if mix:
+                asked = {cat: int(settings.max_buildings * share)
+                         for cat, share in mix.items()}
+                had = collections.Counter(mixer.category_of(c.kind) for c in on_map)
+                got = collections.Counter(mixer.category_of(c.kind)
+                                          for c in on_map if c.index in keep)
+                thinning["mix_report"] = [
+                    f"{cat}: {asked[cat]} asked, {got.get(cat, 0)} kept"
+                    + (f" (the map has {had.get(cat, 0)})"
+                       if had.get(cat, 0) < asked[cat] else "")
+                    for cat in sorted(asked, key=lambda c: -asked[c])]
+            if places:
+                thinning["places"] = len(places)
+            for c in on_map:
+                if c.index not in keep:
+                    note_left_out(geo["features"][c.index], "over the limit")
+            off_map = {c.index for c in cands} - {c.index for c in on_map}
+            order = [o for o in order if o[1] in keep or o[1] in off_map]
+            thinning["capped"] = len(on_map) - len(keep)
+    metres_per_tile = info["meters_per_tile"]
+    context = Context(proj.width, proj.height, surroundings, metres_per_tile,
+                      road_hierarchy=road_hierarchy)
+
+    # The buildings past max_size are not placed with the rest: they are kept
+    # (below) but only after everything else has its ground. The order here is
+    # largest first, and an outline that claims its whole area before the
+    # buildings inside it are placed leaves them "taken" - a campus mapped as one
+    # building would lose every house and hall standing in it, where before it
+    # was simply left out and they all stayed. Placed last, it takes what is free.
+    deferred_large: list = []
+
+    def candidates():
+        for neg_area, idx, points in order:
+            yield neg_area, idx, points, False
+        for neg_area, idx, points in deferred_large:
+            yield neg_area, idx, points, True
+
+    # Zones the mapper drew, each with its own settings. Asked per building
+    # and per chunk of the spawn map; outside every zone the map's own
+    # settings answer, and the same object comes back (knoxbuild/zones.py).
+    from .zones import Zoning
+    zoning = Zoning.load(out_dir, map_name, proj, settings)
+    if len(zoning):
+        print(f"zones                 : {len(zoning)} drawn by hand")
+    # Hand-built buildings stamped instead of generated ones: the ones a zone
+    # names, and the kinds of building that are switched on for the whole map
+    # - turn "police" on and a police station is the one that was built by
+    # hand (knoxbuild/presets.py). Read once, and only when something asks.
+    import knoxpaths
+    from . import presets as P
+    preset_kinds = P.using(knoxpaths.BASE_DIR)
+    preset_library = (P.library(knoxpaths.BASE_DIR)
+                      if zoning.any_presets() or preset_kinds else [])
+    if preset_library:
+        print(f"presets               : {len(preset_library)} hand-built "
+              f"buildings to draw from")
+        if preset_kinds:
+            print(f"presets for           : {', '.join(sorted(preset_kinds))}")
+    used_presets = collections.Counter()
+    has_terminal = any(classify_building(f.get("properties") or {}) == "terminal"
+                       for f in geo["features"])
+    fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
+    try:
+        for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
+          # Between buildings: nothing is written to disk until the whole run
+          # is laid out, so stopping here costs only the time spent.
+          if placed_so_far % 64 == 0:
+              knoxstop.check(should_stop, "the buildings")
+          # This loop is one process and, on a city, most of an hour: without a
+          # word from it the window sat on "Reading the map" at 0% the whole time.
+          if placed_so_far % 2000 == 0 and order:
+              say(f"Placing buildings: {min(placed_so_far, len(order)):,} of {len(order):,}",
+                  0.04 * min(1.0, placed_so_far / len(order)))
+          feat = geo["features"][i]
+          oversize = False
+          if retry:
+              # A building past max_size is not thrown away any more: the
+              # factory and the hangar are the landmarks a place is known by,
+              # and dropping them left a hole exactly where the eye looks. The
+              # gate measured the real building's long side, so it is tried
+              # again without that one gate (place claimed nothing before
+              # refusing) and cut into units that fit further down, in
+              # row_units - which is what it is anyway, works of that size
+              # being several blocks wall to wall.
+              fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
+                                            snap_degrees=settings.square_buildings,
+                                            alignment=settings.building_alignment)
+              oversize = fp is not None
+          else:
+              fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
+                                            snap_degrees=settings.square_buildings,
+                                            alignment=settings.building_alignment)
+              if fp is None and reason == "large":
+                  if -_neg_area <= MAX_OVERSIZE_TILES:
+                      deferred_large.append((_neg_area, i, px))
+                  else:
+                      skipped["large"] += 1
+                      note_left_out(feat, "large")
+                  continue
+          if fp is None:
+              skipped[reason] += 1
+              note_left_out(feat, reason)
+              continue
+          x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height
+          if fp.angle <= 8.0:
+              squared += 1
+
+          tags = feat.get("properties", {})
+          # Rooms the mapper drew inside it, if OSM has any for this building
+          # (renderer._buildings_geojson attaches them to their building).
+          mapped = feat.get("properties", {}).get("rooms") or []
+          btag = (tags.get("building") or "").strip().lower()
+          cx = x0 + w / 2
+          cy = y0 + h / 2
+          # From here down this building is built to its zone's settings rather
+          # than the map's: how tall it may be, whether it is flats, how big its
+          # rooms are, whose tiles it is built from.
+          here = zoning.settings_at(cx, cy)
+          real_m2 = fp.tiles * metres_per_tile * metres_per_tile
+          special = classify_building(tags)
+          # What is really in it: its own tags and the shops, restaurants and
+          # offices mapped as points inside it.
+          inside = [tags] + _points_inside(points, px, points_taken)
+          uses = uses_of(inside)
+          special = _business_kind(special, uses)
+          special = mall_by_name(special, tags, uses, real_m2)
+          if special == "garage":
+              sheds += 1
+          entrance_points = _entrances_inside(points, px)
+          hotel = is_hotel(inside)
+          if ("gasstore", "storage") in uses:
+              stations.append((x0, y0, w, h, street_side(x0, y0, w, h)))
+          offices_only = bool(uses) and all(u == ("office", "office") for u in uses)
+          if uses:
+              with_uses += 1
+          if offices_only and special in (None, "house"):
+              special = "civic"          # an office building
+          elif uses and not offices_only and special in (None, "house", "shed"):
+              special = "shop"           # flats over it, below, if it is tall
+          if special is None and (btag in SHED_VALUES or (
+                  btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
+              special = "shed"
+              sheds += 1
+          nearby = (context.neighbour_levels(cx, cy)
+                    if levels_from_tags(tags, here) is None else None)
+          if special is None and nearby is not None and nearby >= 3 \
+                  and real_m2 >= NEIGHBOUR_FLATS_M2 and btag not in HOUSE_TAGS:
+              # Among tagged blocks of flats, a big untagged building is one more.
+              special = "apartment"
+          if special is None:
+              around = areas.kind_for(cx, cy, fp.tiles)
+              # A tall building in a shopping street is flats over shops; the
+              # mapper's height says so more reliably than the zoning does.
+              if around == "shop" and (levels_from_tags(tags, here) or 0) >= 3:
+                  around = None
+              # When an airfield has untagged buildings and no explicit terminal,
+              # promote the first compact medium/large building to a terminal so
+              # regional airfields get a proper concourse alongside their hangars.
+              if (around == "hangar" and not has_terminal
+                      and fp.tiles >= 200
+                      and max(fp.width, fp.height) <= 2.2 * max(1, min(fp.width, fp.height))):
+                  around = "terminal"
+                  has_terminal = True
+              if around:
+                  special = around
+                  from_area += 1
+          commercial = special is not None or tags.get("building") in COMMERCIAL_TAGS
+          if special is None and looks_like_apartment(tags, fp.tiles, style_rng,
+                                                      here):
+              special = "apartment"
+              commercial = True
+          levels, measured = building_levels(tags, special, fp.tiles,
+                                             style_rng, here,
+                                             metres_per_tile=metres_per_tile,
+                                             region=region)
+          if measured:
+              from_osm += 1
+          elif nearby is not None and (special or "house") in FOLLOWS_NEIGHBOURS:
+              top = here.max_levels
+              if special is None:
+                  # A Chinese self-built house runs a storey taller than the
+                  # game's houses before the neighbours' heights are heard.
+                  if region == "ua":
+                      from .regional import UA_HOUSE_MAX_LEVELS
+                      top = min(top, UA_HOUSE_MAX_LEVELS)
+                  else:
+                      top = min(top, HOUSE_MAX_LEVELS + 1 if region == "cn"
+                                else HOUSE_MAX_LEVELS)
+              levels = max(1, min(top, int(round(nearby)) +
+                                  style_rng.choice((-1, 0, 0, 1))))
+              from_near += 1
+          if flats_by_height(special, levels, btag, fp.tiles, here):
+              special = "apartment"
+              commercial = True
+          if hotel:
+              special = "apartment"      # its flats are guest rooms
+          elif any(back == "theatre" for _front, back in uses):
+              # A theatre is its auditorium behind a foyer on the street, and a
+              # few storeys of hall, not a tower.
+              special = "civic"
+              levels = min(levels, THEATRE_MAX_LEVELS)
+          elif special in ("shop", "restaurant") and uses and levels >= 3 and \
+                  btag not in ("retail", "commercial", "supermarket", "shop", "kiosk"):
+              # A pizza place in a five-storey building is flats over a pizza
+              # place, not a five-storey pizza place - unless the building is
+              # offices: a company inside it, or a name like "Americas Tower".
+              offices = ("office", "office") in uses or btag == "office" or re.search(
+                  r"\b(tower|building|plaza|center|centre|exchange)\b", tags.get("name") or "", re.I)
+              special = "civic" if offices else "apartment"
+          local_density = context.density(cx, cy)
+          profile = BuildingProfile.infer(tags, special, local_density, real_m2,
+                                          levels, seed + i * 31)
+          # Hotels are dressed as the city's big buildings, army bases as works,
+          # and the public buildings that have no walls of their own as civic.
+          style = pick_style(STYLE_AS.get("civic" if hotel else special, special),
+                             x0, y0, style_rng, here,
+                             density=local_density, profile=profile,
+                             region=region)
+          # A zone may pin its buildings to one set of walls - the estate on the
+          # hill all the same brick - however many styles the rest of the map
+          # has. A name nothing answers to leaves the style it would have had.
+          pinned = zoning.style_at(cx, cy)
+          if pinned:
+              style = style_named(pinned, special) or style
+          if profile.wear < 0.18 and style.get("grime"):
+              style = dict(style)
+              style.pop("grime", None)
+
+          name = tags.get("name") or ""
+          real_name = name if is_notable(tags, special) else ""
+          # A row of shops or a terrace of houses is one polygon here; built as
+          # one building it is the "uber building" players reported. Each unit
+          # becomes its own building, standing wall to wall with the next.
+          units = row_units(fp, special, btag, len(uses), metres_per_tile,
+                            max_side=max_size if oversize else None,
+                            split=not settings.max_buildings)
+          if oversize:
+              split_large += 1
+          unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
+          placed_entrances = [(x, y, tags) for x, y, tags in entrance_points]
+          if fp.point_rotation or fp.point_offset != (0.0, 0.0):
+              placed_entrances = [(*fp.transform_point(x, y), tags)
+                                  for x, y, tags in entrance_points]
+          entrances_by_unit = _entrances_by_unit(placed_entrances, units)
+          if len(units) > 1:
+              rows_split += 1
+              units_made += len(units)
+          # A real hospital's size shapes the people its spawn map holds.
+          hifld = hospitals.profile(tags)
+          has_zone_presets = zoning.any_presets()
+          for n, unit in enumerate(units):
+              ux0, uy0 = unit.x0, unit.y0
+              uw, uh = unit.width, unit.height
+              umask = unit.mask_list()
+              # Each unit keeps one of the uses found in the whole row, in the
+              # order they were found, so a parade of shops is a parade and not
+              # seven copies of the same one.
+              unit_uses = [uses[n % len(uses)]] if uses and len(units) > 1 else uses
+              fname = f"{map_name}_{i:04d}.tbx" if len(units) == 1 else \
+                  f"{map_name}_{i:04d}_{n:02d}.tbx"
+              if hifld:
+                  hifld_by_fname[fname] = hifld
+              label = (f"{name} {n + 1}" if name and len(units) > 1 else
+                       name or f"{map_name} building {i}")
+              if ("gunstore", "storage") in unit_uses:
+                  gunshops.add(fname)
+              # A hand-built building for this plot: one its zone names, or one
+              # built to stand in for this kind of building where that kind is
+              # switched on. The zone is asked first, because a zone is the
+              # mapper saying it about this part of the map in particular.
+              # Chosen from the unit's own seed, so a rebuild puts the same
+              # building back on the same spot.
+              preset_file = None
+              if preset_library:
+                  pick = None
+                  wanted = (set(zoning.presets_at(ux0 + uw / 2, uy0 + uh / 2))
+                            if has_zone_presets else set())
+                  if wanted:
+                      pick = P.choose([p for p in preset_library
+                                       if p["name"] in wanted],
+                                      uw, uh, seed + i * 31 + n)
+                  elif (special or "house") in preset_kinds:
+                      pick = P.choose_for_kind(preset_library, special or "house",
+                                               uw, uh, seed + i * 31 + n)
+                  if pick is not None:
+                      preset_file = pick["file"]
+                      used_presets[pick["name"]] += 1
+              jobs.append((uw, uh, levels, commercial, seed + i * 31 + n, special, umask,
+                           here, style, label, os.path.join(bdir, fname),
+                           street_side(ux0, uy0, uw, uh),
+                           # Shops under flats where the town is built up.
+                           context.density(cx, cy) >= RETAIL_DENSITY,
+                           # What the ground floor really is, and a hotel's rooms.
+                           unit_uses, hotel, entrances_by_unit[n], profile,
+                           unit_mapped[n],
+                           btag in ("garage", "garages")
+                           or special in ("garage", "fire", "fire_police",
+                                          "industrial", "barn", "hangar"),
+                           preset_file))
+              outline = px if len(units) == 1 else [
+                  (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
+              decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
+                              measured, commercial, style, umask,
+                              real_name if n == 0 else ""))
+    finally:
+        fp_session.close()
+
+    say("Fitting the buildings together", 0.04)
+
+    # Walls shared with the building next door, now every building has its
+    # tiles: no window, shop window or door goes in one, up to the height of
+    # the neighbour. Laid out on its own footprint, a terrace of shops had
+    # glass shop fronts and windows looking into the next shop.
+    owner = np.full((proj.height, proj.width), -1, dtype=np.int32)
+    for j, d in enumerate(decided):
+        dx0, dy0, dw, dh, dfp = d[2], d[3], d[4], d[5], d[6]
+        view = owner[dy0:dy0 + dh, dx0:dx0 + dw]
+        view[dfp.mask[:view.shape[0], :view.shape[1]]] = j
+    # Read once: building this list inside the loop, once per building, took
+    # 45 minutes on a 232,000-building map.
+    storeys = [job[2] for job in jobs]
+    for j, d in enumerate(decided):
+        jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask, storeys),)
+
+    # Basements, in build order from their own random stream, so a town keeps
+    # the same ones (knoxbuild/basements.py). A building somebody made by
+    # hand gets none: its ground floor is not ours to cut stairs into.
+    from . import basements
+    from tools.compile_map import default_backend
+    if default_backend() != "rust":
+        print("basements            : none - only knoxlots compiles them, and it is not built")
+    specs = [None] * len(jobs) if default_backend() != "rust" else basements.reserve(
+        [{"kind": "preset" if job[19] else (d[8] or "house"),
+          "x0": d[2], "y0": d[3], "w": d[4], "h": d[5],
+          "mask": d[6].mask}
+         for job, d in zip(jobs, decided)],
+        settings, region, areas, random.Random(f"{settings.seed}:basements"),
+        (proj.width, proj.height), metres_per_tile * metres_per_tile)
+    jobs = [job + (spec,) for job, spec in zip(jobs, specs)]
+
+    # Every decision above is made in order, from one random stream, so the
+    # town comes out the same each time. What is left - laying out rooms and
+    # writing the files - depends only on each building's own seed, so it runs
+    # across processes: a 4,000-building district took three minutes on one.
+    failed_buildings = []
+    escalator_squares: list = []
+    keys = [_job_key(job) for job in jobs]
+    results: list = [None] * len(jobs)
+    todo = []
+    for j, d in enumerate(decided):
+        old = earlier.get(d[0])
+        below = (old or {}).get("result", [None] * 5)[4:5]
+        below = below[0] if below else None
+        if (old and old.get("key") == keys[j] and d[0] in earlier_files
+                and os.path.exists(os.path.join(bdir, d[0]))
+                and (jobs[j][JOB_FIELDS] is None
+                     or (below is not None and below["file"] in earlier_files))):
+            storeys, rooms, furniture, escalators = old["result"][:4]
+            # A cache written before the audit carries no problems for this
+            # building: it reads as unchecked rather than as clean.
+            cached = old["result"][5] if len(old["result"]) > 5 else None
+            results[j] = (storeys, rooms, furniture, None,
+                          [tuple(e) for e in escalators], below, cached)
+        else:
+            todo.append(j)
+    reused = len(jobs) - len(todo)
+    if reused:
+        print(f"reused {reused} of {len(jobs)} buildings from the last build")
+    say(f"Laying out {len(todo):,} buildings"
+        + (f" ({reused:,} reused from the last build)" if reused else ""), 0.05)
+
+    def laid_out(done: int, total: int) -> None:
+        say(f"Laying out buildings: {done:,} of {total:,}", 0.05 + 0.55 * done / total)
+
+    def entry(j: int, r_: tuple) -> dict:
+        return {"key": keys[j],
+                "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6]]}
+
+    # From here the files are written, so the cache keeps only what is true of
+    # them: the buildings reused, then each one as it is made.
+    kept = {decided[j][0]: entry(j, r_) for j, r_ in enumerate(results)
+            if r_ is not None and not r_[3]}
+    _write_cache(out_dir, code, kept)
+    saved_at = time.time()
+
+    def made(i: int, result: tuple) -> None:
+        nonlocal saved_at
+        j = todo[i]
+        results[j] = result
+        if not result[3]:
+            kept[decided[j][0]] = entry(j, result)
+        if time.time() - saved_at >= CACHE_EVERY_S:
+            _write_cache(out_dir, code, kept)
+            saved_at = time.time()
+
+    try:
+        _make_all([jobs[j] for j in todo], laid_out, should_stop, made)
+    finally:
+        _write_cache(out_dir, code, kept)
+
+    # The game writes every room's and building's state through one 10 MB
+    # buffer, and past it no save keeps any of them (tools/make_map_mod.py).
+    # Rather than refuse a map that is too big to save, its interiors are
+    # thinned until they fit: the finest subdivisions are merged away and the
+    # buildings, walls, doors and furniture stay (layout.thin_building).
+    laid = [j for j, r_ in enumerate(results) if r_ and not r_[3]]
+    # A basement is a lot of its own with rooms of its own, and the game saves
+    # those out of the same buffer: its lot and its rooms are paid for first,
+    # and the buildings get what is left.
+    cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
+    allowed = _rooms_that_fit(len(decided) + len(cellars), info, out_dir)
+    allowed -= sum(b["rooms"] for b in cellars)
+    before = sum(results[j][1] for j in laid)
+    if before > max(0, allowed):
+        from .layout.dwellings import THIN_MIN_ROOMS
+
+        target = max(0, allowed)
+        need_cut = before - target
+        reducible = {
+            j: max(0, results[j][1] - results[j][0] * THIN_MIN_ROOMS)
+            for j in laid
+        }
+        total_reducible = sum(reducible.values())
+        thin = {}
+        if total_reducible > 0:
+            ratio = min(1.0, need_cut / total_reducible)
+            for j in laid:
+                avail = reducible[j]
+                if not avail:
+                    continue
+                cut = min(avail, int(round(avail * ratio)))
+                if cut > 0:
+                    thin[j] = results[j][1] - cut
+            planned_total = before - sum(results[j][1] - thin[j] for j in thin)
+            # Distribute any rounding shortfall one room at a time across headroom.
+            if planned_total > target:
+                for j in sorted(laid, key=lambda idx: -(reducible[idx] - (results[idx][1] - thin.get(idx, results[idx][1])))):
+                    while planned_total > target:
+                        cur = thin.get(j, results[j][1])
+                        floor_j = results[j][1] - reducible[j]
+                        if cur <= floor_j:
+                            break
+                        thin[j] = cur - 1
+                        planned_total -= 1
+                    if planned_total <= target:
+                        break
+    else:
+        thin = {}
+
+    if thin:
+        order = sorted(thin)
+        lost = 0
+
+        def remade(i: int, result: tuple) -> None:
+            nonlocal lost
+            j = order[i]
+            sliced = results[j][1] - result[1]
+            results[j] = result
+            if not result[3]:
+                lost += sliced
+                # The key carries the limit: a later build that fits the
+                # buffer lays this building out as it always would, rather
+                # than reusing the thinned one under a key it never had.
+                keys[j] = _job_key(jobs[j] + (thin[j],))
+                kept[decided[j][0]] = entry(j, result)
+
+        say("Thinning interiors to fit the game's save buffer", 0.62)
+        try:
+            _make_all([(jobs[j], thin[j]) for j in order], laid_out, should_stop,
+                      remade, make_batch=_make_thin_batch, prepare_solver=False)
+            after = before - lost
+            overflow = after - max(0, allowed)
+            if overflow > 0:
+                extra = {}
+                for j in sorted(
+                    laid,
+                    key=lambda idx: -(results[idx][1] - results[idx][0] * THIN_MIN_ROOMS),
+                ):
+                    head = results[j][1] - results[j][0] * THIN_MIN_ROOMS
+                    if head <= 0 or (j in thin and results[j][1] > thin[j]):
+                        continue
+                    take = min(head, overflow)
+                    extra[j] = results[j][1] - take
+                    overflow -= take
+                    if overflow <= 0:
+                        break
+                if extra:
+                    thin.update(extra)
+                    order = sorted(extra)
+                    _make_all(
+                        [(jobs[j], extra[j]) for j in order],
+                        laid_out,
+                        should_stop,
+                        remade,
+                        make_batch=_make_thin_batch,
+                        prepare_solver=False,
+                    )
+                    after = sum(results[j][1] for j in laid)
+            print(f"  interiors           : {len(thin):,} buildings thinned to fit "
+                  f"the game's save buffer, {before:,} rooms -> {after:,}")
+        finally:
+            _write_cache(out_dir, code, kept)
+
+    basement_counts = {"house": 0, "large": 0, "installation": 0}
+    for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
+         style, mask, real_name), (storeys, rooms, furniture, error,
+                                   escalators, below, _problems) in zip(decided, results):
+        if error:
+            failed_buildings.append(error)
+            continue
+        # A mall's escalators stand in its atrium and carry two tiles on some
+        # squares, so they are packed as their own lot rather than written
+        # into the building (knoxbuild/catalog.escalator_tiles).
+        for ex, ey in escalators:
+            from . import catalog as _C
+            escalator_squares.extend(_C.escalator_tiles(x0 + ex, y0 + ey,
+                                                          west=True))
+        p = Placement(f"buildings/{fname}", x0, y0, w, h, levels=storeys)
+        placements.append(p)
+        if below is not None:
+            placements.append(Placement(f"buildings/{below['file']}", x0 + below["dx"],
+                                        y0 + below["dy"], below["w"], below["h"],
+                                        levels=below["levels"], base_level=-below["levels"]))
+            basement_counts[below["tier"]] += 1
+        peopled.append((x0, y0, fp.mask, storeys,
+                        hospitals.occupancy_kind(special or "house",
+                                                 hifld_by_fname.get(fname))))
+        outlines.append((px, special or "house", real_name))
+        rows.append({
+            "file": fname, "name": label,
+            "tile_x": x0, "tile_y": y0, "width": w, "height": h,
+            "cell_x": p.cell_x, "cell_y": p.cell_y,
+            "offset_x": p.offset_x, "offset_y": p.offset_y,
+            "levels": storeys,
+            "levels_from_osm": int(measured),
+            "rooms": rooms,
+            "furniture": furniture,
+            "commercial": int(commercial),
+            "kind": special or "house",
+            "building": btag,
+            "style": style["name"],
+            "shaped": int(mask is not None),
+            "angle": round(fp.angle, 1),
+        })
+    rows.sort(key=lambda r: r["file"])
+    knoxstop.check(should_stop, "the buildings")
+
+    # What knoxbuild/audit.py found, over every building the map holds. The
+    # census shows it beside the population, so a town that came out wrong is
+    # known before the compile rather than after it; it is written down rather
+    # than only printed because the window reads it back, and a reopened map
+    # shows it too.
+    audit_report = _audit_report(results)
+    knoxfiles.write(os.path.join(out_dir, f"{map_name}_layout.json"), audit_report,
+                    indent=2)
+
+    # Remember what was made, and clear out what was left from before and not
+    # written this time.
+    entries = {d[0]: {"key": keys[j],
+                      "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6]]}
+               for j, (d, r_) in enumerate(zip(decided, results)) if not r_[3]}
+    _write_cache(out_dir, code, entries)
+    below_files = {r_[5]["file"] for r_ in results if not r_[3] and r_[5]}
+    for stale in earlier_files - set(entries) - below_files:
+        try:
+            os.remove(os.path.join(bdir, stale))
+        except OSError:
+            pass
+
+    # One military rifle somewhere on the map, whatever this town turned out
+    # to be: an army building, else the police station, else a gun shop, else
+    # a house on the edge of town (knoxbuild/guns.py). A real place has no
+    # checkpoints in it, so without this the game's rifles have nowhere at all
+    # they could spawn.
+    from . import guns
+    from .world import CELL_SIZE
+    gun_cache = None
+    if _stitch_out is None:
+        gun_cache = guns.write(
+            out_dir, map_name,
+            guns.choose(rows, gunshops) if settings.guaranteed_rifle else None,
+            origin(), CELL_SIZE)
+    say("Front paths, yards and porch lights", 0.62)
+    from .yards import paint_paths
+    drives: list = []
+    porch_lights: list = []
+    from .yards import door_fronts
+    fronts = door_fronts(out_dir, rows)
+    fence_clear = fronts
+    if road_weight is not None:
+        rail_y, rail_x = np.nonzero(road_weight == 8)
+        fence_clear = fronts | set(zip(rail_x.tolist(), rail_y.tolist()))
+    paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied, drives,
+                                     porch_lights, fronts=fronts)
+    # The lights stand outside the houses, past the edge of their own .tbx.
+    from .structures import pack_loose
+    light_placements = pack_loose(bdir, map_name, "lights", porch_lights,
+                                  on_top=True)
+    escalator_placements = pack_loose(bdir, map_name, "escalators",
+                                      escalator_squares, on_top=True)
+
+    say("Petrol pumps, graves and other props", 0.74)
+    # Pumps on a forecourt at each petrol station, including those mapped as
+    # a point with no building of their own.
+    from .pumps import place_pumps
+    loose_fuel = [(x, y) for group in points.values() for x, y, t in group
+                  if t.get("amenity") == "fuel" and (x, y) not in points_taken]
+    forecourts: list = []
+    pump_placements, n_pumps = place_pumps(out_dir, map_name, bdir, occupied,
+                                           stations, loose_fuel, forecourts, canopies,
+                                           metres_per_tile=metres_per_tile)
+
+    # Headstones in the churchyards, stores on the army bases: land uses that
+    # are neither a building nor a colour of ground.
+    from .props import place_props
+    prop_placements, prop_counts = place_props(out_dir, map_name, bdir, occupied,
+                                               areas, metres_per_tile,
+                                               seed=seed + 5)
+    # A steeple on each church, and the board a motel or a drive-in puts up by
+    # the road (knoxbuild/landmarks.py). The rest of the skyline - water
+    # towers, silos and transmission masts - is mapped as its own feature and
+    # built by generator/structures.py.
+    from .landmarks import place_landmarks, sign_for
+    businesses: list[tuple[int, int, int, int, str]] = []
+    for group in (points or {}).values():
+        for bx, by, tags in group:
+            what = sign_for(tags)
+            if what:
+                businesses.append((int(bx), int(by), int(bx), int(by), what))
+    # A motel is as often the building as a point inside it, and only the
+    # building's own tags come with the outline it was built from. The board
+    # is put up at the edge of that outline, so the pass is given all of it.
+    for feat in geo.get("features", []):
+        what = sign_for(feat.get("properties") or {})
+        ring = _ring_points(feat.get("geometry") or {}) if what else []
+        if len(ring) < 3:
+            continue
+        px_ring = [proj.to_px(lat, lon) for lon, lat in ring]
+        businesses.append((int(round(min(x for x, _y in px_ring))),
+                           int(round(min(y for _x, y in px_ring))),
+                           int(round(max(x for x, _y in px_ring))),
+                           int(round(max(y for _x, y in px_ring))), what))
+    landmark_placements, landmark_counts = place_landmarks(
+        out_dir, map_name, bdir, occupied, rows, businesses,
+        metres_per_tile=metres_per_tile, seed=seed + 7)
+    if landmark_counts["steeples"] or landmark_counts["signs"]:
+        print(f"landmarks             : {landmark_counts['steeples']} steeples, "
+              f"{landmark_counts['signs']} roadside signs "
+              f"({landmark_counts['motel_signs']} motels, "
+              f"{landmark_counts['drive_in_signs']} drive-ins)")
+
+    # The three scenes: the way out of town held by the army, the school turned
+    # into a refuge, a main road stopped. Same props as the bases above, put
+    # where the story is instead of where a land use is.
+    from .props import place_vignettes
+    vignette_placements, vignette_counts = place_vignettes(
+        out_dir, map_name, bdir, occupied, rows, road_hierarchy=road_hierarchy,
+        seed=seed + 9)
+    if vignette_counts["vignette_props"]:
+        print(f"story vignettes       : {vignette_counts['checkpoints']} checkpoints, "
+              f"{vignette_counts['road_blocks']} roadblocks, "
+              f"{vignette_counts['evac_centres']} evacuation centres "
+              f"({vignette_counts['vignette_props']} props)")
+
+    if used_presets:
+        tally = ", ".join(f"{name} x{n}" for name, n in used_presets.most_common(6))
+        print(f"hand-built            : {sum(used_presets.values())} stamped "
+              f"({tally})")
+
+    # Five jobs that each read the finished ground and none of which changes
+    # what another one reads: fences, the zombie spawn map, the paper map, the
+    # parking/town zones and the bridges. The zones are the one that writes:
+    # its wheel stops go into the vegetation bitmap, which every other veg
+    # writer (yards, pumps, props) has finished with by now. Mostly numpy and
+    # shapely, which let go of the interpreter lock, so threads overlap them.
+    say("Fences, zombies, zones and the paper map", 0.82)
+    from concurrent.futures import ThreadPoolExecutor
+    from .structures import build_structures
+
+    def make_spawn_map():
+        # Redrawn from the people in the buildings just placed. It replaces the
+        # ground-colour one the renderer wrote, at the same path and size, so
+        # the WorldEd project picks it up unchanged.
+        spawn_img, pop = build_spawn_map(
+            peopled, proj.width, proj.height, info["meters_per_tile"],
+            os.path.join(out_dir, f"{map_name}.bmp"), settings, zoning)
+        knoxfiles.save(spawn_img,
+                       os.path.join(out_dir, f"{map_name}_ZombieSpawnMap.bmp"),
+                       format="BMP")
+        save_footprints(os.path.join(out_dir, f"{map_name}_footprints.npz"), peopled)
+        pop["official"] = [p for p in official_population(out_dir, map_name)
+                           if p.get("inside")][:5]
+        knoxfiles.write(os.path.join(out_dir, f"{map_name}_population.json"),
+                        pop, indent=2, ensure_ascii=False)
+        return pop
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
+                                 areas, bdir, extra=yard_fences, keep_clear=fence_clear)
+        job_spawn = pool.submit(make_spawn_map) if _stitch_out is None else None
+        job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
+                                outlines) if _stitch_out is None else None
+        job_zones = pool.submit(
+            _detect_zones, os.path.join(out_dir, f"{map_name}.bmp"), placements,
+            settings=settings, areas=areas, drives=drives, keep_clear=forecourts,
+            road_hierarchy=road_hierarchy,
+            veg_path=os.path.join(out_dir, f"{map_name}_veg.bmp"))
+        # Fences go into the project alongside the buildings, but not into the
+        # town zones: a fence lot spans its whole cell and would mark it all town.
+        job_structures = pool.submit(build_structures, out_dir, map_name, bdir)
+        fence_placements, fence_tiles = job_fences.result()
+        population = job_spawn.result() if job_spawn is not None else None
+        paper_map = job_paper.result() if job_paper is not None else None
+        zones = job_zones.result()
+        structure_placements, raised = job_structures.result()
+    placements = (placements + fence_placements + structure_placements +
+                  pump_placements + prop_placements + landmark_placements
+                  + vignette_placements + light_placements + escalator_placements)
+
+    if _stitch_out is not None:
+        _stitch_out.update({
+            "placements": placements,
+            "zones": zones,
+            "rows": rows,
+            "left_out": left_out,
+            "peopled": peopled,
+            "outlines": outlines,
+            "gunshops": gunshops,
+            "split_large": split_large,
+            "skipped_large": skipped["large"],
+        })
+        return 0
+
+    say("Writing the WorldEd project", 0.95)
+    pzw_path = os.path.join(out_dir, f"{map_name}.pzw")
+    with open(pzw_path, "w", encoding="utf-8") as f:
+        f.write(render_pzw(info["cells_x"], info["cells_y"],
+                           f"{map_name}.bmp", placements, map_name,
+                           project_dir=out_dir, zones=zones))
+
+    csv_path = os.path.join(out_dir, f"{map_name}_placements.csv")
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        wtr = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else
+                             ["file"])
+        wtr.writeheader()
+        wtr.writerows(rows)
+
+    left_path = os.path.join(out_dir, f"{map_name}_left_out.csv")
+    left_fields = ["reason", "tile_x", "tile_y", "lat", "lon", "tiles_wide",
+                   "tiles_tall", "building", "name", "osm_id"]
+    with open(left_path, "w", newline="", encoding="utf-8") as f:
+        wtr = csv.DictWriter(f, fieldnames=left_fields)
+        wtr.writeheader()
+        wtr.writerows(sorted(left_out, key=lambda r: (r["tile_y"], r["tile_x"])))
+
+    oversized_path = os.path.join(out_dir, f"{map_name}_oversized.json")
+    with open(oversized_path, "w", encoding="utf-8") as f:
+        json.dump({"split": split_large, "skipped": skipped["large"]}, f)
+
+    total_rooms = sum(r["rooms"] for r in rows)
+    total_furn = sum(r["furniture"] for r in rows)
+    print(f"footprints in geojson : {len(geo['features'])}")
+    print(f"  shops, food, offices: {with_uses} buildings from the map's points and tags")
+    if region:
+        print(f"  region style         : {region}"
+              + (" (flat roofs, masonry blocks, taller housing)" if region == "cn"
+                 else " (Ukrainian / post-Soviet: brick and plaster private houses, "
+                      "5- and 9-storey blocks)" if region == "ua"
+                 else " (built the default way for now)"))
+    print(f"  too small (<{min_size})     : {skipped['small']}")
+    if split_large or skipped["large"]:
+        print(f"  oversized (>{max_size})     : {split_large} split into units, "
+              f"{skipped['large']} skipped")
+    else:
+        print(f"  too large (>{max_size})   : 0")
+    print(f"  outside the map     : {skipped['outside']}")
+    print(f"  swallowed by others : {skipped['taken']}")
+    print(f"  on the road         : {skipped['road']} (more than {round(100 * footprint.ROAD_SHARE_MAX)}% road)")
+    print(f"  not buildings       : {skipped['not a building']} (roofs, ruins, tanks)")
+    import collections as _c
+    kinds = _c.Counter(r["kind"] for r in rows)
+    styles = _c.Counter(r["style"] for r in rows)
+    print(f"buildings generated   : {len(rows)}")
+    print(f"  kinds               : {dict(kinds)}")
+    print(f"  styles              : {dict(styles)}")
+    shaped = sum(r['shaped'] for r in rows)
+    print(f"  on real footprint   : {len(rows) - squared} turned, "
+          f"{squared} squared up ({shaped} with irregular outlines)")
+    print(f"  kind from land use  : {from_area}")
+    print(f"  sheds and garages   : {sheds}")
+    print(f"  rows cut into units : {rows_split} rows -> {units_made} buildings")
+    if "thinned" in thinning:
+        print(f"  town laid out for PZ: {thinning['thinned']} houses left out, "
+              f"{thinning['grown']} buildings grown, "
+              f"{thinning['landmarks']} landmarks kept and placed first")
+    if thinning.get("capped"):
+        print(f"  held to {settings.max_buildings} buildings: "
+              f"{thinning['capped']} more left out, spread over the map, "
+              f"landmarks kept")
+    # What a mix asked for against what the map could give it. Without this
+    # line, asking for 15% shops on a map with twenty of them looks like the
+    # setting being ignored rather than the ground running out.
+    for line in thinning.get("mix_report") or ():
+        print(f"    {line}")
+    if thinning.get("places"):
+        print(f"  shared between {thinning['places']} towns and villages")
+    print(f"  storeys from nearby : {from_near}")
+    storeys = _c.Counter(r["levels"] for r in rows)
+    print(f"  storeys             : {dict(sorted(storeys.items()))}")
+    pct = 100.0 * from_osm / len(rows) if rows else 0.0
+    print(f"  heights from OSM    : {from_osm} of {len(rows)} ({pct:.1f}%), "
+          f"rest inferred from footprint")
+    print(f"  rooms               : {total_rooms}")
+    print(f"  furniture pieces    : {total_furn}")
+    if audit_report["buildings"]:
+        if audit_report["flagged"]:
+            worst = ", ".join(f"{k} x{v}"
+                              for k, v in list(audit_report["problems"].items())[:4])
+            print(f"  layout audit        : {audit_report['flagged']:,} of "
+                  f"{audit_report['buildings']:,} buildings need a look - {worst}")
+        else:
+            print(f"  layout audit        : {audit_report['buildings']:,} buildings "
+                  f"checked, nothing wrong")
+    # The game saves every room's and building's state through one 10 MB
+    # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
+    # install, before an hour of compiling a map whose saves will fail.
+    from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
+                                    META_CELL, META_EMPTY_GRID_RESERVE, META_ROOM)
+    # A basement is saved as a lot of its own, with rooms of its own.
+    cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
+    meta = (META_ROOM * (total_rooms + sum(b["rooms"] for b in cellars))
+            + META_BUILDING * (len(rows) + len(cellars)) + META_EMPTY_GRID_RESERVE
+            + META_CELL * int(info["cells_x"]) * int(info["cells_y"])
+            + (0 if _placement.standalone(out_dir) else KNOX_COUNTY_META))
+    if meta > META_BUDGET:
+        print(f"  WARNING             : {meta / 1e6:.1f} MB of rooms and buildings for the "
+              f"game to save, past the {META_BUDGET / 1e6:.0f} MB it can; every save will "
+              f"fail to store them, even with the interiors thinned as far as they go. "
+              f"Generate a smaller area, or at a larger scale.")
+    if gun_cache:
+        print(f"guaranteed rifle      : {gun_cache['kind']} - "
+              f"{gun_cache['name'] or gun_cache['building']}")
+    print(f"world origin          : cell {origin()[0]},{origin()[1]}")
+    print(f"wrote {pzw_path}")
+    print(f"wrote {csv_path}")
+    n_park = sum(1 for z in zones if z.kind == "ParkingStall")
+    n_town = sum(1 for z in zones if z.kind == "TownZone")
+    n_forage = sum(1 for z in zones if z.kind in ("Forest", "DeepForest", "Vegitation", "Farm"))
+    n_nav = sum(1 for z in zones if z.kind == "Nav")
+    print(f"zones                 : {n_park} parking, {n_town} town, {n_forage} forage, {n_nav} nav")
+    print(f"petrol stations       : {n_pumps} pumps at {len(stations)} stations"
+          f", {len(canopies)} canopies and {len(loose_fuel)} points")
+    print(f"front paths, yards    : {paths} houses, {len(yard_fences)} back yards")
+    print(f"graves, army stores  : {prop_counts['graves']} graves, "
+          f"{prop_counts['dumps']} stacks of stores")
+    print(f"porch lights         : {len(porch_lights)} by front doors")
+    print(f"basements            : {basement_counts['house']} houses, "
+          f"{basement_counts['large']} large, {basement_counts['installation']} installations "
+          f"({sum(s is not None for s in specs) - sum(basement_counts.values())} without a stair spot)")
+    print(f"fences                : {fence_tiles} fence tiles in "
+          f"{len(fence_placements)} lots")
+    print(f"bridges, monuments    : {raised['bridges']} bridges, "
+          f"{raised['monuments']} monuments, {raised['tiles']} tiles in "
+          f"{len(structure_placements)} lots")
+    print(f"paper map             : {paper_map['map_features']} features in "
+          f"{paper_map['map_cells']} cells, {paper_map['streets']} named streets, "
+          f"{paper_map['labels']} labels")
+    print(f"population            : {population['residents']:,} residents, "
+          f"{population['daytime_occupants']:,} at work or school, "
+          f"{population.get('on_the_street', 0):,} out on the street")
+    print(f"zombie spawn map      : {population['share_with_zombies']:.1%} of chunks "
+          f"populated, peak {population['peak_value']} (cap {population['horde_cap']}), "
+          f"{population['chunks_at_cap']} chunks at the cap")
+    # Not "place": that name is the footprint placer imported above, and a
+    # loop variable of the same name makes it local to all of build().
+    for town in population["official"]:
+        print(f"  OSM says {town['name'] or town['place']}: "
+              f"population {town['population']:,} ({town['place']})")
+    print(f"wrote {len(rows)} .tbx files in {bdir}")
+    if failed_buildings:
+        print(f"left out {len(failed_buildings)} buildings that could not be laid out:")
+        for error in failed_buildings[:20]:
+            print(f"  {error}")
+        try:
+            import knoxlog
+            for error in failed_buildings:
+                knoxlog.log.warning("building left out: %s", error)
+        except Exception:  # noqa: BLE001 - the printout is the record then
+            pass
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    # Place names can be in any script, and a Windows console using a legacy
+    # code page cannot print most of them - "OSM says Kadıköy" crashed a build
+    # on cp1252. Print what it can and mark the rest, rather than dying.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("output_dir", help="a Knoxify output/<mapname> folder")
+    ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--min-size", type=int, default=None,
+                    help="skip footprints smaller than this many tiles")
+    ap.add_argument("--max-size", type=int, default=None,
+                    help="skip footprints larger than this many tiles")
+    ap.add_argument("--preset", choices=sorted(PRESETS),
+                    help="suburb / town / city / rural")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override one setting, repeatable "
+                         "(e.g. --set max_levels=12)")
+    args = ap.parse_args(argv)
+
+    # A saved settings.json in the map folder is the starting point, so the
+    # command line and the app agree on what a given map was built with.
+    out = args.output_dir
+    saved = os.path.join(out, "settings.json")
+    base = {}
+    if os.path.exists(saved):
+        try:
+            with open(saved, encoding="utf-8") as f:
+                base = json.load(f)
+        except (OSError, ValueError):
+            pass
+    if args.preset:
+        # A preset named on the command line replaces what was saved rather
+        # than sitting underneath it. Merged the other way, every saved value
+        # outranked the preset and --preset town quietly rebuilt a suburb.
+        base = {"preset": args.preset}
+    for item in args.set:
+        key, _, value = item.partition("=")
+        if not _:
+            ap.error(f"--set wants KEY=VALUE, got {item!r}")
+        base[key.strip()] = value.strip()
+    settings = Settings.from_dict(base)
+    return build(args.output_dir, seed=args.seed,
+                 min_size=args.min_size, max_size=args.max_size,
+                 settings=settings)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

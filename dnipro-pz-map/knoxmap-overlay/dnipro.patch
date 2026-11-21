@@ -1,0 +1,290 @@
+diff --git a/generator/extract.py b/generator/extract.py
+index 6c55207..7f40a38 100644
+--- a/generator/extract.py
++++ b/generator/extract.py
+@@ -423,8 +423,10 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
+             # dominate this pass, even for a map of a few streets.
+             try:
+                 min_lon, min_lat, max_lon, max_lat = _line_bounds(factory.create_linestring(obj))
+-            except (RuntimeError, ValueError):
+-                pass  # incomplete node locations: preserve the old fallback
++            except (RuntimeError, ValueError, osmium.InvalidLocationError):
++                # incomplete node locations (a way cut at the edge of a regional
++                # extract, as openstreetmap.fr's are): preserve the old fallback
++                pass
+             else:
+                 if not _overlaps((min_lat, min_lon, max_lat, max_lon), south, west, north, east):
+                     continue
+diff --git a/knoxbuild/build.py b/knoxbuild/build.py
+index fa37416..a80b2f8 100644
+--- a/knoxbuild/build.py
++++ b/knoxbuild/build.py
+@@ -521,6 +521,9 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
+     if region == "cn":
+         from .regional import CN_DEFAULT_LEVELS
+         lo, hi = CN_DEFAULT_LEVELS.get(kind or "", (lo, hi))
++    elif region == "ua":
++        from .regional import UA_DEFAULT_LEVELS
++        lo, hi = UA_DEFAULT_LEVELS.get(kind or "", (lo, hi))
+     real_m2 = area_tiles * metres_per_tile * metres_per_tile
+     pool = area_level_pool(kind, real_m2, region)
+ 
+@@ -783,10 +786,14 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
+         # picks the same again.
+         return variants[(tile_x * 73856093 ^ tile_y * 19349663) % len(variants)]
+ 
+-    if region == "cn" and not (profile and profile.dated
+-                               and profile.era == "prewar"):
+-        pool = regional.cn_house_styles()
+-        styles = [s for s in pool if style_fits(s["name"], density)] or pool
++    pool = regional.house_styles_for(region)
++    if pool and not (region == "cn" and profile and profile.dated
++                     and profile.era == "prewar"):
++        # A regional pool's names carry a prefix ("cn_brick", "ua_painted_shutters");
++        # how built-up the place is still decides which of them may stand here.
++        styles = [s for s in pool
++                  if style_fits(s["name"].split("_", 1)[1].replace("_shutters", ""),
++                                density)] or pool
+     else:
+         styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
+             or C.HOUSE_STYLES
+@@ -1238,8 +1245,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+     # forces the question either way.
+     from . import regional
+     region = None
+-    if settings.arch_style == "cn":
+-        region = "cn"
++    if settings.arch_style in ("cn", "ua"):
++        region = settings.arch_style
+     elif settings.arch_style != "off":
+         region = regional.detect_region(geo, bbox)
+ 
+@@ -1659,8 +1666,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+               if special is None:
+                   # A Chinese self-built house runs a storey taller than the
+                   # game's houses before the neighbours' heights are heard.
+-                  top = min(top, HOUSE_MAX_LEVELS + 1 if region == "cn"
+-                            else HOUSE_MAX_LEVELS)
++                  if region == "ua":
++                      from .regional import UA_HOUSE_MAX_LEVELS
++                      top = min(top, UA_HOUSE_MAX_LEVELS)
++                  else:
++                      top = min(top, HOUSE_MAX_LEVELS + 1 if region == "cn"
++                                else HOUSE_MAX_LEVELS)
+               levels = max(1, min(top, int(round(nearby)) +
+                                   style_rng.choice((-1, 0, 0, 1))))
+               from_near += 1
+@@ -2239,6 +2250,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+     if region:
+         print(f"  region style         : {region}"
+               + (" (flat roofs, masonry blocks, taller housing)" if region == "cn"
++                 else " (Ukrainian / post-Soviet: brick and plaster private houses, "
++                      "5- and 9-storey blocks)" if region == "ua"
+                  else " (built the default way for now)"))
+     print(f"  too small (<{min_size})     : {skipped['small']}")
+     if split_large or skipped["large"]:
+diff --git a/knoxbuild/regional.py b/knoxbuild/regional.py
+index 0f02fd3..1211a9a 100644
+--- a/knoxbuild/regional.py
++++ b/knoxbuild/regional.py
+@@ -38,6 +38,10 @@ import re
+ _HAN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+ _KANA = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\u31f0-\u31ff]")
+ _HANGUL = re.compile(r"[\uac00-\ud7af\u1100-\u11ff]")
++# Cyrillic marks the post-Soviet built world: Ukraine above all (KnoxMap's
++# Dnipro map is what this was written for), and the same panel blocks,
++# brick private houses and Stalin-era centres run from Lviv to Almaty.
++_CYRILLIC = re.compile(r"[\u0400-\u04ff]")
+ 
+ # How many names to read before deciding, and how much of the sample must
+ # agree. A handful of Chinese restaurants on an American main street must not
+@@ -56,11 +60,12 @@ _BOXES = (
+     ("jp", (129.5, 30.5, 146.0, 45.9)),
+     ("kr", (124.5, 33.0, 130.6, 38.7)),
+     ("cn", (73.5, 17.5, 135.5, 53.8)),
++    ("ua", (22.0, 44.3, 40.3, 52.4)),
+ )
+ 
+ 
+ def detect_region(geo: dict, bbox: dict | None = None) -> str | None:
+-    """"cn", "jp" or "kr" when the map's own names say so, else None.
++    """"cn", "jp", "kr" or "ua" when the map's own names say so, else None.
+ 
+     The names come first because they are the place speaking for itself: a
+     Chinatown inside an English city stays English-built at SHARE, and a
+@@ -68,7 +73,7 @@ def detect_region(geo: dict, bbox: dict | None = None) -> str | None:
+     fallback for a map that names nothing, which in practice means rural
+     China - the one place this matters most.
+     """
+-    scripts = {"han": 0, "kana": 0, "hangul": 0, "other": 0}
++    scripts = {"han": 0, "kana": 0, "hangul": 0, "cyrillic": 0, "other": 0}
+     sampled = 0
+     for feat in geo.get("features", ()):
+         name = (feat.get("properties") or {}).get("name") or ""
+@@ -83,6 +88,8 @@ def detect_region(geo: dict, bbox: dict | None = None) -> str | None:
+             scripts["hangul"] += 1
+         elif _HAN.search(name):
+             scripts["han"] += 1
++        elif _CYRILLIC.search(name):
++            scripts["cyrillic"] += 1
+         else:
+             scripts["other"] += 1
+     if sampled >= SAMPLE_MIN:
+@@ -92,6 +99,8 @@ def detect_region(geo: dict, bbox: dict | None = None) -> str | None:
+             return "kr"
+         if scripts["han"] / sampled > SHARE:
+             return "cn"
++        if scripts["cyrillic"] / sampled > SHARE:
++            return "ua"
+         return None
+     # Nothing named: fall back to where the rectangle sits.
+     try:
+@@ -146,6 +155,49 @@ def cn_house_styles() -> list[dict]:
+     return _CN_STYLES
+ 
+ 
++# The Ukrainian / post-Soviet private house (privatnyi sektor): brick - red
++# or the pale silicate kind - or plastered and painted, one storey or two,
++# under a pitched or hipped roof of slate or sheet metal, behind a fence.
++# Not weatherboard, not log cabins, not trailers, not American vinyl siding.
++# Old village-style houses still wear wooden shutters, so a share keeps them.
++UA_BASES = ("brick", "stucco", "render", "painted")
++UA_SHUTTERED = ("brick", "painted")
++
++_UA_STYLES: list | None = None
++
++
++def ua_house_styles() -> list[dict]:
++    """The house styles a Ukrainian town's private sector is built from."""
++    global _UA_STYLES
++    if _UA_STYLES is None:
++        from . import catalog as C
++        by_name = {s["name"]: s for s in C.HOUSE_STYLES}
++        out = []
++        for name in UA_BASES:
++            base = by_name.get(name)
++            if not base:
++                continue
++            plain = dict(base)
++            plain["name"] = f"ua_{name}"
++            plain.pop("shutters", None)
++            out.append(plain)
++            if name in UA_SHUTTERED and base.get("shutters"):
++                shuttered = dict(base)
++                shuttered["name"] = f"ua_{name}_shutters"
++                out.append(shuttered)
++        _UA_STYLES = out
++    return _UA_STYLES
++
++
++def house_styles_for(region: str | None) -> list[dict] | None:
++    """The regional house pool, or None for the game's own Knox County mix."""
++    if region == "cn":
++        return cn_house_styles()
++    if region == "ua":
++        return ua_house_styles()
++    return None
++
++
+ # ---------------------------------------------------------------------------
+ # Storeys
+ # ---------------------------------------------------------------------------
+@@ -213,6 +265,42 @@ CN_AREA_OVERRIDES = {
+ }
+ 
+ 
++# Ukrainian storeys for buildings OSM leaves uncounted. The housing stock is
++# the Soviet series: the 1950s-60s khrushchevka at four and five storeys
++# (walk-ups, no lift), the 1970s-80s panel and brick blocks at nine (the
++# commonest of all), twelve and sixteen, and the private sector of one and
++# two storeys around them. Schools are three or four storeys of typical
++# project, polyclinics and hospitals four to nine, factories one to three.
++UA_DEFAULT_LEVELS = {
++    "apartment": (5, 9),
++    "civic": (2, 5),
++    "school": (3, 4),
++    "medical": (3, 5),
++    "shop": (1, 2),
++    "restaurant": (1, 2),
++    "industrial": (1, 3),
++    "military": (1, 3),
++    "police": (2, 4),
++    "library": (2, 4),
++    "church": (1, 2),
++}
++UA_AREA_OVERRIDES = {
++    None: ((150, (1, 1, 1, 2)), (350, (1, 1, 2, 2)), (900, (2, 3, 4, 5)),
++           (None, (4, 5, 5, 9))),
++    "apartment": ((350, (3, 4, 5, 5)), (900, (5, 5, 5, 9, 9)),
++                  (2000, (5, 9, 9, 9, 12)), (None, (9, 9, 12, 16, 16))),
++    "school": ((None, (3, 3, 4)),),
++    "medical": ((800, (2, 3, 4)), (2500, (4, 5, 5, 9)), (None, (5, 9, 9, 12))),
++    "civic": ((400, (2, 2, 3)), (1500, (3, 4, 5, 5)), (None, (4, 5, 9, 12))),
++    "industrial": ((1500, (1, 1, 2)), (None, (1, 2, 2, 3))),
++    "church": ((None, (1, 1, 2)),),
++}
++# How tall an ordinary house may come out when its neighbours' heights are
++# borrowed: the private sector is one and two storeys, whatever the nine-storey
++# blocks across the road are.
++UA_HOUSE_MAX_LEVELS = 2
++
++
+ def area_level_pool(kind: str | None, area_m2: float,
+                     region: str | None = None) -> tuple | None:
+     """A weighted pool of storeys for this kind and footprint, or None.
+@@ -225,6 +313,10 @@ def area_level_pool(kind: str | None, area_m2: float,
+         for limit, pool in CN_AREA_OVERRIDES.get(kind, ()):
+             if limit is None or area_m2 <= limit:
+                 return pool
++    if region == "ua":
++        for limit, pool in UA_AREA_OVERRIDES.get(kind, ()):
++            if limit is None or area_m2 <= limit:
++                return pool
+     for limit, pool in AREA_LEVEL_TABLE.get(kind, ()):
+         if limit is None or area_m2 <= limit:
+             return pool
+diff --git a/knoxbuild/settings.py b/knoxbuild/settings.py
+index 3be25fb..00cea78 100644
+--- a/knoxbuild/settings.py
++++ b/knoxbuild/settings.py
+@@ -172,7 +172,8 @@ class Settings:
+     # names: a town written in Chinese gets flat-roofed masonry blocks and
+     # taller self-built houses, the way it is really built there (see
+     # knoxbuild/regional.py). "cn" forces that regardless of what the names
+-    # say, and "off" builds every town the way the game's own Knox County is
++    # say, "ua" forces the Ukrainian / post-Soviet build (brick and plaster
++    # private houses, Soviet-series blocks), and "off" builds every town the way the game's own Knox County is
+     # built, which is what every map did before this knob existed.
+     arch_style: str = "auto"
+ 
+@@ -356,7 +357,7 @@ LIMITS = {
+     "max_basement_depth": (0, 32),
+     # Not a range at all - the page asks /api/settings for the options -
+     # but every knob gets an entry so the settings form can be built blind.
+-    "arch_style": (0, 3),
++    "arch_style": (0, 4),
+     "height_mix": (0, 4),
+     # The enrichment layers. String knobs carry an entry for the form's sake.
+     "landcover": (0, 3),
+@@ -371,7 +372,7 @@ LIMITS = {
+ }
+ 
+ BUILDING_ALIGNMENT_OPTIONS = ("real", "smart", "rectilinear", "rectangle")
+-ARCH_STYLE_OPTIONS = ("auto", "cn", "off")
++ARCH_STYLE_OPTIONS = ("auto", "cn", "ua", "off")
+ HEIGHT_MIX_OPTIONS = ("auto", "low", "middle", "tall", "even")
+ LANDCOVER_OPTIONS = ("worldcover", "osm", "off")
+ ELEVATION_OPTIONS = ("3dep", "flat")
+diff --git a/web/system.py b/web/system.py
+index 45a5a3a..7e81b78 100644
+--- a/web/system.py
++++ b/web/system.py
+@@ -484,7 +484,7 @@ def api_settings():
+             "building_alignment": [
+                 [value, value.capitalize()]
+                 for value in BUILDING_ALIGNMENT_OPTIONS],
+-            "arch_style": [["auto", "Auto"], ["cn", "Chinese"], ["off", "Default"]],
++            "arch_style": [["auto", "Auto"], ["cn", "Chinese"], ["ua", "Ukrainian / post-Soviet"], ["off", "Default"]],
+             "straight_roads": [[0, "As mapped"], [5, "Vanilla 45° grid"],
+                                [4, "Knox County straight"],
+                                [2, "Vanilla curves"], [3, "Vanilla curves, built-up streets square"]],
