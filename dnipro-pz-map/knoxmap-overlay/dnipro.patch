@@ -115,7 +115,7 @@ index d713541..c25b5d2 100644
              return None
          category = props.get("category")
 diff --git a/knoxbuild/build.py b/knoxbuild/build.py
-index fa37416..f429933 100644
+index fa37416..264fb3f 100644
 --- a/knoxbuild/build.py
 +++ b/knoxbuild/build.py
 @@ -74,6 +74,11 @@ SHED_VALUES = {
@@ -151,7 +151,7 @@ index fa37416..f429933 100644
      "restaurant": "restaurant", "fast_food": "restaurant", "cafe": "restaurant",
      "bar": "restaurant", "pub": "restaurant", "food_court": "restaurant",
      "retail": "shop", "commercial": "shop", "supermarket": "shop",
-@@ -170,6 +182,54 @@ SPECIAL_BY_VALUE = {
+@@ -170,6 +182,60 @@ SPECIAL_BY_VALUE = {
  }
  
  # Last resort when the tags say nothing useful but the name is obvious.
@@ -171,6 +171,7 @@ index fa37416..f429933 100644
 +    ("адміністрац", "civic"), ("администрац", "civic"), ("рада", "civic"),
 +    ("церкв", "church"), ("церков", "church"), ("храм", "church"), ("собор ", "church"),
 +    ("каплиц", "church"), ("часовн", "church"), ("синагог", "church"), ("мечет", "church"),
++    ("монастир", "church"), ("монастыр", "church"), ("лавра", "church"),
 +    ("лікарн", "medical"), ("больниц", "medical"), ("поліклін", "medical"),
 +    ("поликлин", "medical"), ("амбулатор", "medical"), ("диспансер", "medical"),
 +    ("клінік", "medical"), ("клиник", "medical"), ("пологов", "medical"),
@@ -187,11 +188,16 @@ index fa37416..f429933 100644
 +    ("торговельний центр", "mall"), ("торговый центр", "mall"),
 +    ("ринок", "shop"), ("рынок", "shop"), ("базар", "shop"), ("магазин", "shop"),
 +    ("супермаркет", "shop"), ("маркет", "shop"), ("атб", "shop"), ("сільпо", "shop"),
++    ("varus", "shop"), ("novus", "shop"), ("ашан", "shop"), ("auchan", "shop"),
++    ("епіцентр", "shop"), ("эпицентр", "shop"), ("фора", "shop"), ("брусничк", "shop"),
++    ("еко маркет", "shop"), ("велмарт", "shop"), ("comfy", "shop"), ("фокстрот", "shop"),
++    ("rozetka", "shop"), ("аптек", "medical"),
 +    ("ресторан", "restaurant"), ("кафе", "restaurant"), ("їдальн", "restaurant"),
 +    ("столов", "restaurant"), ("піцер", "restaurant"), ("пиццер", "restaurant"),
 +    ("макдональдс", "restaurant"), ("mcdonald", "restaurant"), ("kfc", "restaurant"),
 +    ("автосервіс", "garage"), ("автосервис", "garage"), ("шиномонтаж", "garage"),
-+    ("гараж", "garage"), ("сто ", "garage"), ("автомий", "garage"),
++    ("гараж", "garage"), ("сто ", "garage"), ("автомий", "garage"), ("автомойк", "garage"),
++    ("автомойк", "garage"), ("автосалон", "shop"), ("азс", "shop"),
 +    ("котельн", "industrial"), ("цех", "industrial"), ("завод", "industrial"),
 +    ("фабрик", "industrial"), ("комбінат", "industrial"), ("комбинат", "industrial"),
 +    ("склад", "industrial"), ("депо", "industrial"), ("елеватор", "industrial"),
@@ -206,7 +212,7 @@ index fa37416..f429933 100644
  SPECIAL_BY_NAME = [
      ("school", "school"), ("academy", "school"), ("college", "school"),
      ("university", "school"), ("church", "church"), ("chapel", "church"),
-@@ -247,6 +307,16 @@ ROW_MAX_DEPTH_M = 32.0   # any deeper and it is a big shop, not a row
+@@ -247,6 +313,16 @@ ROW_MAX_DEPTH_M = 32.0   # any deeper and it is a big shop, not a row
  ROW_MIN_LENGTH_M = 22.0
  # Frontages: a terraced house is narrower than a shop unit.
  UNIT_FRONTAGE_M = {"house": 9.0, "apartment": 9.0}
@@ -223,7 +229,7 @@ index fa37416..f429933 100644
  SHOP_FRONTAGE_M = 13.0
  # building=* values that say "row of houses" outright, in the countries whose
  # mappers use them.
-@@ -345,7 +415,7 @@ def _cut_big(units: list, metres_per_tile: float,
+@@ -345,7 +421,7 @@ def _cut_big(units: list, metres_per_tile: float,
  
  def row_units(fp, special: str | None, btag: str, n_uses: int,
                metres_per_tile: float, max_side: int | None = None,
@@ -232,7 +238,7 @@ index fa37416..f429933 100644
      """One footprint per unit of a row, or the footprint as it stands.
  
      `max_side` (see _cut_big) is passed only for a footprint that was too
-@@ -366,6 +436,12 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
+@@ -366,6 +442,12 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
      if special == "mall" and max_side is None and \
              fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
          return [fp]
@@ -245,7 +251,7 @@ index fa37416..f429933 100644
      if special not in ROW_KINDS and btag not in TERRACE_TAGS:
          return _cut_big([fp], metres_per_tile, max_side)
      long_side = max(fp.width, fp.height) * metres_per_tile
-@@ -376,7 +452,8 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
+@@ -376,7 +458,8 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
      if not terrace:
          if short_side > ROW_MAX_DEPTH_M or long_side < short_side * ROW_RATIO:
              return _cut_big([fp], metres_per_tile, max_side)
@@ -255,7 +261,7 @@ index fa37416..f429933 100644
      if n_uses > 1:
          # The shops mapped inside it say how many units there really are;
          # keep the frontage sane so two shops in a long parade do not become
-@@ -411,6 +488,11 @@ def looks_like_apartment(tags: dict, area_tiles: int, rng,
+@@ -411,6 +494,11 @@ def looks_like_apartment(tags: dict, area_tiles: int, rng,
      # at any size: a 1200-tile terrace came out as a single dwelling with 25
      # rooms, six bedrooms and five bathrooms.
      measured = levels_from_tags(tags, settings)
@@ -267,7 +273,7 @@ index fa37416..f429933 100644
      if measured is not None and measured >= 3:
          return True
      if measured == 1:
-@@ -521,6 +603,9 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
+@@ -521,6 +609,9 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
      if region == "cn":
          from .regional import CN_DEFAULT_LEVELS
          lo, hi = CN_DEFAULT_LEVELS.get(kind or "", (lo, hi))
@@ -277,7 +283,7 @@ index fa37416..f429933 100644
      real_m2 = area_tiles * metres_per_tile * metres_per_tile
      pool = area_level_pool(kind, real_m2, region)
  
-@@ -585,7 +670,12 @@ def classify_building(tags: dict) -> str | None:
+@@ -585,7 +676,12 @@ def classify_building(tags: dict) -> str | None:
              elif key == "military" and value != "no":
                  matched.append("military")
      name = (tags.get("name") or "").lower()
@@ -291,7 +297,7 @@ index fa37416..f429933 100644
      all_kinds = set(matched) | set(name_kinds)
      if "fire" in all_kinds and "police" in all_kinds:
          return "fire_police"
-@@ -783,10 +873,14 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
+@@ -783,10 +879,14 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
          # picks the same again.
          return variants[(tile_x * 73856093 ^ tile_y * 19349663) % len(variants)]
  
@@ -310,7 +316,7 @@ index fa37416..f429933 100644
      else:
          styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
              or C.HOUSE_STYLES
-@@ -1238,8 +1332,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1238,8 +1338,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
      # forces the question either way.
      from . import regional
      region = None
@@ -321,7 +327,7 @@ index fa37416..f429933 100644
      elif settings.arch_style != "off":
          region = regional.detect_region(geo, bbox)
  
-@@ -1507,12 +1601,20 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1507,12 +1607,20 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
      # building would lose every house and hall standing in it, where before it
      # was simply left out and they all stayed. Placed last, it takes what is free.
      deferred_large: list = []
@@ -342,7 +348,7 @@ index fa37416..f429933 100644
  
      # Zones the mapper drew, each with its own settings. Asked per building
      # and per chunk of the spawn map; outside every zone the map's own
-@@ -1538,6 +1640,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1538,6 +1646,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
      used_presets = collections.Counter()
      has_terminal = any(classify_building(f.get("properties") or {}) == "terminal"
                         for f in geo["features"])
@@ -355,7 +361,7 @@ index fa37416..f429933 100644
      fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
      try:
          for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
-@@ -1552,7 +1660,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1552,7 +1666,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                    0.04 * min(1.0, placed_so_far / len(order)))
            feat = geo["features"][i]
            oversize = False
@@ -371,7 +377,7 @@ index fa37416..f429933 100644
                # A building past max_size is not thrown away any more: the
                # factory and the hangar are the landmarks a place is known by,
                # and dropping them left a hole exactly where the eye looks. The
-@@ -1577,6 +1692,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1577,6 +1698,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                        note_left_out(feat, "large")
                    continue
            if fp is None:
@@ -381,7 +387,7 @@ index fa37416..f429933 100644
                skipped[reason] += 1
                note_left_out(feat, reason)
                continue
-@@ -1603,6 +1721,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1603,6 +1727,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
            uses = uses_of(inside)
            special = _business_kind(special, uses)
            special = mall_by_name(special, tags, uses, real_m2)
@@ -390,7 +396,7 @@ index fa37416..f429933 100644
            if special == "garage":
                sheds += 1
            entrance_points = _entrances_inside(points, px)
-@@ -1622,16 +1742,25 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1622,16 +1748,25 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                sheds += 1
            nearby = (context.neighbour_levels(cx, cy)
                      if levels_from_tags(tags, here) is None else None)
@@ -422,7 +428,7 @@ index fa37416..f429933 100644
                # When an airfield has untagged buildings and no explicit terminal,
                # promote the first compact medium/large building to a terminal so
                # regional airfields get a proper concourse alongside their hangars.
-@@ -1659,8 +1788,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1659,8 +1794,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                if special is None:
                    # A Chinese self-built house runs a storey taller than the
                    # game's houses before the neighbours' heights are heard.
@@ -437,7 +443,7 @@ index fa37416..f429933 100644
                levels = max(1, min(top, int(round(nearby)) +
                                    style_rng.choice((-1, 0, 0, 1))))
                from_near += 1
-@@ -1708,7 +1841,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1708,7 +1847,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
            # becomes its own building, standing wall to wall with the next.
            units = row_units(fp, special, btag, len(uses), metres_per_tile,
                              max_side=max_size if oversize else None,
@@ -446,7 +452,7 @@ index fa37416..f429933 100644
            if oversize:
                split_large += 1
            unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
-@@ -1776,7 +1909,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1776,7 +1915,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                    (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
                decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
                                measured, commercial, style, umask,
@@ -455,7 +461,7 @@ index fa37416..f429933 100644
      finally:
          fp_session.close()
  
-@@ -1978,7 +2111,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1978,7 +2117,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
  
      basement_counts = {"house": 0, "large": 0, "installation": 0}
      for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
@@ -464,7 +470,7 @@ index fa37416..f429933 100644
                                     escalators, below, _problems) in zip(decided, results):
          if error:
              failed_buildings.append(error)
-@@ -2013,6 +2146,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -2013,6 +2152,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
              "commercial": int(commercial),
              "kind": special or "house",
              "building": btag,
@@ -472,7 +478,7 @@ index fa37416..f429933 100644
              "style": style["name"],
              "shaped": int(mask is not None),
              "angle": round(fp.angle, 1),
-@@ -2239,7 +2373,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -2239,7 +2379,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
      if region:
          print(f"  region style         : {region}"
                + (" (flat roofs, masonry blocks, taller housing)" if region == "cn"
