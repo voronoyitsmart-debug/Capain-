@@ -1,0 +1,26 @@
+{
+  "mapName": "dnipro_city",
+  "pbf": "../data/dnipro_area_fixed.osm.pbf",
+  "metersPerTile": 1.0,
+  "bbox": {
+    "south": 48.4,
+    "west": 34.865,
+    "north": 48.58,
+    "east": 35.136
+  },
+  "settings": {
+    "preset": "city",
+    "max_levels": 31,
+    "true_map": 1,
+    "arch_style": "ua",
+    "align_streets": 0,
+    "landcover": "osm",
+    "elevation": "flat",
+    "hospitals": "osm",
+    "region_override": "auto",
+    "apartment_footprint": 300,
+    "apartment_chance": 0.8
+  },
+  "title": "Dnipro - city (Дніпро)",
+  "modId": "DniproCity"
+}

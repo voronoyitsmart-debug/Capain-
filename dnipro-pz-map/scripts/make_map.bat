@@ -2,19 +2,21 @@
 rem Build and install one Dnipro map into %USERPROFILE%\Zomboid\mods
 rem   make_map.bat test   - a 3.6 x 3.6 km block of the centre (~10 min)
 rem   make_map.bat core   - central Dnipro, both banks, ~9 x 8 km (~1 hour)
-rem   make_map.bat full   - everything on the screenshot, ~32 x 47 km (many hours, ~50 GB free disk)
+rem   make_map.bat city   - the city itself, 20 x 20 km, every building at real size (~3 hours)
+rem   make_map.bat full   - everything on the screenshot, ~32 x 47 km (many hours, ~60 GB free disk)
 rem Optional second argument: generate | build | compile | install (one step only).
 setlocal
 set PYTHONUTF8=1
 set "PACK=%~dp0.."
 if "%KNOXDIR%"=="" set "KNOXDIR=C:\KnoxMap-Dnipro"
 set "WHICH=%~1"
-if "%WHICH%"=="" set "WHICH=core"
+if "%WHICH%"=="" set "WHICH=city"
 if /i "%WHICH%"=="test" set "CFG=test_center"
 if /i "%WHICH%"=="core" set "CFG=dnipro_core"
+if /i "%WHICH%"=="city" set "CFG=dnipro_city"
 if /i "%WHICH%"=="full" set "CFG=dnipro_full"
 if "%CFG%"=="" (
-  echo Unknown map "%WHICH%". Use test, core or full.
+  echo Unknown map "%WHICH%". Use test, core, city or full.
   exit /b 2
 )
 set "STAGE=%~2"
