@@ -17,7 +17,9 @@
     "landcover": "osm",
     "elevation": "flat",
     "hospitals": "osm",
-    "region_override": "auto"
+    "region_override": "auto",
+    "apartment_footprint": 300,
+    "apartment_chance": 0.8
   },
   "title": "Dnipro and surroundings (Дніпро)",
   "modId": "DniproFull"

@@ -17,7 +17,9 @@
     "hospitals": "osm",
     "region_override": "auto",
     "arch_style": "ua",
-    "align_streets": 0
+    "align_streets": 0,
+    "apartment_footprint": 300,
+    "apartment_chance": 0.8
   },
   "title": "Dnipro - test block (Дніпро)",
   "modId": "DniproTest"

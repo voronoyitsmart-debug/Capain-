@@ -247,6 +247,16 @@ ROW_MAX_DEPTH_M = 32.0   # any deeper and it is a big shop, not a row
 ROW_MIN_LENGTH_M = 22.0
 # Frontages: a terraced house is narrower than a shop unit.
 UNIT_FRONTAGE_M = {"house": 9.0, "apartment": 9.0}
+# A Soviet-series block (khrushchevka, panel nine-storey) is a row of entrances
+# - pid'izdy - each a stair with two to four flats off every landing, about
+# sixteen metres of frontage apiece, and nothing joining one entrance to the
+# next inside. Cut at that width each unit lays out as exactly that: a stair
+# hall across the middle and a flat either side of it on every floor.
+UA_UNIT_FRONTAGE_M = {"house": 9.0, "apartment": 16.0}
+# ...and a garage cooperative (building=garages) is a row of lock-up boxes, one car
+# each, a few metres wide: as one building it was a single forty-metre shed.
+# Five metres is the narrowest unit split_row keeps (MIN_ROOM_SIDE).
+UA_GARAGE_BOX_M = 5.0
 SHOP_FRONTAGE_M = 13.0
 # building=* values that say "row of houses" outright, in the countries whose
 # mappers use them.
@@ -345,7 +355,7 @@ def _cut_big(units: list, metres_per_tile: float,
 
 def row_units(fp, special: str | None, btag: str, n_uses: int,
               metres_per_tile: float, max_side: int | None = None,
-              split: bool = True):
+              split: bool = True, region: str | None = None):
     """One footprint per unit of a row, or the footprint as it stands.
 
     `max_side` (see _cut_big) is passed only for a footprint that was too
@@ -366,6 +376,12 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
     if special == "mall" and max_side is None and \
             fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
         return [fp]
+    if region == "ua" and btag == "garages":
+        short_m = min(fp.width, fp.height) * metres_per_tile
+        long_m = max(fp.width, fp.height) * metres_per_tile
+        if ROW_MIN_DEPTH_M <= short_m <= 2 * ROW_MIN_DEPTH_M + 4 and long_m >= 2 * UA_GARAGE_BOX_M:
+            return _cut_big(split_row(fp, max(5, int(round(UA_GARAGE_BOX_M / metres_per_tile)))),
+                            metres_per_tile, max_side)
     if special not in ROW_KINDS and btag not in TERRACE_TAGS:
         return _cut_big([fp], metres_per_tile, max_side)
     long_side = max(fp.width, fp.height) * metres_per_tile
@@ -376,7 +392,8 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
     if not terrace:
         if short_side > ROW_MAX_DEPTH_M or long_side < short_side * ROW_RATIO:
             return _cut_big([fp], metres_per_tile, max_side)
-    frontage = UNIT_FRONTAGE_M.get(special or "house", SHOP_FRONTAGE_M)
+    frontages = UA_UNIT_FRONTAGE_M if region == "ua" else UNIT_FRONTAGE_M
+    frontage = frontages.get(special or "house", SHOP_FRONTAGE_M)
     if n_uses > 1:
         # The shops mapped inside it say how many units there really are;
         # keep the frontage sane so two shops in a long parade do not become
@@ -1719,7 +1736,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           # becomes its own building, standing wall to wall with the next.
           units = row_units(fp, special, btag, len(uses), metres_per_tile,
                             max_side=max_size if oversize else None,
-                            split=not settings.max_buildings)
+                            split=not settings.max_buildings, region=region)
           if oversize:
               split_large += 1
           unit_mapped = _rooms_by_unit(mapped, fp, units, proj)

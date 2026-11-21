@@ -16,10 +16,59 @@ index 6c55207..7f40a38 100644
                  if not _overlaps((min_lat, min_lon, max_lat, max_lon), south, west, north, east):
                      continue
 diff --git a/knoxbuild/build.py b/knoxbuild/build.py
-index fa37416..a80b2f8 100644
+index fa37416..f8155e0 100644
 --- a/knoxbuild/build.py
 +++ b/knoxbuild/build.py
-@@ -521,6 +521,9 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
+@@ -247,6 +247,16 @@ ROW_MAX_DEPTH_M = 32.0   # any deeper and it is a big shop, not a row
+ ROW_MIN_LENGTH_M = 22.0
+ # Frontages: a terraced house is narrower than a shop unit.
+ UNIT_FRONTAGE_M = {"house": 9.0, "apartment": 9.0}
++# A Soviet-series block (khrushchevka, panel nine-storey) is a row of entrances
++# - pid'izdy - each a stair with two to four flats off every landing, about
++# sixteen metres of frontage apiece, and nothing joining one entrance to the
++# next inside. Cut at that width each unit lays out as exactly that: a stair
++# hall across the middle and a flat either side of it on every floor.
++UA_UNIT_FRONTAGE_M = {"house": 9.0, "apartment": 16.0}
++# ...and a garage cooperative (building=garages) is a row of lock-up boxes, one car
++# each, a few metres wide: as one building it was a single forty-metre shed.
++# Five metres is the narrowest unit split_row keeps (MIN_ROOM_SIDE).
++UA_GARAGE_BOX_M = 5.0
+ SHOP_FRONTAGE_M = 13.0
+ # building=* values that say "row of houses" outright, in the countries whose
+ # mappers use them.
+@@ -345,7 +355,7 @@ def _cut_big(units: list, metres_per_tile: float,
+ 
+ def row_units(fp, special: str | None, btag: str, n_uses: int,
+               metres_per_tile: float, max_side: int | None = None,
+-              split: bool = True):
++              split: bool = True, region: str | None = None):
+     """One footprint per unit of a row, or the footprint as it stands.
+ 
+     `max_side` (see _cut_big) is passed only for a footprint that was too
+@@ -366,6 +376,12 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
+     if special == "mall" and max_side is None and \
+             fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
+         return [fp]
++    if region == "ua" and btag == "garages":
++        short_m = min(fp.width, fp.height) * metres_per_tile
++        long_m = max(fp.width, fp.height) * metres_per_tile
++        if ROW_MIN_DEPTH_M <= short_m <= 2 * ROW_MIN_DEPTH_M + 4 and long_m >= 2 * UA_GARAGE_BOX_M:
++            return _cut_big(split_row(fp, max(5, int(round(UA_GARAGE_BOX_M / metres_per_tile)))),
++                            metres_per_tile, max_side)
+     if special not in ROW_KINDS and btag not in TERRACE_TAGS:
+         return _cut_big([fp], metres_per_tile, max_side)
+     long_side = max(fp.width, fp.height) * metres_per_tile
+@@ -376,7 +392,8 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
+     if not terrace:
+         if short_side > ROW_MAX_DEPTH_M or long_side < short_side * ROW_RATIO:
+             return _cut_big([fp], metres_per_tile, max_side)
+-    frontage = UNIT_FRONTAGE_M.get(special or "house", SHOP_FRONTAGE_M)
++    frontages = UA_UNIT_FRONTAGE_M if region == "ua" else UNIT_FRONTAGE_M
++    frontage = frontages.get(special or "house", SHOP_FRONTAGE_M)
+     if n_uses > 1:
+         # The shops mapped inside it say how many units there really are;
+         # keep the frontage sane so two shops in a long parade do not become
+@@ -521,6 +538,9 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
      if region == "cn":
          from .regional import CN_DEFAULT_LEVELS
          lo, hi = CN_DEFAULT_LEVELS.get(kind or "", (lo, hi))
@@ -29,7 +78,7 @@ index fa37416..a80b2f8 100644
      real_m2 = area_tiles * metres_per_tile * metres_per_tile
      pool = area_level_pool(kind, real_m2, region)
  
-@@ -783,10 +786,14 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
+@@ -783,10 +803,14 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
          # picks the same again.
          return variants[(tile_x * 73856093 ^ tile_y * 19349663) % len(variants)]
  
@@ -48,7 +97,7 @@ index fa37416..a80b2f8 100644
      else:
          styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
              or C.HOUSE_STYLES
-@@ -1238,8 +1245,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1238,8 +1262,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
      # forces the question either way.
      from . import regional
      region = None
@@ -59,7 +108,7 @@ index fa37416..a80b2f8 100644
      elif settings.arch_style != "off":
          region = regional.detect_region(geo, bbox)
  
-@@ -1659,8 +1666,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1659,8 +1683,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                if special is None:
                    # A Chinese self-built house runs a storey taller than the
                    # game's houses before the neighbours' heights are heard.
@@ -74,7 +123,16 @@ index fa37416..a80b2f8 100644
                levels = max(1, min(top, int(round(nearby)) +
                                    style_rng.choice((-1, 0, 0, 1))))
                from_near += 1
-@@ -2239,6 +2250,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+@@ -1708,7 +1736,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
+           # becomes its own building, standing wall to wall with the next.
+           units = row_units(fp, special, btag, len(uses), metres_per_tile,
+                             max_side=max_size if oversize else None,
+-                            split=not settings.max_buildings)
++                            split=not settings.max_buildings, region=region)
+           if oversize:
+               split_large += 1
+           unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
+@@ -2239,6 +2267,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
      if region:
          print(f"  region style         : {region}"
                + (" (flat roofs, masonry blocks, taller housing)" if region == "cn"
@@ -275,6 +333,78 @@ index 3be25fb..00cea78 100644
  HEIGHT_MIX_OPTIONS = ("auto", "low", "middle", "tall", "even")
  LANDCOVER_OPTIONS = ("worldcover", "osm", "off")
  ELEVATION_OPTIONS = ("3dep", "flat")
+diff --git a/tests/test_regional.py b/tests/test_regional.py
+index 13e58d1..6e657e3 100644
+--- a/tests/test_regional.py
++++ b/tests/test_regional.py
+@@ -272,9 +272,66 @@ class SettingsArchStyle(unittest.TestCase):
+         body = app.test_client().get("/api/settings").get_json()
+         self.assertEqual(body["types"]["arch_style"], "enum")
+         self.assertEqual([value for value, _label in body["options"]["arch_style"]],
+-                         ["auto", "cn", "off"])
++                         ["auto", "cn", "ua", "off"])
+         self.assertEqual(body["defaults"]["arch_style"], "auto")
+ 
+ 
++class Ukrainian(unittest.TestCase):
++    """The post-Soviet build: Dnipro, Kyiv, Kharkiv - Cyrillic names."""
++
++    UA_BBOX = {"south": 48.43, "west": 34.98, "north": 48.50, "east": 35.10}
++
++    def test_cyrillic_names_read_as_ukrainian(self):
++        self.assertEqual(detect_region(geo(["ЦУМ", "Вокзал Дніпро-Головний",
++                                            "Свято-Троїцький собор", "АТБ-Маркет",
++                                            "Школа №23", "Поліклініка №2",
++                                            "McDonald's"]), BBOX), "ua")
++
++    def test_unnamed_map_in_ukraine_falls_back_to_the_box(self):
++        self.assertEqual(detect_region(geo([]), self.UA_BBOX), "ua")
++
++    def test_house_pool_has_no_american_wood(self):
++        from knoxbuild.regional import ua_house_styles
++        names = [s["name"] for s in ua_house_styles()]
++        self.assertTrue(names)
++        for wood in ("clapboard", "logs", "timber", "trailer", "siding"):
++            self.assertFalse(any(wood in n for n in names), names)
++        # every tile is one the catalog shipped
++        shipped = {s["exterior"]["tiles"]["West"] for s in catalog.HOUSE_STYLES}
++        for style in ua_house_styles():
++            self.assertIn(style["exterior"]["tiles"]["West"], shipped)
++
++    def test_pick_style_uses_the_pool(self):
++        rng = random.Random(3)
++        for x in range(0, 2000, 97):
++            style = pick_style(None, x, x * 3, rng, Settings(), region="ua")
++            self.assertTrue(style["name"].startswith("ua_"), style["name"])
++
++    def test_unmapped_blocks_get_soviet_heights(self):
++        pool = area_level_pool("apartment", 1500, "ua")
++        self.assertIn(9, pool)
++        self.assertTrue(all(lv >= 5 for lv in pool))
++        self.assertEqual(max(area_level_pool(None, 100, "ua")), 2)
++
++    def test_blocks_split_into_entrances_and_garages_into_boxes(self):
++        import numpy as np
++        from knoxbuild.build import row_units
++        from knoxbuild.footprint import Footprint
++
++        def fp(w, h):
++            return Footprint(0, 0, np.ones((h, w), bool), 0.0, min(w, h), max(w, h))
++        # the classic four-entrance khrushchevka, 64 x 12 m
++        self.assertEqual([u.width for u in row_units(fp(64, 12), "apartment", "apartments",
++                                                     0, 1.0, region="ua")], [16] * 4)
++        self.assertEqual(len(row_units(fp(40, 6), "garage", "garages", 0, 1.0,
++                                       region="ua")), 8)
++        # other regions as before
++        self.assertEqual(len(row_units(fp(40, 6), "garage", "garages", 0, 1.0)), 1)
++        self.assertEqual(len(row_units(fp(64, 12), "apartment", "apartments", 0, 1.0)), 7)
++
++    def test_settings_accept_ua(self):
++        self.assertEqual(Settings.from_dict({"arch_style": "ua"}).arch_style, "ua")
++
++
+ if __name__ == "__main__":
+     unittest.main()
 diff --git a/web/system.py b/web/system.py
 index 45a5a3a..7e81b78 100644
 --- a/web/system.py
