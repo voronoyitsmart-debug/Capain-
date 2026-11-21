@@ -1,0 +1,812 @@
+"""Fit real OSM building outlines to the game's axis-aligned tile grid.
+
+Real rasterizes the mapped polygon. Smart straightens near-grid footprints,
+rectifying nonrectangular shapes and boxing only near-rectangles. Rectilinear
+aligns every footprint's dominant wall direction while preserving its L-shapes
+and notches. Rectangle uses the minimum rotated rectangle as a clean box.
+"""
+from __future__ import annotations
+
+import math
+import os
+import struct
+import subprocess
+import sys
+
+import numpy as np
+import shapely
+from shapely.affinity import rotate as rotate_geometry
+from shapely.geometry import Polygon
+
+# Within this many degrees of the grid, square the building up.
+SNAP_DEGREES = 8.0
+# A footprint filling this share of its rotated rectangle is a rectangle.
+RECTANGULAR_ENOUGH = 0.86
+MIN_TILES = 16
+RECTILINEAR_SIMPLIFY_TOLERANCE = 1.0
+
+BUILDING_ALIGNMENT_OPTIONS = {"real", "smart", "rectilinear", "rectangle"}
+
+
+def _polygon(px: list[tuple[float, float]]):
+    # One or two points are not a shape; Shapely raises on them, and place()
+    # says "small" for an empty one. The build already skips these before it
+    # gets here, so this is for whoever calls place() next.
+    if len(px) < 3:
+        return Polygon()
+    poly = Polygon(px)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    if poly.geom_type == "MultiPolygon":
+        poly = max(poly.geoms, key=lambda g: g.area)
+    return poly
+
+
+def grid_angle(poly, rect=None) -> float:
+    """How far the building's long side is from the nearest grid axis, 0..45.
+
+    `rect` is the polygon's minimum rotated rectangle when the caller already
+    has it: working it out is the dearest thing Shapely does per building.
+    """
+    if rect is None:
+        rect = poly.minimum_rotated_rectangle
+    if not hasattr(rect, "exterior"):
+        return 0.0
+    c = list(rect.exterior.coords)
+    e1 = (c[1][0] - c[0][0], c[1][1] - c[0][1])
+    e2 = (c[2][0] - c[1][0], c[2][1] - c[1][1])
+    long_edge = e1 if math.hypot(*e1) >= math.hypot(*e2) else e2
+    a = abs(math.degrees(math.atan2(long_edge[1], long_edge[0]))) % 90.0
+    return min(a, 90.0 - a)
+
+
+def _orthogonal_rotation(poly, rect=None) -> float:
+    """Rotation that takes the dominant wall direction to the nearest grid axis.
+
+    `rect` is the polygon's minimum rotated rectangle when the caller has it.
+    """
+    if rect is None:
+        rect = poly.minimum_rotated_rectangle
+    coords = list(rect.exterior.coords) if hasattr(rect, "exterior") else []
+    if len(coords) < 4:
+        return 0.0
+    edge1 = (coords[1][0] - coords[0][0], coords[1][1] - coords[0][1])
+    edge2 = (coords[2][0] - coords[1][0], coords[2][1] - coords[1][1])
+    long_edge = edge1 if math.hypot(*edge1) >= math.hypot(*edge2) else edge2
+    angle = math.degrees(math.atan2(long_edge[1], long_edge[0]))
+    return -((angle + 45.0) % 90.0 - 45.0)
+
+
+def rectilinearize_polygon(poly):
+    """Align a footprint's dominant axis to the tile grid and simplify small
+    survey jogs without replacing its outline with a bounding rectangle.
+
+    The map itself is rotated before footprints reach this function, so this
+    aligns a building to that frame (and thus to the selected road grid) while
+    keeping L-shaped and notched footprints recognizable.
+    """
+    rotation = _orthogonal_rotation(poly)
+    aligned = rotate_geometry(poly, rotation, origin="centroid") \
+        if abs(rotation) > 1e-6 else poly
+    aligned = aligned.simplify(RECTILINEAR_SIMPLIFY_TOLERANCE, preserve_topology=True)
+    if not aligned.is_valid:
+        aligned = aligned.buffer(0)
+    if aligned.geom_type == "MultiPolygon":
+        aligned = max(aligned.geoms, key=lambda part: part.area)
+    return aligned
+
+
+def _largest_component(mask: np.ndarray) -> np.ndarray:
+    """Keep only the biggest 4-connected piece of a mask."""
+    # A full mask is one piece. Squared-up buildings are always full, and
+    # walking every tile of a large one to learn that is the slow part.
+    if mask.all():
+        return mask
+    h, w = mask.shape
+    seen = np.zeros_like(mask, dtype=bool)
+    best: list[tuple[int, int]] = []
+    for y in range(h):
+        for x in range(w):
+            if not mask[y, x] or seen[y, x]:
+                continue
+            piece = []
+            stack = [(y, x)]
+            seen[y, x] = True
+            while stack:
+                cy, cx = stack.pop()
+                piece.append((cy, cx))
+                for ny, nx in ((cy + 1, cx), (cy - 1, cx), (cy, cx + 1), (cy, cx - 1)):
+                    if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                        seen[ny, nx] = True
+                        stack.append((ny, nx))
+            if len(piece) > len(best):
+                best = piece
+    out = np.zeros_like(mask, dtype=bool)
+    for y, x in best:
+        out[y, x] = True
+    return out
+
+
+class Footprint:
+    """Where one building goes: its bounding box and which tiles it owns."""
+
+    def __init__(self, x0: int, y0: int, mask: np.ndarray, angle: float,
+                 short_side: float, long_side: float,
+                 point_origin: tuple[float, float] | None = None,
+                 point_rotation: float = 0.0,
+                 point_offset: tuple[float, float] = (0.0, 0.0)):
+        self.x0, self.y0 = x0, y0
+        self.mask = mask
+        self.angle = angle
+        self.short_side = short_side
+        self.long_side = long_side
+        self.point_origin = point_origin
+        self.point_rotation = point_rotation
+        self.point_offset = point_offset
+
+    @property
+    def width(self) -> int:
+        return self.mask.shape[1]
+
+    @property
+    def height(self) -> int:
+        return self.mask.shape[0]
+
+    @property
+    def tiles(self) -> int:
+        return int(self.mask.sum())
+
+    def mask_list(self) -> list[list[bool]] | None:
+        """The mask as layout.py takes it, or None when it fills its box."""
+        if self.mask.all():
+            return None
+        return self.mask.tolist()
+
+    def transform_point(self, x: float, y: float) -> tuple[float, float]:
+        """Move a mapped point with the geometry transform used by this mask."""
+        if self.point_origin is None or not self.point_rotation:
+            return x + self.point_offset[0], y + self.point_offset[1]
+        cx, cy = self.point_origin
+        angle = math.radians(self.point_rotation)
+        dx, dy = x - cx, y - cy
+        return (cx + dx * math.cos(angle) - dy * math.sin(angle) + self.point_offset[0],
+                cy + dx * math.sin(angle) + dy * math.cos(angle) + self.point_offset[1])
+
+
+# A unit narrower than this is not a building anyone can walk into: three
+# tiles of room plus its walls.
+MIN_ROOM_SIDE = 5
+
+
+def split_row(fp: "Footprint", unit_tiles: int,
+              min_tiles: int = MIN_TILES) -> list["Footprint"]:
+    """Cut a long footprint into one footprint per unit along its length.
+
+    A row of shops or a terrace of houses is usually one polygon in
+    OpenStreetMap - the mapper drew the block, not the seven doors in it - and
+    built as one building it came out as a single cavernous shed with one
+    front door, the "uber building" players kept reporting. Cut into units of
+    about a shop's frontage it becomes what it is: separate buildings standing
+    wall to wall, which is a case the rest of the build already handles (the
+    shared walls lose their windows, see _party_walls).
+
+    The cuts are made on tile boundaries with no gap between units, so the row
+    still covers exactly the tiles the real building covers.
+    """
+    along_x = fp.width >= fp.height
+    length = fp.width if along_x else fp.height
+    units = max(1, int(round(length / max(1, unit_tiles))))
+    if units < 2:
+        return [fp]
+    out: list[Footprint] = []
+    edges = [round(length * k / units) for k in range(units + 1)]
+    for a, b in zip(edges, edges[1:]):
+        if b - a < MIN_ROOM_SIDE:
+            continue
+        part = fp.mask[:, a:b] if along_x else fp.mask[a:b, :]
+        if part.sum() < min_tiles:
+            continue
+        part = _largest_component(part)
+        rows = np.where(part.any(axis=1))[0]
+        cols = np.where(part.any(axis=0))[0]
+        if len(rows) == 0 or len(cols) == 0:
+            continue
+        part = part[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
+        if part.sum() < min_tiles:
+            continue
+        x0 = fp.x0 + (a if along_x else 0) + int(cols[0])
+        y0 = fp.y0 + (0 if along_x else a) + int(rows[0])
+        out.append(Footprint(x0, y0, part, fp.angle,
+                     fp.short_side, fp.long_side / units,
+                     fp.point_origin, fp.point_rotation, fp.point_offset))
+    return out or [fp]
+
+
+def _hug(mask: np.ndarray, x0: int, y0: int) -> tuple[np.ndarray, int, int]:
+    """The mask's biggest piece, in a box trimmed to hold only that."""
+    mask = _largest_component(mask)
+    rows = np.where(mask.any(axis=1))[0]
+    cols = np.where(mask.any(axis=0))[0]
+    if len(rows) == 0:
+        return mask[:0, :0], x0, y0
+    return (mask[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1],
+            x0 + int(cols[0]), y0 + int(rows[0]))
+
+
+# A building reaches the game as a lot, and a lot is a rectangle: the .pzw
+# says <lot x y width height> and WorldEd writes that whole rectangle of
+# squares into the cell. A footprint off the grid owns a staircase of tiles
+# inside its rectangle and nothing else, so most of that rectangle is ground
+# the building never claimed - and the next building along claims it, because
+# `occupied` only ever held the tiles. On Brugge that came to 5004 pairs of
+# lots standing on top of each other among 4202 buildings, overlapping by
+# whole rows rather than the single shared column a terrace wants. Where two
+# lots cover a square, one is written over the other and a wall goes missing.
+#
+# So a footprint claims its rectangle as well as its tiles, and a later one is
+# cut back to the biggest part of itself whose rectangle is still free. Real
+# neighbours still stand wall to wall: their rectangles meet along an edge,
+# and the wall between them is the one column both of them draw.
+def _clear_box(mask: np.ndarray, blocked: np.ndarray) -> tuple[int, int, int, int]:
+    """The box holding most of `mask` and no `blocked` tile, half open.
+
+    Cutting a row off the near side, as a nudge would, is no use when the lot
+    in the way sits along the middle of the footprint, so every rectangle of
+    free ground is measured - the row-by-row histogram scan that finds them -
+    and the one keeping the most of the building wins. A footprint therefore
+    gives up whichever end of itself is emptiest, and one that has nowhere
+    left to stand gives up altogether.
+    """
+    h, w = mask.shape
+    # Squeeze runs of identical rows and columns of `blocked` into one. A
+    # rectangle's edge can always slide to the end of such a run without
+    # touching a blocked tile or losing any of the building, so the best box
+    # is found on the squeezed grid and gives the same count of tiles. A large
+    # building with a lot or two clipping its corner is a handful of runs, not
+    # tens of thousands of tiles.
+    cuts_x = np.flatnonzero((blocked[:, 1:] != blocked[:, :-1]).any(axis=0)) + 1
+    cuts_y = np.flatnonzero((blocked[1:] != blocked[:-1]).any(axis=1)) + 1
+    cb = np.concatenate(([0], cuts_x, [w]))
+    rb = np.concatenate(([0], cuts_y, [h]))
+    small = blocked[rb[:-1]][:, cb[:-1]]
+    sh, sw = small.shape
+    # How much of the building any box holds, in one subtraction.
+    held = np.zeros((h + 1, w + 1), dtype=np.int32)
+    held[1:, 1:] = mask.cumsum(0).cumsum(1)
+    best = (0, 0, 0, 0, 0)
+    heights = np.zeros(sw, dtype=np.int32)
+    for y in range(sh):
+        # Free runs standing one above another, counting up to this row.
+        heights = np.where(small[y], 0, heights + 1)
+        stack: list[tuple[int, int]] = []
+        for x, tall in enumerate(heights.tolist() + [0]):
+            start = x
+            while stack and stack[-1][1] >= tall:
+                start, high = stack.pop()
+                top = y + 1 - high
+                tiles = int(held[rb[y + 1], cb[x]] - held[rb[top], cb[x]]
+                            - held[rb[y + 1], cb[start]] + held[rb[top], cb[start]])
+                if tiles > best[0]:
+                    best = (tiles, int(rb[top]), int(rb[y + 1]),
+                            int(cb[start]), int(cb[x]))
+            stack.append((start, tall))
+    return best[1:]
+
+
+NUDGE_TILES = 5
+# A building may stand on at most this share of road; it is moved out of the road as far as
+# WIDE_NUDGE_TILES to get there, and the road squares it still has are cut away. One that
+# cannot be got under the share is refused ("road"): 63 of 957 buildings of a real town sat
+# on roads, 25 of them mostly, before this.
+ROAD_SHARE_MAX = 0.10
+WIDE_NUDGE_TILES = 12
+ROAD_WEIGHT = 2        # `avoid` at or above this is road; 1 is pavement, which a building may front
+
+
+def _road_share(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray) -> float:
+    """The share of the footprint's tiles that are road, with the footprint at (x0, y0)."""
+    map_h, map_w = avoid.shape
+    h, w = mask.shape
+    cx0, cy0, cx1, cy1 = max(0, x0), max(0, y0), min(map_w, x0 + w), min(map_h, y0 + h)
+    if cx1 <= cx0 or cy1 <= cy0 or not mask.sum():
+        return 0.0
+    m = mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+    return float((avoid[cy0:cy1, cx0:cx1][m] >= ROAD_WEIGHT).sum()) / float(mask.sum())
+
+
+def _window_sums(grid: np.ndarray, mask: np.ndarray, x0: int, y0: int,
+                 radius: int, full_rect: bool) -> np.ndarray:
+    """Sum ``grid`` under ``mask`` for every shift ``(ox, oy)`` in ``[-radius, radius]``."""
+    map_h, map_w = grid.shape
+    h, w = mask.shape
+    side = 2 * radius + 1
+    win_h, win_w = h + 2 * radius, w + 2 * radius
+    gx0, gy0 = x0 - radius, y0 - radius
+    gx1, gy1 = gx0 + win_w, gy0 + win_h
+    cx0, cy0 = max(0, gx0), max(0, gy0)
+    cx1, cy1 = min(map_w, gx1), min(map_h, gy1)
+    if full_rect:
+        pad = np.zeros((win_h + 1, win_w + 1), dtype=np.int32)
+        if cx1 > cx0 and cy1 > cy0:
+            pad[1 + (cy0 - gy0):1 + (cy1 - gy0), 1 + (cx0 - gx0):1 + (cx1 - gx0)] = (
+                grid[cy0:cy1, cx0:cx1]
+            )
+        ps = pad.cumsum(axis=0).cumsum(axis=1)
+        return (
+            ps[h:h + side, w:w + side]
+            - ps[:side, w:w + side]
+            - ps[h:h + side, :side]
+            + ps[:side, :side]
+        )
+    win = np.zeros((win_h, win_w), dtype=np.int32)
+    if cx1 > cx0 and cy1 > cy0:
+        win[cy0 - gy0:cy1 - gy0, cx0 - gx0:cx1 - gx0] = grid[cy0:cy1, cx0:cx1]
+    views = np.lib.stride_tricks.sliding_window_view(win, (h, w))
+    return np.einsum("yxij,ij->yx", views, mask.astype(np.int32, copy=False))
+
+
+def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
+              occupied: np.ndarray) -> tuple[int, int]:
+    """Where to put a footprint so it stands off the roads.
+
+    `avoid` weighs each tile: the bigger the road the more it costs, pavement
+    costs 1 and free ground 0. With roads straightened and buildings squared
+    up, a building can come out a tile or three into the street; it is moved
+    the least distance, up to NUDGE_TILES, that takes it out.
+
+    A spot clear of the road altogether is taken when there is one. Where
+    there is not, the building stands on the least road it can rather than
+    being dropped: demanding a clear spot threw away every footprint that
+    fronts a pavement, which in a town is most of them - the selftest's
+    school, shop and medical building all came out "0 laid out"."""
+    map_h, map_w = avoid.shape
+    h, w = mask.shape
+
+    def in_bounds(ox: int, oy: int) -> bool:
+        ax0, ay0 = x0 + ox, y0 + oy
+        return min(map_w, ax0 + w) > max(0, ax0) and min(map_h, ay0 + h) > max(0, ay0)
+
+    if not in_bounds(0, 0):
+        return x0, y0
+    cx0, cy0 = max(0, x0), max(0, y0)
+    cx1, cy1 = min(map_w, x0 + w), min(map_h, y0 + h)
+    m0 = mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+    here_avoid = int(avoid[cy0:cy1, cx0:cx1][m0].sum())
+    if here_avoid == 0:
+        return x0, y0
+    here_occ = int(occupied[cy0:cy1, cx0:cx1][m0].sum())
+
+    full_rect = bool(mask.all())
+    avoid_sums = _window_sums(avoid, mask, x0, y0, NUDGE_TILES, full_rect)
+    occ_sums = _window_sums(occupied, mask, x0, y0, NUDGE_TILES, full_rect)
+
+    clear, clear_score = None, float("inf")
+    best, best_score = (0, 0), here_avoid * 4 + here_occ
+    for ox in range(-NUDGE_TILES, NUDGE_TILES + 1):
+        ix = ox + NUDGE_TILES
+        for oy in range(-NUDGE_TILES, NUDGE_TILES + 1):
+            if not in_bounds(ox, oy):
+                continue
+            iy = oy + NUDGE_TILES
+            ca = int(avoid_sums[iy, ix])
+            co = int(occ_sums[iy, ix])
+            moved = (abs(ox) + abs(oy)) * 0.5
+            if ca == 0 and co + moved < clear_score:
+                clear, clear_score = (ox, oy), co + moved
+            score = ca * 4 + co + moved
+            if score < best_score:
+                best, best_score = (ox, oy), score
+    ox, oy = clear if clear is not None else best
+    if _road_share(mask, x0 + ox, y0 + oy, avoid) > ROAD_SHARE_MAX:
+        # Still on the road: look further for a spot that is off it, nearest first.
+        found = None
+        for r in range(NUDGE_TILES + 1, WIDE_NUDGE_TILES + 1):
+            for ox2 in range(-r, r + 1):
+                for oy2 in range(-r, r + 1):
+                    if max(abs(ox2), abs(oy2)) != r or not in_bounds(ox2, oy2):
+                        continue
+                    ax0, ay0 = x0 + ox2, y0 + oy2
+                    bx0, by0 = max(0, ax0), max(0, ay0)
+                    bx1, by1 = min(map_w, ax0 + w), min(map_h, ay0 + h)
+                    m = mask[by0 - ay0:by1 - ay0, bx0 - ax0:bx1 - ax0]
+                    if _road_share(mask, ax0, ay0, avoid) <= ROAD_SHARE_MAX:
+                        co = int(occupied[by0:by1, bx0:bx1][m].sum())
+                        if found is None or co < found[0]:
+                            found = (co, ox2, oy2)
+            if found:
+                ox, oy = found[1], found[2]
+                break
+    return x0 + ox, y0 + oy
+
+
+def _prepare_mask(
+    px: list[tuple[float, float]],
+    min_side: float,
+    max_side: float,
+    snap_degrees: float,
+    alignment: str,
+):
+    """Validate and rasterise a polygon into an initial grid mask.
+
+    Returns ``(None, reason)`` when rejected on size, otherwise a tuple
+    ``(x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
+    point_origin, point_rotation)``. When ``full_rect`` is True, ``mask`` is
+    ``None`` so native callers avoid allocating an all-True array.
+    """
+    poly = _polygon(px)
+    if poly.is_empty or poly.area <= 0:
+        return None, "small"
+    rect = poly.minimum_rotated_rectangle
+    c = list(rect.exterior.coords) if hasattr(rect, "exterior") else []
+    if len(c) >= 4:
+        sides = sorted((math.dist(c[0], c[1]), math.dist(c[1], c[2])))
+    else:
+        minx, miny, maxx, maxy = poly.bounds
+        sides = sorted((maxx - minx, maxy - miny))
+    if sides[0] < min_side:
+        return None, "small"
+    if sides[1] > max_side:
+        return None, "large"
+    angle = grid_angle(poly, rect)
+    rectangular = rect.area > 0 and poly.area / rect.area >= RECTANGULAR_ENOUGH
+    point_origin = (poly.centroid.x, poly.centroid.y)
+    point_rotation = 0.0
+    if alignment not in BUILDING_ALIGNMENT_OPTIONS:
+        alignment = "smart"
+    box_alignment = alignment == "rectangle" or (
+        alignment == "smart" and angle <= snap_degrees
+        and (rectangular or snap_degrees >= 30))
+    rectilinear_alignment = (alignment == "rectilinear"
+                             or (alignment == "smart" and not box_alignment
+                                 and angle <= snap_degrees and not rectangular))
+    if rectilinear_alignment:
+        point_rotation = _orthogonal_rotation(poly, rect)
+        poly = rectilinearize_polygon(poly)
+
+    # Rectangle discards nonrectangular details; Smart only boxes near-grid
+    # footprints that are already close to rectangular.
+    if box_alignment:
+        point_rotation = _orthogonal_rotation(poly, rect)
+        # Square it up: an upright rectangle of the true side lengths, centred.
+        cx, cy = poly.centroid.x, poly.centroid.y
+        horizontal = (angle == 0.0 and (poly.bounds[2] - poly.bounds[0])
+                      >= (poly.bounds[3] - poly.bounds[1]))
+        if len(c) >= 4:
+            dx = abs(c[1][0] - c[0][0]) + abs(c[2][0] - c[1][0])
+            dy = abs(c[1][1] - c[0][1]) + abs(c[2][1] - c[1][1])
+            horizontal = dx >= dy
+        w, h = (sides[1], sides[0]) if horizontal else (sides[0], sides[1])
+        w, h = max(1, int(round(w))), max(1, int(round(h)))
+        x0 = int(round(cx - w / 2))
+        y0 = int(round(cy - h / 2))
+        return (x0, y0, w, h, True, None, angle, sides[0], sides[1],
+                point_origin, point_rotation), "ok"
+
+    minx, miny, maxx, maxy = poly.bounds
+    x0, y0 = int(math.floor(minx)), int(math.floor(miny))
+    x1, y1 = int(math.ceil(maxx)), int(math.ceil(maxy))
+    xs, ys = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+    mask = shapely.contains_xy(poly, xs, ys)
+    h, w = mask.shape
+    return (x0, y0, w, h, False, mask, angle, sides[0], sides[1],
+            point_origin, point_rotation), "ok"
+
+
+def place(px: list[tuple[float, float]], occupied: np.ndarray,
+          min_side: float = 0, max_side: float = 1e9,
+          snap_degrees: float = SNAP_DEGREES,
+          avoid: np.ndarray | None = None,
+          lots: np.ndarray | None = None,
+          alignment: str = "smart",
+          road_share_max: float | None = None
+          ) -> tuple[Footprint | None, str]:
+    """Rasterise a projected footprint, claiming its tiles in `occupied`.
+
+    Returns the footprint and why not when there is none: "small", "large",
+    "outside" or "taken". Size is judged on the real building's sides, before
+    anything is claimed, so a rejected building never blocks its neighbours.
+
+    Tiles another building already owns are left to it. Real neighbours share
+    walls; two buildings claiming the same tile would put one wall inside the
+    other.
+
+    `lots` is the ground already covered by a building's lot rectangle rather
+    than by its tiles (_clear_box). Passed in, the footprint is cut back until
+    its own rectangle stands clear of every other, and its rectangle is
+    claimed there in turn.
+    """
+    map_h, map_w = occupied.shape
+    prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+    if prep is None:
+        return None, reason
+    (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
+     point_origin, point_rotation) = prep
+    if full_rect:
+        mask = np.ones((h, w), dtype=bool)
+
+    before_nudge = (x0, y0)
+    if avoid is not None:
+        x0, y0 = _clear_of(mask, x0, y0, avoid, occupied)
+    point_offset = (x0 - before_nudge[0], y0 - before_nudge[1])
+    if avoid is not None:
+        limit = ROAD_SHARE_MAX if road_share_max is None else road_share_max
+        if _road_share(mask, x0, y0, avoid) > limit:
+            return None, "road"
+        # What little is left on the road is cut away: no room stands on the carriageway.
+        map_h2, map_w2 = avoid.shape
+        h2, w2 = mask.shape
+        cx0, cy0, cx1, cy1 = max(0, x0), max(0, y0), min(map_w2, x0 + w2), min(map_h2, y0 + h2)
+        if cx1 > cx0 and cy1 > cy0:
+            mask = mask.copy()
+            mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0] &= ~(avoid[cy0:cy1, cx0:cx1] >= ROAD_WEIGHT)
+
+    # Clip to the map, then give up tiles already owned by a neighbour.
+    h, w = mask.shape
+    cx0, cy0 = max(0, x0), max(0, y0)
+    cx1, cy1 = min(map_w, x0 + w), min(map_h, y0 + h)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return None, "outside"
+    mask = mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0].copy()
+    mask &= ~occupied[cy0:cy1, cx0:cx1]
+    if mask.sum() < MIN_TILES:
+        return None, "taken"
+    # Trim empty rows and columns so the box hugs what is left.
+    mask, fx0, fy0 = _hug(mask, cx0, cy0)
+    if mask.sum() < MIN_TILES:
+        return None, "taken"
+
+    # ...and cut it back again where the box that hugs it would stand on a
+    # lot already placed, even though the tiles under it are free.
+    if lots is not None:
+        blocked = lots[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]]
+        if blocked.any():
+            by0, by1, bx0, bx1 = _clear_box(mask, blocked)
+            mask, fx0, fy0 = _hug(mask[by0:by1, bx0:bx1], fx0 + bx0, fy0 + by0)
+            if mask.sum() < MIN_TILES or min(mask.shape) < max(3, min_side):
+                return None, "taken"
+
+    occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask
+    if lots is not None:
+        lots[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] = True
+    return Footprint(fx0, fy0, mask, angle, short_side, long_side,
+                     point_origin, point_rotation, point_offset), "ok"
+
+
+_FP_MAGIC = b"KFP1"
+_FP_FLAG_AVOID = 1 << 0
+_FP_FLAG_LOTS = 1 << 1
+_FP_FLAG_INIT_OCC = 1 << 2
+_FP_FLAG_INIT_LOTS = 1 << 3
+_FP_CMD_QUIT = b"\x00"
+_FP_STATUS_REASON = {1: "road", 2: "outside", 3: "taken"}
+_FP_PLACE_HDR = struct.Struct("<BiiiidB")
+_FP_OK_HDR = struct.Struct("<iiiiiiB")
+
+
+def _read_exact(stream, n: int) -> bytes:
+    buf = bytearray(n)
+    view = memoryview(buf)
+    got = 0
+    while got < n:
+        chunk = stream.read(n - got)
+        if not chunk:
+            raise EOFError("knoxroute --footprints closed unexpectedly")
+        view[got:got + len(chunk)] = chunk
+        got += len(chunk)
+    return bytes(buf)
+
+
+class FootprintSession:
+    """Persistent `knoxroute --footprints` worker for batch footprint placement.
+
+    Loads `avoid`, `occupied`, and `lots` into the native process once and
+    keeps the caller's NumPy `occupied`/`lots` arrays in sync as buildings are
+    placed. Falls back transparently to Python `place()` when the native binary
+    is unavailable, predates `--footprints`, or `KNOXMAP_FOOTPRINT_RUST=0`.
+    """
+
+    def __init__(self, occupied: np.ndarray,
+                 avoid: np.ndarray | None = None,
+                 lots: np.ndarray | None = None,
+                 binary: str | None = None):
+        self._occupied = occupied
+        self._avoid = avoid
+        self._lots = lots
+        self._proc: subprocess.Popen | None = None
+        self.native = False
+        if os.environ.get("KNOXMAP_FOOTPRINT_RUST", "1") == "0":
+            return
+        self._start(binary)
+
+    def _start(self, binary: str | None) -> None:
+        if binary is None:
+            try:
+                from generator.roadgraph import rustsearch
+                binary = rustsearch.exe()
+            except Exception:
+                return
+        if not binary:
+            return
+        map_h, map_w = self._occupied.shape
+        if map_w <= 0 or map_h <= 0:
+            return
+
+        flags = 0
+        avoid_u8: np.ndarray | None = None
+        if self._avoid is not None:
+            if self._avoid.shape != (map_h, map_w):
+                return
+            if self._avoid.size and (int(self._avoid.min()) < 0 or int(self._avoid.max()) > 255):
+                return
+            avoid_u8 = np.ascontiguousarray(self._avoid, dtype=np.uint8)
+            flags |= _FP_FLAG_AVOID
+
+        occ_u8: np.ndarray | None = None
+        if self._occupied.any():
+            occ_u8 = np.ascontiguousarray(self._occupied, dtype=np.uint8)
+            flags |= _FP_FLAG_INIT_OCC
+
+        lots_u8: np.ndarray | None = None
+        if self._lots is not None:
+            if self._lots.shape != (map_h, map_w):
+                return
+            flags |= _FP_FLAG_LOTS
+            if self._lots.any():
+                lots_u8 = np.ascontiguousarray(self._lots, dtype=np.uint8)
+                flags |= _FP_FLAG_INIT_LOTS
+
+        kw: dict = {}
+        if sys.platform == "win32":
+            kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            proc = subprocess.Popen(
+                [binary, "--footprints"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=0,
+                **kw,
+            )
+            assert proc.stdin is not None and proc.stdout is not None
+            proc.stdin.write(_FP_MAGIC)
+            proc.stdin.write(struct.pack("<iiB", map_w, map_h, flags))
+            if avoid_u8 is not None:
+                proc.stdin.write(memoryview(avoid_u8))
+            if occ_u8 is not None:
+                proc.stdin.write(memoryview(occ_u8))
+            if lots_u8 is not None:
+                proc.stdin.write(memoryview(lots_u8))
+            proc.stdin.flush()
+            ack = _read_exact(proc.stdout, 4)
+            if ack != _FP_MAGIC:
+                self._warn_fallback(proc, f"unexpected handshake {ack!r}")
+                self._kill(proc)
+                return
+            self._proc = proc
+            self.native = True
+        except Exception as exc:
+            self._warn_fallback(locals().get("proc"), f"startup failed: {exc}")
+            if "proc" in locals():
+                self._kill(proc)
+
+    @staticmethod
+    def _warn_fallback(proc: subprocess.Popen | None, detail: str) -> None:
+        err_text = ""
+        if proc is not None and proc.stderr is not None and proc.poll() is not None:
+            try:
+                err_text = proc.stderr.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                err_text = ""
+        msg = f"FootprintSession falling back to Python: {detail}"
+        if err_text:
+            msg = f"{msg} ({err_text})"
+        try:
+            import knoxlog
+            knoxlog.log.warning(msg)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _kill(proc: subprocess.Popen) -> None:
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=1.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        proc = self._proc
+        self._proc = None
+        self.native = False
+        if proc is None:
+            return
+        try:
+            if proc.stdin is not None:
+                proc.stdin.write(_FP_CMD_QUIT)
+                proc.stdin.flush()
+                proc.stdin.close()
+            if proc.stdout is not None:
+                proc.stdout.close()
+            if proc.stderr is not None:
+                proc.stderr.close()
+            proc.wait(timeout=2.0)
+        except Exception:
+            self._kill(proc)
+
+    def __enter__(self) -> "FootprintSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def place_relaxed(self, px: list[tuple[float, float]], road_share_max: float,
+                      min_side: float = 0, max_side: float = 1e9,
+                      snap_degrees: float = SNAP_DEGREES,
+                      alignment: str = "smart") -> tuple[Footprint | None, str]:
+        """place(), allowing more of the building on the road, in Python.
+
+        For the landmarks a city is known by that the ordinary rule refused (a
+        department store on a wide avenue whose outline brushes the carriageway).
+        The road squares are still cut away. It works on the NumPy arrays the
+        native worker keeps in step, and claims ground the worker does not hear
+        about - so it is only for the very end of the placing, when nothing else
+        will be placed after it.
+        """
+        return place(px, self._occupied, min_side=min_side, max_side=max_side,
+                     snap_degrees=snap_degrees, avoid=self._avoid, lots=self._lots,
+                     alignment=alignment, road_share_max=road_share_max)
+
+    def place(self, px: list[tuple[float, float]],
+              min_side: float = 0, max_side: float = 1e9,
+              snap_degrees: float = SNAP_DEGREES,
+              alignment: str = "smart") -> tuple[Footprint | None, str]:
+        if not self.native or self._proc is None:
+            return place(px, self._occupied, min_side=min_side, max_side=max_side,
+                         snap_degrees=snap_degrees, avoid=self._avoid,
+                         lots=self._lots, alignment=alignment)
+
+        prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+        if prep is None:
+            return None, reason
+        (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
+         point_origin, point_rotation) = prep
+
+        try:
+            stdin = self._proc.stdin
+            stdout = self._proc.stdout
+            assert stdin is not None and stdout is not None
+            stdin.write(_FP_PLACE_HDR.pack(1, x0, y0, w, h, float(min_side), int(full_rect)))
+            if not full_rect:
+                mask_u8 = np.ascontiguousarray(mask, dtype=np.uint8)
+                stdin.write(memoryview(mask_u8))
+            stdin.flush()
+            status = _read_exact(stdout, 1)[0]
+            if status != 0:
+                return None, _FP_STATUS_REASON.get(status, "taken")
+            fx0, fy0, fw, fh, ox, oy, full_out = _FP_OK_HDR.unpack(_read_exact(stdout, _FP_OK_HDR.size))
+            if full_out:
+                out_mask = np.ones((fh, fw), dtype=bool)
+            else:
+                raw = _read_exact(stdout, fw * fh)
+                out_mask = np.frombuffer(raw, dtype=np.uint8).reshape((fh, fw)) != 0
+        except Exception as exc:
+            self._warn_fallback(self._proc, f"worker error: {exc}")
+            self.close()
+            return place(px, self._occupied, min_side=min_side, max_side=max_side,
+                         snap_degrees=snap_degrees, avoid=self._avoid,
+                         lots=self._lots, alignment=alignment)
+
+        self._occupied[fy0:fy0 + fh, fx0:fx0 + fw] |= out_mask
+        if self._lots is not None:
+            self._lots[fy0:fy0 + fh, fx0:fx0 + fw] = True
+        return Footprint(fx0, fy0, out_mask, angle, short_side, long_side,
+                         point_origin, point_rotation, (ox, oy)), "ok"

@@ -104,6 +104,10 @@ def is_notable(tags: dict, kind: str | None) -> bool:
             or "wikidata" in tags or "wikipedia" in tags)
 
 
+# How much of a named building may stand on mapped road, on the second try
+# (see deferred_road in build()); the ordinary rule is footprint.ROAD_SHARE_MAX.
+LANDMARK_ROAD_SHARE = 0.40
+
 # Theatres are a hall a few storeys high.
 THEATRE_MAX_LEVELS = 3
 
@@ -1531,12 +1535,20 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # building would lose every house and hall standing in it, where before it
     # was simply left out and they all stayed. Placed last, it takes what is free.
     deferred_large: list = []
+    # Landmarks the road rule refused - a named building whose outline reaches
+    # more than ROAD_SHARE_MAX onto a mapped carriageway, which on a wide avenue
+    # is the department store, the theatre and the shopping centre the street
+    # is known for. They are tried once more at the very end, allowed up to
+    # LANDMARK_ROAD_SHARE of road (still cut away), on what is left.
+    deferred_road: list = []
 
     def candidates():
         for neg_area, idx, points in order:
             yield neg_area, idx, points, False
         for neg_area, idx, points in deferred_large:
             yield neg_area, idx, points, True
+        for neg_area, idx, points in deferred_road:
+            yield neg_area, idx, points, "road"
 
     # Zones the mapper drew, each with its own settings. Asked per building
     # and per chunk of the spawn map; outside every zone the map's own
@@ -1562,6 +1574,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     used_presets = collections.Counter()
     has_terminal = any(classify_building(f.get("properties") or {}) == "terminal"
                        for f in geo["features"])
+    landmarks_rescued = 0
+
+    def _is_landmark(feat) -> bool:
+        props = feat.get("properties") or {}
+        return bool(props.get("name")) or is_notable(props, classify_building(props))
+
     fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
     try:
         for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
@@ -1576,7 +1594,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                   0.04 * min(1.0, placed_so_far / len(order)))
           feat = geo["features"][i]
           oversize = False
-          if retry:
+          if retry == "road":
+              fp, reason = fp_session.place_relaxed(
+                  px, LANDMARK_ROAD_SHARE, min_side=min_size, max_side=max_size,
+                  snap_degrees=settings.square_buildings,
+                  alignment=settings.building_alignment)
+              if fp is not None:
+                  landmarks_rescued += 1
+          elif retry:
               # A building past max_size is not thrown away any more: the
               # factory and the hangar are the landmarks a place is known by,
               # and dropping them left a hole exactly where the eye looks. The
@@ -1601,6 +1626,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                       note_left_out(feat, "large")
                   continue
           if fp is None:
+              if reason == "road" and not retry and _is_landmark(feat):
+                  deferred_road.append((_neg_area, i, px))
+                  continue
               skipped[reason] += 1
               note_left_out(feat, reason)
               continue
@@ -2270,6 +2298,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                  else " (Ukrainian / post-Soviet: brick and plaster private houses, "
                       "5- and 9-storey blocks)" if region == "ua"
                  else " (built the default way for now)"))
+    if landmarks_rescued:
+        print(f"  landmarks on roads   : {landmarks_rescued} placed on the second try")
     print(f"  too small (<{min_size})     : {skipped['small']}")
     if split_large or skipped["large"]:
         print(f"  oversized (>{max_size})     : {split_large} split into units, "

@@ -26,6 +26,9 @@ if not os.path.isabs(pbf):
 if not os.path.exists(pbf):
     sys.exit(f"map data not found: {pbf}")
 os.environ["KNOXMAP_PBF_FILE"] = pbf
+# The airport's parked planes need the Wingsmith aircraft mods; make them optional
+# rather than a hard requirement of the map (see tools/make_map_mod.py).
+os.environ.setdefault("KNOXMAP_AIRPORT_MODS_OPTIONAL", "1")
 os.environ.setdefault("PZ_MAPPING_TOOLS", os.path.join(a.knoxmap, "vendor", "PZMappingTools"))
 for exe in ("knoxlots.exe", "knoxlots", os.path.join("rust", "knoxlots", "target", "release", "knoxlots.exe"),
             os.path.join("rust", "knoxlots", "target", "release", "knoxlots")):

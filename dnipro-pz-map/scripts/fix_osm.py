@@ -17,6 +17,9 @@ fixed = []
 # (way id) -> tags to set / None to delete
 OVERRIDES = {
     ("r", 2828442): {"building:levels": "28"},   # Hotel Parus: 32 floors, tower part 28 (114 m)
+    # ...and the outline of the whole Parus complex around it, which as a building of its own
+    # took the ground first and left the tower "taken": the tower is what the city knows.
+    ("r", 2828437): {"building": None},
     ("r", 3206479): {"building:levels": "20"},   # Menorah centre, tallest tower 20-22 floors (77 m)
     32202196: {"building:levels": "4"},          # Dnipro-Holovnyi railway station
     1331908773: {"building:levels": "5"},        # Most City centre (mall)
