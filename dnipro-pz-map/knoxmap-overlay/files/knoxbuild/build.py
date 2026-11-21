@@ -119,6 +119,9 @@ SPECIAL_BY_VALUE = {
     "church": "church", "chapel": "church", "cathedral": "church",
     "mosque": "church", "synagogue": "church", "temple": "church",
     "place_of_worship": "church",
+    # A railway station's building is a hall, ticket offices and waiting rooms -
+    # with nothing to say what it was it came out a block of flats (Dnipro-Holovnyi).
+    "train_station": "civic",
     "restaurant": "restaurant", "fast_food": "restaurant", "cafe": "restaurant",
     "bar": "restaurant", "pub": "restaurant", "food_court": "restaurant",
     "retail": "shop", "commercial": "shop", "supermarket": "shop",

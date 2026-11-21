@@ -7,7 +7,7 @@ rem Optional second argument: generate | build | compile | install (one step onl
 setlocal
 set PYTHONUTF8=1
 set "PACK=%~dp0.."
-if "%KNOXDIR%"=="" set "KNOXDIR=%USERPROFILE%\KnoxMap-Dnipro"
+if "%KNOXDIR%"=="" set "KNOXDIR=C:\KnoxMap-Dnipro"
 set "WHICH=%~1"
 if "%WHICH%"=="" set "WHICH=core"
 if /i "%WHICH%"=="test" set "CFG=test_center"

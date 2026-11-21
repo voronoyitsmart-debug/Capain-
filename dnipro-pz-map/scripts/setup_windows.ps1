@@ -8,7 +8,9 @@
 # 4. turns KnoxMap's self-update off (it would overwrite the Dnipro changes),
 # 5. runs KnoxMap's own Setup.bat: Python, PZ Mapping Tools, tiles from YOUR copy of the game.
 param(
-    [string]$KnoxDir = "$env:USERPROFILE\KnoxMap-Dnipro"
+    # An ASCII path on purpose: libosmium and the map tools trip over a Cyrillic
+    # user name in C:\Users\...
+    [string]$KnoxDir = "C:\KnoxMap-Dnipro"
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -69,8 +71,12 @@ if (Test-Path $cfgPath) {
     $old.PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value }
 }
 $cfg['auto_update'] = $false
-$cfg['pbf_file'] = (Resolve-Path "$Pack\data\dnipro_area_fixed.osm.pbf").Path
-($cfg | ConvertTo-Json) | Set-Content -Encoding UTF8 $cfgPath
+New-Item -ItemType Directory -Force -Path "$KnoxDir\dnipro" | Out-Null
+Copy-Item "$Pack\data\dnipro_area_fixed.osm.pbf" "$KnoxDir\dnipro\dnipro_area_fixed.osm.pbf" -Force
+$cfg['pbf_file'] = "$KnoxDir\dnipro\dnipro_area_fixed.osm.pbf"
+# UTF-8 without a BOM: Windows PowerShell's "-Encoding UTF8" writes one, and KnoxMap's
+# json reader would then see no settings at all (and update itself over these changes).
+[IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 
 # 5. KnoxMap's own setup (finds Project Zomboid, extracts tiles from your game)
 Write-Host "Running KnoxMap Setup.bat ..."

@@ -23,6 +23,11 @@ cfg = json.load(open(a.config, encoding="utf-8"))
 pbf = cfg["pbf"]
 if not os.path.isabs(pbf):
     pbf = os.path.normpath(os.path.join(os.path.dirname(a.config), pbf))
+# setup_windows.ps1 keeps a copy inside the KnoxMap folder, whose path is ASCII
+# (a Cyrillic user name in the repository's path can trip up libosmium).
+local_copy = os.path.join(a.knoxmap, "dnipro", os.path.basename(pbf))
+if os.path.exists(local_copy) and (not pbf.isascii() or not os.path.exists(pbf)):
+    pbf = local_copy
 if not os.path.exists(pbf):
     sys.exit(f"map data not found: {pbf}")
 os.environ["KNOXMAP_PBF_FILE"] = pbf

@@ -58,7 +58,7 @@ def main(argv):
         k = max(0.45, 1.0 - 0.035 * (lv - 1))
         col = tuple(int(c * k) for c in col)
         x0, y0 = (x - box[0]) * scale, (y - box[1]) * scale
-        x1, y1 = x0 + max(1, w * scale) - 1, y0 + max(1, h * scale) - 1
+        x1, y1 = x0 + max(0.0, w * scale - 1), y0 + max(0.0, h * scale - 1)
         d.rectangle([x0, y0, x1, y1], fill=col)
     # legend
     try:
